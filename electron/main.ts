@@ -1,5 +1,6 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu, nativeTheme, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu, nativeTheme, shell, screen } from 'electron';
 import path from 'path';
+import fsSync from 'fs';
 import { 
   getNotesRoot, 
   setNotesRoot, 
@@ -20,10 +21,85 @@ process.env.VITE_PUBLIC = app.isPackaged ? process.env.DIST : path.join(process.
 
 let mainWindow: BrowserWindow | null = null;
 
-function createWindow() {
-  mainWindow = new BrowserWindow({
+interface WindowState {
+  x?: number;
+  y?: number;
+  width: number;
+  height: number;
+  isMaximized?: boolean;
+}
+
+function getWindowStateConfigPath(): string {
+  try {
+    if (app && app.getPath) {
+      return path.join(app.getPath('userData'), 'scribe-window-state.json');
+    }
+  } catch {}
+  return path.join(process.env.HOME || '', '.scribe-window-state.json');
+}
+
+function loadWindowState(): WindowState {
+  const defaultState: WindowState = {
     width: 1240,
     height: 820,
+  };
+
+  try {
+    const configPath = getWindowStateConfigPath();
+    if (fsSync.existsSync(configPath)) {
+      const data = JSON.parse(fsSync.readFileSync(configPath, 'utf-8'));
+      if (typeof data.width === 'number' && typeof data.height === 'number') {
+        if (typeof data.x === 'number' && typeof data.y === 'number') {
+          const visible = screen.getAllDisplays().some(display => {
+            const { x, y, width, height } = display.bounds;
+            return (
+              data.x >= x - 100 &&
+              data.x <= x + width - 100 &&
+              data.y >= y - 50 &&
+              data.y <= y + height - 50
+            );
+          });
+          if (visible) {
+            return {
+              x: data.x,
+              y: data.y,
+              width: Math.max(860, data.width),
+              height: Math.max(520, data.height),
+              isMaximized: !!data.isMaximized
+            };
+          }
+        }
+        return {
+          width: Math.max(860, data.width),
+          height: Math.max(520, data.height),
+          isMaximized: !!data.isMaximized
+        };
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load window state:', e);
+  }
+
+  return defaultState;
+}
+
+function saveWindowState(state: WindowState) {
+  try {
+    const configPath = getWindowStateConfigPath();
+    fsSync.writeFileSync(configPath, JSON.stringify(state, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('Failed to save window state:', e);
+  }
+}
+
+function createWindow() {
+  const windowState = loadWindowState();
+
+  mainWindow = new BrowserWindow({
+    x: windowState.x,
+    y: windowState.y,
+    width: windowState.width,
+    height: windowState.height,
     minWidth: 860,
     minHeight: 520,
     titleBarStyle: 'hiddenInset',
@@ -37,6 +113,52 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       spellcheck: true
+    }
+  });
+
+  if (windowState.isMaximized) {
+    mainWindow.maximize();
+  }
+
+  // Persist window position, size, and scale
+  let saveTimeout: NodeJS.Timeout | null = null;
+  const trackWindowState = () => {
+    if (!mainWindow) return;
+    if (saveTimeout) clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(() => {
+      if (!mainWindow) return;
+      const isMax = mainWindow.isMaximized();
+      if (isMax) {
+        saveWindowState({ width: windowState.width, height: windowState.height, isMaximized: true });
+      } else if (!mainWindow.isFullScreen() && !mainWindow.isMinimized()) {
+        const bounds = mainWindow.getBounds();
+        saveWindowState({
+          x: bounds.x,
+          y: bounds.y,
+          width: bounds.width,
+          height: bounds.height,
+          isMaximized: false
+        });
+      }
+    }, 250);
+  };
+
+  mainWindow.on('resize', trackWindowState);
+  mainWindow.on('move', trackWindowState);
+  mainWindow.on('close', () => {
+    if (mainWindow && !mainWindow.isFullScreen() && !mainWindow.isMinimized()) {
+      if (mainWindow.isMaximized()) {
+        saveWindowState({ width: windowState.width, height: windowState.height, isMaximized: true });
+      } else {
+        const bounds = mainWindow.getBounds();
+        saveWindowState({
+          x: bounds.x,
+          y: bounds.y,
+          width: bounds.width,
+          height: bounds.height,
+          isMaximized: false
+        });
+      }
     }
   });
 
@@ -69,7 +191,7 @@ function createWindow() {
     mainWindow.loadFile(path.join(process.env.DIST || path.join(__dirname, '../dist'), 'index.html'));
   }
 
-  // Watch for external file changes in Google Drive
+  // Watch for external file changes in workspace folder
   startWatching((data) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('notes:changed', data);
