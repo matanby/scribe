@@ -33,6 +33,7 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ editor }) => {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const menuRef = useRef<HTMLDivElement>(null);
+  const selectedItemRef = useRef<HTMLButtonElement | null>(null);
 
   const commands: CommandItem[] = [
     {
@@ -173,6 +174,15 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ editor }) => {
   );
 
   useEffect(() => {
+    if (isOpen && selectedItemRef.current) {
+      selectedItemRef.current.scrollIntoView({
+        block: 'nearest',
+        behavior: 'auto'
+      });
+    }
+  }, [selectedIndex, isOpen]);
+
+  useEffect(() => {
     if (!editor) return;
 
     const handleUpdate = () => {
@@ -193,9 +203,16 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ editor }) => {
 
         try {
           const coords = editor.view.coordsAtPos($from.pos);
+          const menuHeight = 310;
+          const spaceBelow = window.innerHeight - coords.bottom;
+          let top = coords.bottom + 8;
+          if (spaceBelow < menuHeight && coords.top > menuHeight) {
+            top = coords.top - menuHeight - 8;
+          }
+
           setMenuPosition({
-            top: coords.bottom + 8,
-            left: Math.max(16, Math.min(coords.left, window.innerWidth - 260))
+            top: Math.max(16, top),
+            left: Math.max(16, Math.min(coords.left, window.innerWidth - 275))
           });
           setIsOpen(true);
         } catch {
@@ -220,7 +237,6 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ editor }) => {
     const { selection } = editor.state;
     const { $from } = selection;
 
-    // Delete the slash command query text
     const textBefore = $from.parent.textBetween(0, $from.parentOffset, '\n', '\n');
     const slashPos = $from.pos - textBefore.length;
     editor.chain().focus().deleteRange({ from: slashPos, to: $from.pos }).run();
@@ -259,10 +275,11 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ editor }) => {
   return (
     <div
       ref={menuRef}
+      onWheel={(e) => e.stopPropagation()}
       style={{ top: `${menuPosition.top}px`, left: `${menuPosition.left}px` }}
-      className="fixed z-50 w-64 max-h-80 overflow-y-auto p-1.5 rounded-2xl bg-white/95 dark:bg-[#252528]/95 backdrop-blur-2xl border border-[var(--border-color)] shadow-2xl animate-in fade-in zoom-in-95 duration-100 select-none"
+      className="fixed z-50 w-64 max-h-80 overflow-y-auto p-1.5 rounded-2xl bg-white/95 dark:bg-[#252528]/95 backdrop-blur-2xl border border-[var(--border-color)] shadow-2xl animate-in fade-in zoom-in-95 duration-100 select-none pointer-events-auto"
     >
-      <div className="px-2.5 py-1 text-[9.5px] font-bold uppercase tracking-wider text-[var(--text-tertiary)] flex items-center gap-1">
+      <div className="px-2.5 py-1 text-[9.5px] font-bold uppercase tracking-wider text-[var(--text-tertiary)] flex items-center gap-1 sticky top-0 bg-white/95 dark:bg-[#252528]/95 backdrop-blur-sm z-10">
         <Sparkles size={11} className="text-amber-500" />
         <span>Insert Element</span>
       </div>
@@ -273,11 +290,12 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ editor }) => {
           return (
             <button
               key={cmd.id}
+              ref={isSelected ? (el) => { selectedItemRef.current = el; } : undefined}
               onClick={() => executeCommand(cmd)}
               onMouseEnter={() => setSelectedIndex(index)}
-              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition-all ${
+              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-left transition-all cursor-pointer ${
                 isSelected
-                  ? 'bg-[var(--accent-light)] text-[var(--accent-color)] shadow-xs'
+                  ? 'bg-[var(--accent-light)] text-[var(--accent-color)] shadow-xs font-medium'
                   : 'hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-primary)]'
               }`}
             >

@@ -360,10 +360,8 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
         onClose={() => setIsFindOpen(false)} 
       />
 
-      <div key="tiptap-floating-menus" className="pointer-events-none">
-        <BubbleMenu editor={editor} />
-        <SlashMenu editor={editor} />
-      </div>
+      <BubbleMenu editor={editor} />
+      <SlashMenu editor={editor} />
 
       {/* Scrollable Note Content Container */}
       <div className="flex-1 overflow-y-auto relative">
