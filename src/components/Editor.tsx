@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
+import { EditorState } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
 import TaskList from '@tiptap/extension-task-list';
 import { CustomTaskItem } from '../extensions/CustomTaskItem';
@@ -143,6 +144,14 @@ export const Editor: React.FC<EditorProps> = ({
         if (!currentNotePathRef.current) return;
         const rawMarkdown = (editor.storage as any).markdown.getMarkdown();
         const markdown = cleanMarkdownOutput(rawMarkdown);
+
+        // Safety guard: do NOT save empty content over an existing populated note
+        if (!markdown.trim() && note && (note.snippet || note.title !== 'Untitled Note')) {
+          console.warn('Auto-save skipped: document became unexpectedly empty');
+          setIsSaving(false);
+          return;
+        }
+
         try {
           await onSave(currentNotePathRef.current, markdown, frontmatter);
           setIsSaving(false);
@@ -155,7 +164,7 @@ export const Editor: React.FC<EditorProps> = ({
     }
   });
 
-  // Load note content on selection change
+  // Load note content on selection change with fresh history stack
   useEffect(() => {
     if (!note) {
       setTitle('');
@@ -175,10 +184,26 @@ export const Editor: React.FC<EditorProps> = ({
       if (!isMounted || currentNotePathRef.current !== note.filePath) return;
       setFrontmatter(frontmatter);
       if (editor) {
-        (editor.commands as any).setContent(markdown, { emitUpdate: false });
+        try {
+          // Initialize fresh EditorState so Cmd+Z cannot undo past the loaded note content
+          const parser = (editor.storage as any)?.markdown?.parser;
+          if (parser) {
+            const newDoc = parser.parse(markdown);
+            const newState = EditorState.create({
+              schema: editor.schema,
+              doc: newDoc,
+              plugins: editor.state.plugins
+            });
+            editor.view.updateState(newState);
+          } else {
+            (editor.commands as any).setContent(markdown, { emitUpdate: false });
+          }
+        } catch (e) {
+          (editor.commands as any).setContent(markdown, { emitUpdate: false });
+        }
         setTimeout(() => {
           if (isMounted) isLoadedRef.current = true;
-        }, 150);
+        }, 100);
       }
     }).catch(err => {
       console.error('Failed to read note:', err);
