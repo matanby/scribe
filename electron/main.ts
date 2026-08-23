@@ -1,9 +1,11 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu, nativeTheme, shell, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu, shell, screen, MenuItemConstructorOptions } from 'electron';
 import path from 'path';
 import fsSync from 'fs';
 import { 
-  getNotesRoot, 
-  setNotesRoot, 
+  getWindowRoot,
+  setWindowRoot,
+  removeWindowTracking,
+  loadSavedRoot,
   readAllNotesTree, 
   readNoteContent, 
   saveNoteContent, 
@@ -13,13 +15,13 @@ import {
   restoreFromTrash,
   permanentDeleteNote,
   emptyTrash,
-  startWatching
+  startWatchingWindow
 } from './fileSystem';
 
 process.env.DIST = path.join(__dirname, '../dist');
 process.env.VITE_PUBLIC = app.isPackaged ? process.env.DIST : path.join(process.env.DIST, '../public');
 
-let mainWindow: BrowserWindow | null = null;
+const allWindows = new Set<BrowserWindow>();
 
 interface WindowState {
   x?: number;
@@ -92,12 +94,13 @@ function saveWindowState(state: WindowState) {
   }
 }
 
-function createWindow() {
+export function createWindow(targetFolderPath?: string): BrowserWindow {
   const windowState = loadWindowState();
+  const cascadeOffset = (allWindows.size * 25) % 150;
 
-  mainWindow = new BrowserWindow({
-    x: windowState.x,
-    y: windowState.y,
+  const win = new BrowserWindow({
+    x: windowState.x !== undefined ? windowState.x + cascadeOffset : undefined,
+    y: windowState.y !== undefined ? windowState.y + cascadeOffset : undefined,
     width: windowState.width,
     height: windowState.height,
     minWidth: 860,
@@ -116,22 +119,28 @@ function createWindow() {
     }
   });
 
-  if (windowState.isMaximized) {
-    mainWindow.maximize();
+  allWindows.add(win);
+
+  // Set the folder path for this window
+  const rootPath = targetFolderPath || loadSavedRoot();
+  setWindowRoot(win.webContents.id, rootPath);
+
+  if (windowState.isMaximized && allWindows.size === 1) {
+    win.maximize();
   }
 
   // Persist window position, size, and scale
   let saveTimeout: NodeJS.Timeout | null = null;
   const trackWindowState = () => {
-    if (!mainWindow) return;
+    if (!win || win.isDestroyed()) return;
     if (saveTimeout) clearTimeout(saveTimeout);
     saveTimeout = setTimeout(() => {
-      if (!mainWindow) return;
-      const isMax = mainWindow.isMaximized();
+      if (!win || win.isDestroyed()) return;
+      const isMax = win.isMaximized();
       if (isMax) {
         saveWindowState({ width: windowState.width, height: windowState.height, isMaximized: true });
-      } else if (!mainWindow.isFullScreen() && !mainWindow.isMinimized()) {
-        const bounds = mainWindow.getBounds();
+      } else if (!win.isFullScreen() && !win.isMinimized()) {
+        const bounds = win.getBounds();
         saveWindowState({
           x: bounds.x,
           y: bounds.y,
@@ -143,23 +152,11 @@ function createWindow() {
     }, 250);
   };
 
-  mainWindow.on('resize', trackWindowState);
-  mainWindow.on('move', trackWindowState);
-  mainWindow.on('close', () => {
-    if (mainWindow && !mainWindow.isFullScreen() && !mainWindow.isMinimized()) {
-      if (mainWindow.isMaximized()) {
-        saveWindowState({ width: windowState.width, height: windowState.height, isMaximized: true });
-      } else {
-        const bounds = mainWindow.getBounds();
-        saveWindowState({
-          x: bounds.x,
-          y: bounds.y,
-          width: bounds.width,
-          height: bounds.height,
-          isMaximized: false
-        });
-      }
-    }
+  win.on('resize', trackWindowState);
+  win.on('move', trackWindowState);
+  win.on('closed', () => {
+    allWindows.delete(win);
+    removeWindowTracking(win.webContents.id);
   });
 
   if (process.platform === 'darwin' && app.dock) {
@@ -171,14 +168,14 @@ function createWindow() {
   }
 
   // Open external web links in user's default browser (Safari, Chrome, etc.)
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('mailto:')) {
       shell.openExternal(url);
     }
     return { action: 'deny' };
   });
 
-  mainWindow.webContents.on('will-navigate', (event, url) => {
+  win.webContents.on('will-navigate', (event, url) => {
     if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('mailto:')) {
       event.preventDefault();
       shell.openExternal(url);
@@ -186,34 +183,36 @@ function createWindow() {
   });
 
   if (process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
+    win.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
-    mainWindow.loadFile(path.join(process.env.DIST || path.join(__dirname, '../dist'), 'index.html'));
+    win.loadFile(path.join(process.env.DIST || path.join(__dirname, '../dist'), 'index.html'));
   }
 
-  // Watch for external file changes in workspace folder
-  startWatching((data) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('notes:changed', data);
+  // Watch for external file changes in this window's workspace folder
+  startWatchingWindow(win.webContents.id, rootPath, (data) => {
+    if (!win.isDestroyed()) {
+      win.webContents.send('notes:changed', data);
     }
   });
+
+  return win;
 }
 
 function setupMenu() {
   const isMac = process.platform === 'darwin';
-  const template: any[] = [
+  const template: MenuItemConstructorOptions[] = [
     ...(isMac ? [{
       label: app.name,
       submenu: [
-        { role: 'about' },
-        { type: 'separator' },
-        { role: 'services' },
-        { type: 'separator' },
-        { role: 'hide' },
-        { role: 'hideOthers' },
-        { role: 'unhide' },
-        { type: 'separator' },
-        { role: 'quit' }
+        { role: 'about' as const },
+        { type: 'separator' as const },
+        { role: 'services' as const },
+        { type: 'separator' as const },
+        { role: 'hide' as const },
+        { role: 'hideOthers' as const },
+        { role: 'unhide' as const },
+        { type: 'separator' as const },
+        { role: 'quit' as const }
       ]
     }] : []),
     {
@@ -222,51 +221,51 @@ function setupMenu() {
         {
           label: 'New Note',
           accelerator: 'CmdOrCtrl+N',
-          click: () => mainWindow?.webContents.send('menu:newNote')
+          click: (_item, focusedWin) => (focusedWin as BrowserWindow)?.webContents?.send('menu:newNote')
         },
         {
           label: 'Quick Switcher...',
-          accelerator: 'CmdOrCtrl+O',
-          click: () => mainWindow?.webContents.send('menu:quickSwitcher')
+          accelerator: 'CmdOrCtrl+P',
+          click: (_item, focusedWin) => (focusedWin as BrowserWindow)?.webContents?.send('menu:quickSwitcher')
         },
+        { type: 'separator' as const },
         {
-          label: 'Open Folder...',
-          accelerator: 'CmdOrCtrl+Shift+O',
-          click: async () => {
-            if (!mainWindow) return;
-            const res = await dialog.showOpenDialog(mainWindow, {
-              properties: ['openDirectory', 'createDirectory']
-            });
+          label: 'Open Folder in New Window...',
+          accelerator: 'CmdOrCtrl+O',
+          click: async (_item, focusedWin) => {
+            const win = focusedWin as BrowserWindow | undefined;
+            const res = win 
+              ? await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] })
+              : await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
             if (!res.canceled && res.filePaths.length > 0) {
-              setNotesRoot(res.filePaths[0]);
-              mainWindow.webContents.send('notes:rootChanged', res.filePaths[0]);
+              createWindow(res.filePaths[0]);
             }
           }
         },
-        { type: 'separator' },
+        { type: 'separator' as const },
         {
           label: 'Save Note',
           accelerator: 'CmdOrCtrl+S',
-          click: () => mainWindow?.webContents.send('menu:saveNote')
+          click: (_item, focusedWin) => (focusedWin as BrowserWindow)?.webContents?.send('menu:saveNote')
         },
-        ...(isMac ? [{ role: 'close' }] : [{ role: 'quit' }])
+        ...(isMac ? [{ role: 'close' as const }] : [{ role: 'quit' as const }])
       ]
     },
     {
       label: 'Edit',
       submenu: [
-        { role: 'undo' },
-        { role: 'redo' },
-        { type: 'separator' },
-        { role: 'cut' },
-        { role: 'copy' },
-        { role: 'paste' },
-        { role: 'selectAll' },
-        { type: 'separator' },
+        { role: 'undo' as const },
+        { role: 'redo' as const },
+        { type: 'separator' as const },
+        { role: 'cut' as const },
+        { role: 'copy' as const },
+        { role: 'paste' as const },
+        { role: 'selectAll' as const },
+        { type: 'separator' as const },
         {
           label: 'Find in Note',
           accelerator: 'CmdOrCtrl+F',
-          click: () => mainWindow?.webContents.send('menu:find')
+          click: (_item, focusedWin) => (focusedWin as BrowserWindow)?.webContents?.send('menu:find')
         }
       ]
     },
@@ -276,28 +275,43 @@ function setupMenu() {
         {
           label: 'Bold',
           accelerator: 'CmdOrCtrl+B',
-          click: () => mainWindow?.webContents.send('format:bold')
+          click: (_item, focusedWin) => (focusedWin as BrowserWindow)?.webContents?.send('format:bold')
         },
         {
           label: 'Italic',
           accelerator: 'CmdOrCtrl+I',
-          click: () => mainWindow?.webContents.send('format:italic')
+          click: (_item, focusedWin) => (focusedWin as BrowserWindow)?.webContents?.send('format:italic')
         },
         {
           label: 'Toggle Checklist',
           accelerator: 'CmdOrCtrl+Shift+C',
-          click: () => mainWindow?.webContents.send('format:task')
+          click: (_item, focusedWin) => (focusedWin as BrowserWindow)?.webContents?.send('format:task')
         }
       ]
     },
     {
       label: 'View',
       submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
-        { role: 'toggleDevTools' },
-        { type: 'separator' },
-        { role: 'togglefullscreen' }
+        { role: 'reload' as const },
+        { role: 'forceReload' as const },
+        { role: 'toggleDevTools' as const },
+        { type: 'separator' as const },
+        { role: 'togglefullscreen' as const }
+      ]
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' as const },
+        { role: 'zoom' as const },
+        ...(isMac ? [
+          { type: 'separator' as const },
+          { role: 'front' as const },
+          { type: 'separator' as const },
+          { role: 'window' as const }
+        ] : [
+          { role: 'close' as const }
+        ])
       ]
     }
   ];
@@ -311,7 +325,7 @@ app.whenReady().then(() => {
   createWindow();
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (allWindows.size === 0) createWindow();
   });
 });
 
@@ -321,9 +335,10 @@ app.on('window-all-closed', () => {
   }
 });
 
-// IPC Handlers
-ipcMain.handle('notes:listTree', async () => {
-  return await readAllNotesTree();
+// IPC Handlers scoped per window
+ipcMain.handle('notes:listTree', async (event) => {
+  const root = getWindowRoot(event.sender.id);
+  return await readAllNotesTree(root);
 });
 
 ipcMain.handle('notes:read', async (_, filePath: string) => {
@@ -342,43 +357,63 @@ ipcMain.handle('notes:rename', async (_, { filePath, newTitle }) => {
   return await renameNote(filePath, newTitle);
 });
 
-ipcMain.handle('notes:delete', async (_, filePath: string) => {
-  return await moveToTrash(filePath);
+ipcMain.handle('notes:delete', async (event, filePath: string) => {
+  const root = getWindowRoot(event.sender.id);
+  return await moveToTrash(filePath, root);
 });
 
-ipcMain.handle('notes:trash', async (_, filePath: string) => {
-  return await moveToTrash(filePath);
+ipcMain.handle('notes:trash', async (event, filePath: string) => {
+  const root = getWindowRoot(event.sender.id);
+  return await moveToTrash(filePath, root);
 });
 
-ipcMain.handle('notes:restore', async (_, filePath: string) => {
-  return await restoreFromTrash(filePath);
+ipcMain.handle('notes:restore', async (event, filePath: string) => {
+  const root = getWindowRoot(event.sender.id);
+  return await restoreFromTrash(filePath, root);
 });
 
 ipcMain.handle('notes:permanentDelete', async (_, filePath: string) => {
   return await permanentDeleteNote(filePath);
 });
 
-ipcMain.handle('notes:emptyTrash', async () => {
-  return await emptyTrash();
+ipcMain.handle('notes:emptyTrash', async (event) => {
+  const root = getWindowRoot(event.sender.id);
+  return await emptyTrash(root);
 });
 
-ipcMain.handle('notes:getPath', () => {
-  return getNotesRoot();
+ipcMain.handle('notes:getPath', (event) => {
+  return getWindowRoot(event.sender.id);
 });
 
-ipcMain.handle('notes:setPath', (_, newPath: string) => {
-  setNotesRoot(newPath);
-  return getNotesRoot();
+ipcMain.handle('notes:setPath', (event, newPath: string) => {
+  setWindowRoot(event.sender.id, newPath);
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win && !win.isDestroyed()) {
+    startWatchingWindow(event.sender.id, newPath, (data) => {
+      if (!win.isDestroyed()) {
+        win.webContents.send('notes:changed', data);
+      }
+    });
+  }
+  return getWindowRoot(event.sender.id);
 });
 
-ipcMain.handle('dialog:selectFolder', async () => {
-  if (!mainWindow) return null;
-  const res = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openDirectory', 'createDirectory']
-  });
+ipcMain.handle('dialog:selectFolder', async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const res = win 
+    ? await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] })
+    : await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
+    
   if (!res.canceled && res.filePaths.length > 0) {
     const selected = res.filePaths[0];
-    setNotesRoot(selected);
+    setWindowRoot(event.sender.id, selected);
+    if (win && !win.isDestroyed()) {
+      startWatchingWindow(event.sender.id, selected, (data) => {
+        if (!win.isDestroyed()) {
+          win.webContents.send('notes:changed', data);
+        }
+      });
+    }
     return selected;
   }
   return null;

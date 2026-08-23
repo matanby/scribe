@@ -17,7 +17,7 @@ function getConfigPath(): string {
   return path.join(process.env.HOME || '', '.scribe-config.json');
 }
 
-function loadSavedRoot(): string {
+export function loadSavedRoot(): string {
   try {
     const cfg = getConfigPath();
     if (fsSync.existsSync(cfg)) {
@@ -30,35 +30,57 @@ function loadSavedRoot(): string {
   return DEFAULT_NOTES_PATH;
 }
 
-function saveSavedRoot(p: string) {
+export function saveSavedRoot(p: string) {
   try {
     const cfg = getConfigPath();
     fsSync.writeFileSync(cfg, JSON.stringify({ notesPath: p }, null, 2), 'utf-8');
   } catch {}
 }
 
-let currentNotesPath = loadSavedRoot();
-let activeWatcher: FSWatcher | null = null;
-let activeWatcherCallback: ((data: { filePath: string; eventType: string }) => void) | null = null;
+const windowRoots = new Map<number, string>();
+const windowWatchers = new Map<number, FSWatcher>();
 
-export function getNotesRoot(): string {
-  if (!fsSync.existsSync(currentNotesPath)) {
+export function getWindowRoot(webContentsId?: number): string {
+  if (webContentsId && windowRoots.has(webContentsId)) {
+    return windowRoots.get(webContentsId)!;
+  }
+  return loadSavedRoot();
+}
+
+export function setWindowRoot(webContentsId: number, newPath: string) {
+  if (fsSync.existsSync(newPath)) {
+    windowRoots.set(webContentsId, newPath);
+    saveSavedRoot(newPath);
+  }
+}
+
+export function removeWindowTracking(webContentsId: number) {
+  const watcher = windowWatchers.get(webContentsId);
+  if (watcher) {
+    watcher.close();
+    windowWatchers.delete(webContentsId);
+  }
+  windowRoots.delete(webContentsId);
+}
+
+export function getNotesRoot(webContentsId?: number): string {
+  const root = getWindowRoot(webContentsId);
+  if (!fsSync.existsSync(root)) {
     try {
-      fsSync.mkdirSync(currentNotesPath, { recursive: true });
+      fsSync.mkdirSync(root, { recursive: true });
     } catch (e) {
       console.error('Failed to create notes path:', e);
     }
   }
-  return currentNotesPath;
+  return root;
 }
 
-export function setNotesRoot(newPath: string) {
+export function setNotesRoot(newPath: string, webContentsId?: number) {
   if (fsSync.existsSync(newPath)) {
-    currentNotesPath = newPath;
-    saveSavedRoot(newPath);
-    if (activeWatcherCallback) {
-      startWatching(activeWatcherCallback);
+    if (webContentsId) {
+      setWindowRoot(webContentsId, newPath);
     }
+    saveSavedRoot(newPath);
   }
 }
 
@@ -89,8 +111,8 @@ function extractTitleFromContent(content: string, fileName: string): string {
   return baseName;
 }
 
-function getTrashDir(): string {
-  const trashPath = path.join(getNotesRoot(), '.trash');
+function getTrashDir(rootDir: string): string {
+  const trashPath = path.join(rootDir, '.trash');
   if (!fsSync.existsSync(trashPath)) {
     fsSync.mkdirSync(trashPath, { recursive: true });
   }
@@ -108,7 +130,7 @@ function safeParseFrontmatter(raw: string): { content: string; data: Record<stri
   return { content: raw, data: {} };
 }
 
-export async function readAllNotesTree(rootDir = getNotesRoot()): Promise<NotesTree> {
+export async function readAllNotesTree(rootDir: string): Promise<NotesTree> {
   const allNotes: NoteMeta[] = [];
   const trashNotes: NoteMeta[] = [];
 
@@ -119,7 +141,6 @@ export async function readAllNotesTree(rootDir = getNotesRoot()): Promise<NotesT
     let noteCount = 0;
 
     for (const entry of entries) {
-      // Ignore hidden files and .trash / .obsidian / .git folders
       if (entry.name.startsWith('.')) continue;
 
       const fullPath = path.join(dir, entry.name);
@@ -169,13 +190,13 @@ export async function readAllNotesTree(rootDir = getNotesRoot()): Promise<NotesT
   const rootFolder = await scanDir(rootDir);
 
   // Scan .trash directory
-  const trashDir = getTrashDir();
+  const trashDir = getTrashDir(rootDir);
   try {
     const trashEntries = await fs.readdir(trashDir, { withFileTypes: true });
     for (const entry of trashEntries) {
       if (entry.isFile() && entry.name.toLowerCase().endsWith('.md')) {
-        const fullPath = path.join(trashDir, entry.name);
         try {
+          const fullPath = path.join(trashDir, entry.name);
           const stats = await fs.stat(fullPath);
           const rawContent = await fs.readFile(fullPath, 'utf-8');
           const parsed = safeParseFrontmatter(rawContent);
@@ -232,20 +253,18 @@ export async function saveNoteContent(filePath: string, markdown: string, frontm
   await fs.writeFile(filePath, fileContent, 'utf-8');
 }
 
-export async function createNote(folderPath = getNotesRoot(), title = 'New Note', initialContent = ''): Promise<NoteMeta> {
-  let finalTitle = title.trim() || 'New Note';
-  let fileName = `${finalTitle}.md`;
+export async function createNote(folderPath: string, title = 'Untitled Note', initialContent = ''): Promise<NoteMeta> {
+  let fileName = `${title}.md`;
   let filePath = path.join(folderPath, fileName);
   let counter = 1;
 
   while (fsSync.existsSync(filePath)) {
-    finalTitle = `${title} ${counter}`;
-    fileName = `${finalTitle}.md`;
+    fileName = `${title} ${counter}.md`;
     filePath = path.join(folderPath, fileName);
     counter++;
   }
 
-  const content = initialContent ? initialContent : `# ${finalTitle}\n\n`;
+  const content = initialContent || `# ${title}\n\n`;
   await fs.writeFile(filePath, content, 'utf-8');
   const stats = await fs.stat(filePath);
 
@@ -253,41 +272,52 @@ export async function createNote(folderPath = getNotesRoot(), title = 'New Note'
     id: filePath,
     filePath,
     fileName,
-    title: finalTitle,
+    title,
     snippet: '',
-    folder: path.relative(getNotesRoot(), folderPath) || '/',
+    folder: path.basename(folderPath),
     modifiedAt: stats.mtimeMs,
-    createdAt: stats.birthtimeMs || stats.mtimeMs
+    createdAt: stats.birthtimeMs || stats.mtimeMs,
+    frontmatter: {}
   };
 }
 
-export async function renameNote(filePath: string, newTitle: string): Promise<{ newPath: string; newFileName: string }> {
+export async function renameNote(filePath: string, newTitle: string): Promise<NoteMeta> {
   const dir = path.dirname(filePath);
-  const cleanTitle = newTitle.replace(/[\\/:*?"<>|]/g, '').trim() || 'Untitled Note';
-  const newFileName = `${cleanTitle}.md`;
-  const newPath = path.join(dir, newFileName);
+  const ext = path.extname(filePath);
+  const newFileName = `${newTitle}${ext}`;
+  const newFilePath = path.join(dir, newFileName);
 
-  if (newPath !== filePath) {
-    if (fsSync.existsSync(newPath)) {
-      throw new Error(`A note with the name "${newFileName}" already exists.`);
-    }
-    await fs.rename(filePath, newPath);
+  if (filePath !== newFilePath) {
+    await fs.rename(filePath, newFilePath);
   }
 
-  return { newPath, newFileName };
+  const raw = await fs.readFile(newFilePath, 'utf-8');
+  const parsed = safeParseFrontmatter(raw);
+  const stats = await fs.stat(newFilePath);
+
+  return {
+    id: newFilePath,
+    filePath: newFilePath,
+    fileName: newFileName,
+    title: newTitle,
+    snippet: cleanMarkdownSnippet(parsed.content),
+    folder: path.basename(dir),
+    modifiedAt: stats.mtimeMs,
+    createdAt: stats.birthtimeMs || stats.mtimeMs,
+    frontmatter: parsed.data
+  };
 }
 
-export async function moveToTrash(filePath: string): Promise<void> {
-  const trashDir = getTrashDir();
+export async function moveToTrash(filePath: string, rootDir: string): Promise<void> {
+  const trashDir = getTrashDir(rootDir);
   const fileName = path.basename(filePath);
   const targetPath = path.join(trashDir, fileName);
   await fs.rename(filePath, targetPath);
 }
 
-export async function restoreFromTrash(filePath: string): Promise<string> {
+export async function restoreFromTrash(filePath: string, rootDir: string): Promise<string> {
   const fileName = path.basename(filePath);
-  const root = getNotesRoot();
-  const targetPath = path.join(root, fileName);
+  const targetPath = path.join(rootDir, fileName);
   await fs.rename(filePath, targetPath);
   return targetPath;
 }
@@ -296,32 +326,35 @@ export async function permanentDeleteNote(filePath: string): Promise<void> {
   await fs.unlink(filePath);
 }
 
-export async function emptyTrash(): Promise<void> {
-  const trashDir = getTrashDir();
+export async function emptyTrash(rootDir: string): Promise<void> {
+  const trashDir = getTrashDir(rootDir);
   const entries = await fs.readdir(trashDir);
   for (const entry of entries) {
     await fs.unlink(path.join(trashDir, entry));
   }
 }
 
-export function startWatching(onChange: (data: { filePath: string; eventType: string }) => void) {
-  activeWatcherCallback = onChange;
-  if (activeWatcher) {
-    activeWatcher.close();
+export function startWatchingWindow(
+  webContentsId: number,
+  rootDir: string,
+  onChange: (data: { filePath: string; eventType: string }) => void
+) {
+  if (windowWatchers.has(webContentsId)) {
+    windowWatchers.get(webContentsId)?.close();
   }
-  const root = getNotesRoot();
-  activeWatcher = chokidar.watch(root, {
+  const watcher = chokidar.watch(rootDir, {
     ignored: /(^|[\/\\])\..|node_modules/,
     persistent: true,
     ignoreInitial: true,
     depth: 10
   });
 
-  activeWatcher
+  watcher
     .on('add', (filePath) => onChange({ filePath, eventType: 'add' }))
     .on('change', (filePath) => onChange({ filePath, eventType: 'change' }))
     .on('unlink', (filePath) => onChange({ filePath, eventType: 'unlink' }))
     .on('addDir', (dirPath) => onChange({ filePath: dirPath, eventType: 'addDir' }))
     .on('unlinkDir', (dirPath) => onChange({ filePath: dirPath, eventType: 'unlinkDir' }));
-}
 
+  windowWatchers.set(webContentsId, watcher);
+}

@@ -230,13 +230,11 @@ export const App: React.FC = () => {
       setIsQuickSwitcherOpen(true);
     });
 
-    // Keyboard Shortcuts: ⌘O / ⌘P / ⌘K -> Quick Switcher
+    // Keyboard Shortcut: ⌘P -> Quick Switcher
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === 'o' || e.key.toLowerCase() === 'p' || e.key.toLowerCase() === 'k')) {
-        if (!e.shiftKey) {
-          e.preventDefault();
-          setIsQuickSwitcherOpen(prev => !prev);
-        }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'p' && !e.shiftKey) {
+        e.preventDefault();
+        setIsQuickSwitcherOpen(prev => !prev);
       }
     };
 
