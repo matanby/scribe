@@ -1,5 +1,5 @@
 import { Extension } from '@tiptap/core';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 export interface SearchReplaceStorage {
@@ -44,11 +44,11 @@ export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorag
     return {
       setSearchTerm:
         (searchTerm: string) =>
-        ({ editor, tr, dispatch }) => {
+        ({ tr, dispatch }) => {
           this.storage.searchTerm = searchTerm;
           this.storage.currentIndex = 0;
           if (dispatch) {
-            tr.setMeta(searchPluginKey, { update: true });
+            tr.setMeta(searchPluginKey, { searchTerm });
           }
           return true;
         },
@@ -66,81 +66,78 @@ export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorag
           this.storage.caseSensitive = caseSensitive;
           this.storage.currentIndex = 0;
           if (dispatch) {
-            tr.setMeta(searchPluginKey, { update: true });
+            tr.setMeta(searchPluginKey, { caseSensitive });
           }
           return true;
         },
 
       findNext:
         () =>
-        ({ editor, tr, dispatch }) => {
-          const count = this.storage.results.length;
-          if (count === 0) return false;
-          this.storage.currentIndex = (this.storage.currentIndex + 1) % count;
-          const current = this.storage.results[this.storage.currentIndex];
-          if (current) {
-            editor.commands.setTextSelection({ from: current.from, to: current.to });
-            editor.commands.scrollIntoView();
-          }
-          if (dispatch) {
-            tr.setMeta(searchPluginKey, { update: true });
+        ({ tr, dispatch }) => {
+          const { results } = this.storage;
+          if (results.length === 0) return false;
+          const nextIndex = (this.storage.currentIndex + 1) % results.length;
+          this.storage.currentIndex = nextIndex;
+          const target = results[nextIndex];
+          if (target && dispatch) {
+            if (target.from <= tr.doc.content.size && target.to <= tr.doc.content.size) {
+              tr.setSelection(TextSelection.create(tr.doc, target.from, target.to));
+              tr.scrollIntoView();
+              tr.setMeta(searchPluginKey, { index: nextIndex });
+            }
           }
           return true;
         },
 
       findPrevious:
         () =>
-        ({ editor, tr, dispatch }) => {
-          const count = this.storage.results.length;
-          if (count === 0) return false;
-          this.storage.currentIndex = (this.storage.currentIndex - 1 + count) % count;
-          const current = this.storage.results[this.storage.currentIndex];
-          if (current) {
-            editor.commands.setTextSelection({ from: current.from, to: current.to });
-            editor.commands.scrollIntoView();
-          }
-          if (dispatch) {
-            tr.setMeta(searchPluginKey, { update: true });
+        ({ tr, dispatch }) => {
+          const { results } = this.storage;
+          if (results.length === 0) return false;
+          const prevIndex = (this.storage.currentIndex - 1 + results.length) % results.length;
+          this.storage.currentIndex = prevIndex;
+          const target = results[prevIndex];
+          if (target && dispatch) {
+            if (target.from <= tr.doc.content.size && target.to <= tr.doc.content.size) {
+              tr.setSelection(TextSelection.create(tr.doc, target.from, target.to));
+              tr.scrollIntoView();
+              tr.setMeta(searchPluginKey, { index: prevIndex });
+            }
           }
           return true;
         },
 
       replaceCurrent:
         () =>
-        ({ editor }) => {
+        ({ tr, dispatch }) => {
           const { results, currentIndex, replaceTerm } = this.storage;
           if (results.length === 0) return false;
           const current = results[currentIndex];
           if (!current) return false;
 
-          editor
-            .chain()
-            .focus()
-            .insertContentAt({ from: current.from, to: current.to }, replaceTerm)
-            .run();
-
-          setTimeout(() => {
-            editor.commands.findNext();
-          }, 20);
-
+          if (dispatch && current.from < current.to && current.to <= tr.doc.content.size) {
+            tr.insertText(replaceTerm, current.from, current.to);
+            tr.setMeta(searchPluginKey, { replace: true });
+          }
           return true;
         },
 
       replaceAll:
         () =>
-        ({ editor, state }) => {
+        ({ tr, dispatch }) => {
           const { results, replaceTerm } = this.storage;
           if (results.length === 0) return false;
 
-          let tr = state.tr;
-          // Replace backwards so positions remain valid
-          for (let i = results.length - 1; i >= 0; i--) {
-            const { from, to } = results[i];
-            if (from < to && to <= state.doc.content.size) {
-              tr = tr.replaceWith(from, to, state.schema.text(replaceTerm));
+          if (dispatch) {
+            // Replace backwards so document positions remain valid
+            for (let i = results.length - 1; i >= 0; i--) {
+              const { from, to } = results[i];
+              if (from < to && to <= tr.doc.content.size) {
+                tr.insertText(replaceTerm, from, to);
+              }
             }
+            tr.setMeta(searchPluginKey, { replaceAll: true });
           }
-          editor.view.dispatch(tr);
           return true;
         },
 
@@ -151,7 +148,7 @@ export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorag
           this.storage.results = [];
           this.storage.currentIndex = 0;
           if (dispatch) {
-            tr.setMeta(searchPluginKey, { update: true });
+            tr.setMeta(searchPluginKey, { clear: true });
           }
           return true;
         },
@@ -168,7 +165,7 @@ export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorag
           init() {
             return DecorationSet.empty;
           },
-          apply(tr, oldSet, oldState, newState) {
+          apply(tr, oldDecoSet, oldState, newState) {
             const { searchTerm, caseSensitive } = extension.storage;
             if (!searchTerm || !searchTerm.trim()) {
               extension.storage.results = [];
@@ -198,14 +195,18 @@ export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorag
               extension.storage.currentIndex = 0;
             }
 
+            if (results.length === 0) {
+              return DecorationSet.empty;
+            }
+
             const decorations: Decoration[] = [];
             results.forEach((result, i) => {
               const isCurrent = i === extension.storage.currentIndex;
               decorations.push(
                 Decoration.inline(result.from, result.to, {
                   class: isCurrent
-                    ? 'search-result-active bg-amber-400 text-black rounded-xs shadow-xs font-semibold'
-                    : 'search-result-match bg-yellow-200/80 dark:bg-yellow-500/40 rounded-xs',
+                    ? 'search-result-active bg-amber-400 text-black font-semibold'
+                    : 'search-result-match bg-yellow-200/80 dark:bg-yellow-500/40',
                 })
               );
             });

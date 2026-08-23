@@ -47,22 +47,22 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
         }
       }, 50);
     } else {
-      if (editor) {
+      if (editor && !editor.isDestroyed) {
         editor.commands.clearSearch();
       }
     }
-  }, [isOpen, showReplaceInitial, editor]);
+  }, [isOpen, showReplaceInitial]);
 
   const handleSearchChange = (val: string) => {
     setSearchTerm(val);
-    if (editor) {
+    if (editor && !editor.isDestroyed) {
       editor.commands.setSearchTerm(val);
     }
   };
 
   const handleReplaceChange = (val: string) => {
     setReplaceTerm(val);
-    if (editor) {
+    if (editor && !editor.isDestroyed) {
       editor.commands.setReplaceTerm(val);
     }
   };
@@ -70,25 +70,25 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
   const handleToggleCase = () => {
     const next = !caseSensitive;
     setCaseSensitive(next);
-    if (editor) {
+    if (editor && !editor.isDestroyed) {
       editor.commands.setCaseSensitive(next);
     }
   };
 
   const handleNext = () => {
-    if (editor) editor.commands.findNext();
+    if (editor && !editor.isDestroyed) editor.commands.findNext();
   };
 
   const handlePrevious = () => {
-    if (editor) editor.commands.findPrevious();
+    if (editor && !editor.isDestroyed) editor.commands.findPrevious();
   };
 
   const handleReplace = () => {
-    if (editor) editor.commands.replaceCurrent();
+    if (editor && !editor.isDestroyed) editor.commands.replaceCurrent();
   };
 
   const handleReplaceAll = () => {
-    if (editor) editor.commands.replaceAll();
+    if (editor && !editor.isDestroyed) editor.commands.replaceAll();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
