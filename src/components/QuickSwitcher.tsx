@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import Fuse, { FuseResultMatch } from 'fuse.js';
+import Fuse from 'fuse.js';
 import { NoteMeta } from '../types';
-import { Search, FileText, Folder, CornerDownLeft, Sparkles } from 'lucide-react';
+import { Search, FileText, Folder, CornerDownLeft } from 'lucide-react';
 
 interface QuickSwitcherProps {
   isOpen: boolean;
@@ -11,10 +11,85 @@ interface QuickSwitcherProps {
   onNewNote: () => void;
 }
 
-interface FilteredItem {
-  note: NoteMeta;
-  titleMatches?: readonly [number, number][];
-  snippetMatches?: readonly [number, number][];
+// Token-aware range calculator that accurately highlights words & prefixes without scattering
+function getHighlightRanges(text: string, query: string): [number, number][] {
+  if (!text || !query.trim()) return [];
+
+  const ranges: [number, number][] = [];
+  const lowerText = text.toLowerCase();
+  // Split query into tokens (both words and individual alphanumeric tokens if mixed)
+  const tokens = query
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(t => t.length > 0);
+
+  for (const token of tokens) {
+    let pos = 0;
+    let found = false;
+
+    // 1. Exact substring matches
+    while ((pos = lowerText.indexOf(token, pos)) !== -1) {
+      ranges.push([pos, pos + token.length - 1]);
+      pos += token.length;
+      found = true;
+    }
+
+    // 2. If multi-char token didn't match exactly, try prefix matches of length >= 2
+    if (!found && token.length > 2) {
+      for (let len = token.length - 1; len >= 2; len--) {
+        const sub = token.slice(0, len);
+        let subPos = lowerText.indexOf(sub);
+        if (subPos !== -1) {
+          ranges.push([subPos, subPos + len - 1]);
+          break;
+        }
+      }
+    }
+  }
+
+  // Merge overlapping or contiguous ranges
+  ranges.sort((a, b) => a[0] - b[0]);
+  const merged: [number, number][] = [];
+
+  for (const [start, end] of ranges) {
+    if (merged.length > 0 && start <= merged[merged.length - 1][1] + 1) {
+      merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], end);
+    } else {
+      merged.push([start, end]);
+    }
+  }
+
+  return merged;
+}
+
+// Render string with highlight ranges cleanly
+function renderHighlightedText(text: string, ranges: [number, number][]) {
+  if (!ranges || ranges.length === 0) return text;
+
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+
+  ranges.forEach(([start, end], i) => {
+    if (start > lastIndex) {
+      parts.push(text.slice(lastIndex, start));
+    }
+    parts.push(
+      <span
+        key={i}
+        className="text-[var(--accent-color)] font-semibold bg-[var(--accent-color)]/20 px-1 py-0.5 rounded-sm"
+      >
+        {text.slice(start, end + 1)}
+      </span>
+    );
+    lastIndex = end + 1;
+  });
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts;
 }
 
 export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
@@ -29,7 +104,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
 
-  // Configure Fuse.js with balanced fuzzy search parameters
+  // Configure Fuse.js for fuzzy scoring and ranking
   const fuse = useMemo(() => {
     return new Fuse(notes, {
       keys: [
@@ -40,37 +115,17 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       threshold: 0.45,
       distance: 100,
       ignoreLocation: true,
-      includeMatches: true,
-      minMatchCharLength: 1,
-      findAllMatches: true
+      minMatchCharLength: 1
     });
   }, [notes]);
 
-  // Compute fuzzy matches
-  const filteredItems: FilteredItem[] = useMemo(() => {
+  // Compute filtered notes
+  const filteredNotes = useMemo(() => {
     if (!query.trim()) {
-      return notes.slice(0, 25).map(note => ({ note }));
+      return notes.slice(0, 25);
     }
-
     const results = fuse.search(query.trim());
-    return results.slice(0, 25).map(result => {
-      let titleMatches: readonly [number, number][] | undefined;
-      let snippetMatches: readonly [number, number][] | undefined;
-
-      result.matches?.forEach((match: FuseResultMatch) => {
-        if (match.key === 'title') {
-          titleMatches = match.indices;
-        } else if (match.key === 'snippet') {
-          snippetMatches = match.indices;
-        }
-      });
-
-      return {
-        note: result.item,
-        titleMatches,
-        snippetMatches
-      };
-    });
+    return results.slice(0, 25).map(r => r.item);
   }, [query, fuse, notes]);
 
   useEffect(() => {
@@ -100,14 +155,14 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       onClose();
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setSelectedIndex(prev => (prev + 1) % (filteredItems.length || 1));
+      setSelectedIndex(prev => (prev + 1) % (filteredNotes.length || 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setSelectedIndex(prev => (prev - 1 + filteredItems.length) % (filteredItems.length || 1));
+      setSelectedIndex(prev => (prev - 1 + filteredNotes.length) % (filteredNotes.length || 1));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (filteredItems.length > 0) {
-        onSelectNote(filteredItems[selectedIndex].note);
+      if (filteredNotes.length > 0) {
+        onSelectNote(filteredNotes[selectedIndex]);
         onClose();
       } else if (query.trim()) {
         onNewNote();
@@ -119,47 +174,6 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   const formatDate = (timestamp: number) => {
     const d = new Date(timestamp);
     return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-  };
-
-  // Helper to visually highlight matched character ranges
-  const renderHighlighted = (text: string, matches?: readonly [number, number][]) => {
-    if (!matches || matches.length === 0) return text;
-
-    // Merge overlapping/adjacent ranges
-    const merged: [number, number][] = [];
-    const sorted = [...matches].sort((a, b) => a[0] - b[0]);
-
-    for (const [start, end] of sorted) {
-      if (merged.length > 0 && start <= merged[merged.length - 1][1] + 1) {
-        merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], end);
-      } else {
-        merged.push([start, end]);
-      }
-    }
-
-    const parts: React.ReactNode[] = [];
-    let lastIndex = 0;
-
-    merged.forEach(([start, end], i) => {
-      if (start > lastIndex) {
-        parts.push(text.slice(lastIndex, start));
-      }
-      parts.push(
-        <span 
-          key={i} 
-          className="text-[var(--accent-color)] font-bold bg-[var(--accent-color)]/15 px-0.5 rounded-xs"
-        >
-          {text.slice(start, end + 1)}
-        </span>
-      );
-      lastIndex = end + 1;
-    });
-
-    if (lastIndex < text.length) {
-      parts.push(text.slice(lastIndex));
-    }
-
-    return parts;
   };
 
   if (!isOpen) return null;
@@ -182,7 +196,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Quick Switcher (⌘P) — type to fuzzy search notes..."
+            placeholder="Quick Switcher (⌘P) — type to search notes..."
             className="w-full bg-transparent text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] outline-none font-medium"
           />
           <span className="text-[10px] font-mono text-[var(--text-tertiary)] border border-[var(--border-color)] px-1.5 py-0.5 rounded-md shrink-0">
@@ -192,9 +206,12 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
 
         {/* Results List */}
         <div className="overflow-y-auto p-2 space-y-1">
-          {filteredItems.length > 0 ? (
-            filteredItems.map(({ note, titleMatches, snippetMatches }, index) => {
+          {filteredNotes.length > 0 ? (
+            filteredNotes.map((note, index) => {
               const isSelected = index === selectedIndex;
+              const titleRanges = getHighlightRanges(note.title, query);
+              const snippetRanges = getHighlightRanges(note.snippet || '', query);
+
               return (
                 <div
                   key={note.filePath}
@@ -218,7 +235,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                     <div className="flex flex-col min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-semibold text-[var(--text-primary)] truncate" dir="auto">
-                          {renderHighlighted(note.title, titleMatches)}
+                          {renderHighlightedText(note.title, titleRanges)}
                         </span>
                         {note.folder && note.folder !== '/' && (
                           <span className="flex items-center gap-1 text-[10px] text-[var(--text-secondary)] opacity-70 truncate bg-black/5 dark:bg-white/5 px-1.5 py-0.5 rounded">
@@ -229,7 +246,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                       </div>
                       {note.snippet && (
                         <p className="text-[11px] text-[var(--text-secondary)] opacity-70 truncate mt-0.5" dir="auto">
-                          {renderHighlighted(note.snippet, snippetMatches)}
+                          {renderHighlightedText(note.snippet, snippetRanges)}
                         </p>
                       )}
                     </div>
