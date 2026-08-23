@@ -55,6 +55,18 @@
   }
 }
 
+.font-sans-mode {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Arial Hebrew", "Heebo", "Rubik", "Noto Sans Hebrew", sans-serif !important;
+}
+
+.font-serif-mode {
+  font-family: "New York", "Georgia", "Cambria", "Times New Roman", "Frank Ruehl CLM", "David CLM", serif !important;
+}
+
+.font-mono-mode {
+  font-family: "SF Mono", Menlo, Monaco, Consolas, "Courier New", monospace !important;
+}
+
 /* macOS Smooth Overlay Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;

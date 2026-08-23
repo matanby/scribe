@@ -103,6 +103,26 @@ function setupMenu() {
           click: () => mainWindow?.webContents.send('menu:newNote')
         },
         {
+          label: 'Quick Switcher...',
+          accelerator: 'CmdOrCtrl+O',
+          click: () => mainWindow?.webContents.send('menu:quickSwitcher')
+        },
+        {
+          label: 'Open Folder...',
+          accelerator: 'CmdOrCtrl+Shift+O',
+          click: async () => {
+            if (!mainWindow) return;
+            const res = await dialog.showOpenDialog(mainWindow, {
+              properties: ['openDirectory', 'createDirectory']
+            });
+            if (!res.canceled && res.filePaths.length > 0) {
+              setNotesRoot(res.filePaths[0]);
+              mainWindow.webContents.send('notes:rootChanged', res.filePaths[0]);
+            }
+          }
+        },
+        { type: 'separator' },
+        {
           label: 'Save Note',
           accelerator: 'CmdOrCtrl+S',
           click: () => mainWindow?.webContents.send('menu:saveNote')
@@ -119,7 +139,13 @@ function setupMenu() {
         { role: 'cut' },
         { role: 'copy' },
         { role: 'paste' },
-        { role: 'selectAll' }
+        { role: 'selectAll' },
+        { type: 'separator' },
+        {
+          label: 'Find in Note',
+          accelerator: 'CmdOrCtrl+F',
+          click: () => mainWindow?.webContents.send('menu:find')
+        }
       ]
     },
     {

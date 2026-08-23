@@ -3,19 +3,50 @@ import fsSync from 'fs';
 import path from 'path';
 import matter from 'gray-matter';
 import chokidar, { FSWatcher } from 'chokidar';
+import { app } from 'electron';
 import { NoteMeta, FolderNode, NotesTree } from './types';
 
 const DEFAULT_NOTES_PATH = path.join(process.env.HOME || '', 'Notes');
 
-let currentNotesPath = DEFAULT_NOTES_PATH;
+function getConfigPath(): string {
+  try {
+    if (app && app.getPath) {
+      return path.join(app.getPath('userData'), 'scribe-config.json');
+    }
+  } catch {}
+  return path.join(process.env.HOME || '', '.scribe-config.json');
+}
+
+function loadSavedRoot(): string {
+  try {
+    const cfg = getConfigPath();
+    if (fsSync.existsSync(cfg)) {
+      const parsed = JSON.parse(fsSync.readFileSync(cfg, 'utf-8'));
+      if (parsed.notesPath && fsSync.existsSync(parsed.notesPath)) {
+        return parsed.notesPath;
+      }
+    }
+  } catch {}
+  return DEFAULT_NOTES_PATH;
+}
+
+function saveSavedRoot(p: string) {
+  try {
+    const cfg = getConfigPath();
+    fsSync.writeFileSync(cfg, JSON.stringify({ notesPath: p }, null, 2), 'utf-8');
+  } catch {}
+}
+
+let currentNotesPath = loadSavedRoot();
 let activeWatcher: FSWatcher | null = null;
+let activeWatcherCallback: ((data: { filePath: string; eventType: string }) => void) | null = null;
 
 export function getNotesRoot(): string {
   if (!fsSync.existsSync(currentNotesPath)) {
     try {
       fsSync.mkdirSync(currentNotesPath, { recursive: true });
     } catch (e) {
-      console.error('Failed to create default notes path:', e);
+      console.error('Failed to create notes path:', e);
     }
   }
   return currentNotesPath;
@@ -24,6 +55,10 @@ export function getNotesRoot(): string {
 export function setNotesRoot(newPath: string) {
   if (fsSync.existsSync(newPath)) {
     currentNotesPath = newPath;
+    saveSavedRoot(newPath);
+    if (activeWatcherCallback) {
+      startWatching(activeWatcherCallback);
+    }
   }
 }
 
@@ -270,6 +305,7 @@ export async function emptyTrash(): Promise<void> {
 }
 
 export function startWatching(onChange: (data: { filePath: string; eventType: string }) => void) {
+  activeWatcherCallback = onChange;
   if (activeWatcher) {
     activeWatcher.close();
   }

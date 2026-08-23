@@ -2,12 +2,13 @@ import React, { useState } from 'react';
 import { 
   Folder, 
   FolderOpen, 
-  FileText, 
+  FolderPlus,
+  Layers,
+  Trash2,
   ChevronRight, 
   ChevronDown, 
-  Layers,
-  Sparkles,
-  Trash2
+  Sliders,
+  FolderInput
 } from 'lucide-react';
 import { FolderNode, NotesTree } from '../types';
 
@@ -16,13 +17,17 @@ interface SidebarProps {
   selectedFolder: string;
   onSelectFolder: (folderRelativePath: string) => void;
   allNotesCount: number;
+  onOpenFolderDialog: () => void;
+  onOpenAppearance: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   tree,
   selectedFolder,
   onSelectFolder,
-  allNotesCount
+  allNotesCount,
+  onOpenFolderDialog,
+  onOpenAppearance
 }) => {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
@@ -30,6 +35,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     e.stopPropagation();
     setCollapsed(prev => ({ ...prev, [path]: !prev[path] }));
   };
+
+  const rootFolderName = tree?.rootPath ? tree.rootPath.split('/').filter(Boolean).pop() || 'Notes' : 'Notes';
 
   const renderFolderNode = (node: FolderNode, depth = 0) => {
     const isSelected = selectedFolder === node.relativePath;
@@ -84,10 +91,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside className="w-full h-full bg-[var(--sidebar-bg)] border-r border-[var(--border-color)] flex flex-col p-2 shrink-0 overflow-y-auto select-none backdrop-blur-2xl">
-      {/* Quick filters / Smart Views */}
+      {/* Smart Views */}
       <div className="space-y-0.5 mb-3">
         <div className="text-[9.5px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider px-2.5 py-1">
-          Smart Views
+          Views
         </div>
         <div
           onClick={() => onSelectFolder('')}
@@ -128,9 +135,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Folders hierarchy */}
       <div className="flex-1 space-y-0.5">
         <div className="flex items-center justify-between px-2.5 py-1">
-          <span className="text-[9.5px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider">
-            Google Drive Folders
+          <span className="text-[9.5px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider truncate">
+            {rootFolderName}
           </span>
+          <button
+            onClick={onOpenFolderDialog}
+            className="p-1 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+            title="Open another folder..."
+          >
+            <FolderInput size={12} />
+          </button>
         </div>
 
         {tree?.folders.map(rootNode => 
@@ -144,10 +158,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
       </div>
 
-      {/* Footer Info */}
-      <div className="pt-2 border-t border-[var(--border-color)] px-2 flex items-center gap-1.5 text-[10px] text-[var(--text-secondary)]">
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
-        <span className="truncate">Google Drive Connected</span>
+      {/* Footer Controls: Open Folder & Appearance */}
+      <div className="pt-2 border-t border-[var(--border-color)] px-1 flex items-center justify-between text-xs text-[var(--text-secondary)]">
+        <button
+          onClick={onOpenFolderDialog}
+          className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 hover:text-[var(--text-primary)] transition-colors text-[11px] font-medium"
+          title="Open notes folder"
+        >
+          <Folder size={13} className="text-[var(--accent-color)]" />
+          <span className="truncate max-w-[110px]">{rootFolderName}</span>
+        </button>
+
+        <button
+          onClick={onOpenAppearance}
+          className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 hover:text-[var(--text-primary)] transition-colors"
+          title="Appearance & Typography"
+        >
+          <Sliders size={13} />
+        </button>
       </div>
     </aside>
   );

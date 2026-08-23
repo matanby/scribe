@@ -18,9 +18,11 @@ import Image from '@tiptap/extension-image';
 import { Markdown } from 'tiptap-markdown';
 import { BiDiExtension } from '../extensions/BiDiExtension';
 import { CleanBackspaceExtension } from '../extensions/CleanBackspaceExtension';
+import { SearchReplaceExtension } from '../extensions/SearchReplaceExtension';
 import { BubbleMenu } from './BubbleMenu';
 import { FormattingBar } from './FormattingBar';
 import { SlashMenu } from './SlashMenu';
+import { FindReplaceBar } from './FindReplaceBar';
 import { NoteMeta } from '../types';
 import { Calendar, Folder, FileText, CheckCircle2 } from 'lucide-react';
 
@@ -64,8 +66,29 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
 }) => {
   const [title, setTitle] = useState(note.title);
   const [frontmatter, setFrontmatter] = useState(initialFrontmatter);
+  const [isFindOpen, setIsFindOpen] = useState(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const titleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Keyboard shortcut listener for Find in note (⌘F)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        setIsFindOpen(prev => !prev);
+      }
+    };
+
+    const unsubscribeMenu = window.scribeAPI.onMenuEvent?.('menu:find', () => {
+      setIsFindOpen(true);
+    });
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      unsubscribeMenu?.();
+    };
+  }, []);
 
   // Initialize TipTap with initialMarkdown as the root document (history depth = 0)
   const editor = useEditor({
@@ -135,7 +158,8 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
         bulletListMarker: '-'
       }),
       BiDiExtension,
-      CleanBackspaceExtension
+      CleanBackspaceExtension,
+      SearchReplaceExtension
     ],
     editorProps: {
       attributes: {
@@ -283,6 +307,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   return (
     <div className="flex-1 h-full bg-[var(--editor-bg)] flex flex-col overflow-y-auto relative">
       <FormattingBar editor={editor} />
+      <FindReplaceBar editor={editor} isOpen={isFindOpen} onClose={() => setIsFindOpen(false)} />
       <BubbleMenu editor={editor} />
       <SlashMenu editor={editor} />
 

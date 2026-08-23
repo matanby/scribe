@@ -24,6 +24,20 @@ export const scribeAPI = {
     return () => {
       ipcRenderer.removeListener('notes:changed', handler);
     };
+  },
+  onRootChanged: (callback: (newPath: string) => void) => {
+    const handler = (_: any, p: string) => callback(p);
+    ipcRenderer.on('notes:rootChanged', handler);
+    return () => {
+      ipcRenderer.removeListener('notes:rootChanged', handler);
+    };
+  },
+  onMenuEvent: (channel: string, callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on(channel, handler);
+    return () => {
+      ipcRenderer.removeListener(channel, handler);
+    };
   }
 };
 

@@ -3,6 +3,8 @@ import { Titlebar } from './components/Titlebar';
 import { Sidebar } from './components/Sidebar';
 import { NoteList } from './components/NoteList';
 import { Editor } from './components/Editor';
+import { QuickSwitcher } from './components/QuickSwitcher';
+import { AppearanceModal, AppearanceSettings, ACCENT_PALETTES } from './components/AppearanceModal';
 import { NoteMeta, NotesTree, SortMode } from './types';
 
 export const App: React.FC = () => {
@@ -20,6 +22,53 @@ export const App: React.FC = () => {
     return false;
   });
   const [showSidebar, setShowSidebar] = useState(true);
+  const [isQuickSwitcherOpen, setIsQuickSwitcherOpen] = useState(false);
+  const [isAppearanceOpen, setIsAppearanceOpen] = useState(false);
+
+  // Appearance & Themes
+  const [appearance, setAppearance] = useState<AppearanceSettings>(() => {
+    try {
+      const saved = localStorage.getItem('scribe_appearance');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {
+      accentColor: '#EAB308',
+      fontFamily: 'sans',
+      fontSize: 'normal',
+      themeMode: 'system'
+    };
+  });
+
+  const handleUpdateAppearance = (newSettings: Partial<AppearanceSettings>) => {
+    setAppearance(prev => {
+      const updated = { ...prev, ...newSettings };
+      localStorage.setItem('scribe_appearance', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  // Synchronize CSS variables and theme classes
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty('--accent-color', appearance.accentColor);
+    
+    // Find matching palette hover
+    const found = ACCENT_PALETTES.find(p => p.color.toLowerCase() === appearance.accentColor.toLowerCase());
+    if (found) {
+      root.style.setProperty('--accent-hover', found.hover);
+      root.style.setProperty('--card-active', `${found.color}22`);
+      root.style.setProperty('--selection-bg', `${found.color}40`);
+    }
+
+    // Theme Mode
+    if (appearance.themeMode === 'dark') {
+      setIsDark(true);
+    } else if (appearance.themeMode === 'light') {
+      setIsDark(false);
+    } else {
+      setIsDark(window.matchMedia('(prefers-color-scheme: dark)').matches);
+    }
+  }, [appearance]);
 
   // Resizable Panes State (Saved in LocalStorage)
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
@@ -81,18 +130,20 @@ export const App: React.FC = () => {
     window.addEventListener('mouseup', onMouseUp);
   }, []);
 
-  // Resize Handler for Note List (Pane 2)
+  // Resize Handler for NoteList (Pane 2)
   const handleNoteListMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     isDraggingNoteList.current = true;
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
 
-    const currentSidebarOffset = showSidebar ? sidebarWidth : 0;
+    const startX = e.clientX;
+    const startWidth = noteListWidth;
 
     const onMouseMove = (moveEvent: MouseEvent) => {
       if (!isDraggingNoteList.current) return;
-      const newWidth = Math.max(220, Math.min(480, moveEvent.clientX - currentSidebarOffset));
+      const deltaX = moveEvent.clientX - startX;
+      const newWidth = Math.max(220, Math.min(460, startWidth + deltaX));
       setNoteListWidth(newWidth);
       localStorage.setItem('scribe_notelist_width', newWidth.toString());
     };
@@ -107,66 +158,21 @@ export const App: React.FC = () => {
 
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
-  }, [showSidebar, sidebarWidth]);
+  }, [noteListWidth]);
 
-  // Handle Sort Change
-  const handleSortChange = useCallback((mode: SortMode) => {
-    setSortMode(mode);
-    localStorage.setItem('scribe_sort_mode', mode);
-  }, []);
-
-  // Handle Pin / Unpin Note
-  const handleTogglePin = useCallback((filePath: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setPinnedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(filePath)) {
-        next.delete(filePath);
-      } else {
-        next.add(filePath);
-      }
-      localStorage.setItem('scribe_pinned_notes', JSON.stringify(Array.from(next)));
-      return next;
-    });
-  }, []);
-
-  // Sync with system light/dark theme dynamically
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return;
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handler = (e: MediaQueryListEvent) => {
-      setIsDark(e.matches);
-    };
-    mediaQuery.addEventListener('change', handler);
-    return () => mediaQuery.removeEventListener('change', handler);
-  }, []);
-
-  // Handle Dark mode class on <html>
-  useEffect(() => {
-    if (isDark) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [isDark]);
-
-  // Load Notes Tree from disk
-  const loadTree = useCallback(async (preserveSelectedId?: string) => {
+  // Load / Refresh Notes Tree
+  const loadTree = useCallback(async (preferredSelectPath?: string) => {
     try {
-      const data: NotesTree = await window.scribeAPI.listNotesTree();
+      const data = await window.scribeAPI.listNotesTree();
       setTree(data);
 
-      if (preserveSelectedId) {
-        const found = [...data.allNotes, ...data.trashNotes].find(
-          (n: NoteMeta) => n.id === preserveSelectedId || n.filePath === preserveSelectedId
-        );
-        if (found) {
-          setSelectedNote(found);
-          return;
+      setSelectedNote((prev: NoteMeta | null) => {
+        if (preferredSelectPath) {
+          const found = [...data.allNotes, ...data.trashNotes].find(
+            (n: NoteMeta) => n.filePath === preferredSelectPath
+          );
+          if (found) return found;
         }
-      }
-
-      setSelectedNote(prev => {
         if (!prev) {
           return data.allNotes.length > 0 ? data.allNotes[0] : null;
         }
@@ -180,10 +186,24 @@ export const App: React.FC = () => {
     }
   }, []);
 
+  // Open Folder dialog handler
+  const handleOpenFolderDialog = useCallback(async () => {
+    try {
+      const selected = await window.scribeAPI.selectFolder();
+      if (selected) {
+        setSelectedFolder('');
+        setSelectedNote(null);
+        await loadTree();
+      }
+    } catch (err) {
+      console.error('Failed to open folder:', err);
+    }
+  }, [loadTree]);
+
   useEffect(() => {
     loadTree();
 
-    // Listen for external file modifications in Google Drive
+    // Listen for external file modifications
     const unsubscribe = window.scribeAPI.onNotesChanged(async (data) => {
       await loadTree();
 
@@ -200,8 +220,33 @@ export const App: React.FC = () => {
       }
     });
 
+    const unsubscribeRoot = window.scribeAPI.onRootChanged?.(() => {
+      setSelectedFolder('');
+      setSelectedNote(null);
+      loadTree();
+    });
+
+    const unsubscribeQuickSwitcher = window.scribeAPI.onMenuEvent?.('menu:quickSwitcher', () => {
+      setIsQuickSwitcherOpen(true);
+    });
+
+    // Keyboard Shortcuts: ⌘O / ⌘P / ⌘K -> Quick Switcher
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === 'o' || e.key.toLowerCase() === 'p' || e.key.toLowerCase() === 'k')) {
+        if (!e.shiftKey) {
+          e.preventDefault();
+          setIsQuickSwitcherOpen(prev => !prev);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
     return () => {
       unsubscribe();
+      unsubscribeRoot?.();
+      unsubscribeQuickSwitcher?.();
+      window.removeEventListener('keydown', handleKeyDown);
     };
   }, [loadTree]);
 
@@ -293,53 +338,60 @@ export const App: React.FC = () => {
 
   // Rename Note
   const handleRenameNote = useCallback(async (filePath: string, newTitle: string) => {
-    const res = await window.scribeAPI.renameNote({ filePath, newTitle });
-    await loadTree(res.newPath);
-  }, [loadTree]);
-
-  // Select Folder Dialog
-  const handleSelectFolder = useCallback(async () => {
-    const selected = await window.scribeAPI.selectFolder();
-    if (selected) {
-      setSelectedFolder('');
-      await loadTree();
+    try {
+      const updated = await window.scribeAPI.renameNote({ filePath, newTitle });
+      await loadTree(updated.filePath);
+      setSelectedNote(updated);
+    } catch (err) {
+      console.error('Failed to rename note:', err);
     }
   }, [loadTree]);
 
-  // Global Keyboard Shortcuts (⌘N, ⌘F, ⌘\)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // ⌘N: New Note
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
-        e.preventDefault();
-        handleNewNote();
+  // Toggle Pinned
+  const handleTogglePin = useCallback((noteId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPinnedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(noteId)) {
+        next.delete(noteId);
+      } else {
+        next.add(noteId);
       }
-      // ⌘F: Focus search input
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
-        e.preventDefault();
-        searchInputRef.current?.focus();
-        searchInputRef.current?.select();
-      }
-      // ⌘\: Fold/Unfold Folders Sidebar
-      if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
-        e.preventDefault();
-        setShowSidebar(prev => !prev);
-      }
-    };
+      localStorage.setItem('scribe_pinned_notes', JSON.stringify(Array.from(next)));
+      return next;
+    });
+  }, []);
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleNewNote]);
+  // Sort mode changes
+  const handleSortChange = useCallback((mode: SortMode) => {
+    setSortMode(mode);
+    localStorage.setItem('scribe_sort_mode', mode);
+  }, []);
 
+  // Select Folder
+  const handleSelectFolder = (folderRelativePath: string) => {
+    setSelectedFolder(folderRelativePath);
+    setSearchQuery('');
+  };
+
+  // Filter notes based on selected folder / trash and search query
   const isTrashView = selectedFolder === '__TRASH__';
 
-  // Filter and sort notes based on folder, sortMode, and search query
   const filteredNotes = useMemo(() => {
     if (!tree) return [];
-    let list = [...(isTrashView ? tree.trashNotes : tree.allNotes)];
 
-    if (!isTrashView && selectedFolder) {
-      list = list.filter(n => n.folder === selectedFolder || n.folder.startsWith(`${selectedFolder}/`));
+    let list: NoteMeta[] = [];
+
+    if (isTrashView) {
+      list = [...tree.trashNotes];
+    } else if (selectedFolder === '') {
+      list = [...tree.allNotes];
+    } else {
+      list = tree.allNotes.filter(n => {
+        const folder = n.folder.replace(/^\//, '');
+        const target = selectedFolder.replace(/^\//, '');
+        return folder === target || folder.startsWith(`${target}/`);
+      });
     }
 
     if (searchQuery.trim()) {
@@ -350,11 +402,14 @@ export const App: React.FC = () => {
       );
     }
 
-    // Apply Sorting
+    // Sort notes
     list.sort((a, b) => {
+      const aPinned = pinnedIds.has(a.id);
+      const bPinned = pinnedIds.has(b.id);
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+
       switch (sortMode) {
-        case 'date-edited-desc':
-          return b.modifiedAt - a.modifiedAt;
         case 'date-edited-asc':
           return a.modifiedAt - b.modifiedAt;
         case 'date-created-desc':
@@ -371,10 +426,10 @@ export const App: React.FC = () => {
     });
 
     return list;
-  }, [tree, selectedFolder, isTrashView, searchQuery, sortMode]);
+  }, [tree, selectedFolder, isTrashView, searchQuery, sortMode, pinnedIds]);
 
   return (
-    <div className="h-screen w-screen flex flex-col overflow-hidden bg-[var(--app-bg)] text-[var(--text-primary)]">
+    <div className={`h-screen w-screen flex flex-col overflow-hidden bg-[var(--app-bg)] text-[var(--text-primary)] ${isDark ? 'dark' : ''} font-${appearance.fontFamily}-mode`}>
       {/* Native macOS Titlebar */}
       <Titlebar
         currentFolder={isTrashView ? 'Recently Deleted' : (selectedFolder || 'All Notes')}
@@ -383,7 +438,7 @@ export const App: React.FC = () => {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onNewNote={handleNewNote}
-        onSelectFolder={handleSelectFolder}
+        onSelectFolder={handleOpenFolderDialog}
         isSaving={isSaving}
         lastSavedText={lastSavedText}
         isDark={isDark}
@@ -407,6 +462,8 @@ export const App: React.FC = () => {
                 selectedFolder={selectedFolder}
                 onSelectFolder={setSelectedFolder}
                 allNotesCount={tree?.allNotes.length || 0}
+                onOpenFolderDialog={handleOpenFolderDialog}
+                onOpenAppearance={() => setIsAppearanceOpen(true)}
               />
             </div>
 
@@ -458,6 +515,26 @@ export const App: React.FC = () => {
           />
         </div>
       </main>
+
+      {/* Quick Switcher Modal (⌘O / ⌘P / ⌘K) */}
+      <QuickSwitcher
+        isOpen={isQuickSwitcherOpen}
+        onClose={() => setIsQuickSwitcherOpen(false)}
+        notes={tree?.allNotes || []}
+        onSelectNote={(note) => {
+          setSelectedNote(note);
+          setSelectedFolder('');
+        }}
+        onNewNote={handleNewNote}
+      />
+
+      {/* Appearance & Typography Settings Modal */}
+      <AppearanceModal
+        isOpen={isAppearanceOpen}
+        onClose={() => setIsAppearanceOpen(false)}
+        settings={appearance}
+        onUpdateSettings={handleUpdateAppearance}
+      />
     </div>
   );
 };
