@@ -430,23 +430,200 @@ li[data-type="taskItem"][data-checked="true"] > div,
   transition: color 0.15s ease, opacity 0.15s ease !important;
 }
 
-/* Blockquotes */
-.tiptap blockquote {
-  border-inline-start: 3.5px solid var(--accent-color);
-  padding-inline-start: 1.1rem;
-  margin-inline-start: 0;
-  margin-top: 1rem;
-  margin-bottom: 1rem;
-  color: var(--text-secondary);
-  font-style: italic;
-  background-color: var(--card-hover);
-  padding-top: 0.4rem;
-  padding-bottom: 0.4rem;
-  border-radius: 0 6px 6px 0;
+/* =========================================================
+   Collapsible Headings Gutter & Indicator Styling
+   ========================================================= */
+
+.tiptap h1,
+.tiptap h2,
+.tiptap h3 {
+  position: relative;
 }
 
-.tiptap blockquote[dir="rtl"] {
-  border-radius: 6px 0 0 6px;
+.heading-collapse-gutter {
+  position: absolute;
+  left: -26px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  opacity: 0;
+  transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+  cursor: pointer;
+  user-select: none;
+  color: var(--text-secondary);
+  border-radius: 4px;
+  z-index: 10;
+}
+
+/* RTL gutter placement */
+[dir="rtl"] .heading-collapse-gutter,
+[data-dir="rtl"] .heading-collapse-gutter,
+.tiptap h1[dir="rtl"] .heading-collapse-gutter,
+.tiptap h2[dir="rtl"] .heading-collapse-gutter,
+.tiptap h3[dir="rtl"] .heading-collapse-gutter {
+  left: auto !important;
+  right: -26px !important;
+}
+
+.tiptap h1:hover .heading-collapse-gutter,
+.tiptap h2:hover .heading-collapse-gutter,
+.tiptap h3:hover .heading-collapse-gutter,
+.heading-collapse-gutter.is-collapsed {
+  opacity: 0.85;
+}
+
+.heading-collapse-gutter:hover {
+  opacity: 1 !important;
+  background-color: var(--card-hover);
+  color: var(--accent-color);
+}
+
+.collapsed-heading-hidden {
+  display: none !important;
+}
+
+.collapsed-indicator-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-inline-start: 10px;
+  font-size: 0.7rem;
+  letter-spacing: 1px;
+  padding: 1px 7px;
+  border-radius: 9999px;
+  background-color: var(--card-active);
+  color: var(--accent-color);
+  cursor: pointer;
+  vertical-align: middle;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  user-select: none;
+}
+
+.collapsed-indicator-pill:hover {
+  opacity: 1;
+  transform: scale(1.05);
+}
+
+/* =========================================================
+   Apple Notes / Craft Callouts & Blockquote Variants
+   ========================================================= */
+
+.tiptap blockquote,
+.tiptap .callout {
+  border-inline-start: 4px solid var(--accent-color);
+  padding: 0.75rem 1rem;
+  margin-inline-start: 0;
+  margin-top: 1.1rem;
+  margin-bottom: 1.1rem;
+  color: var(--text-primary);
+  background-color: var(--card-hover);
+  border-radius: 0 8px 8px 0;
+  position: relative;
+  font-style: normal;
+}
+
+.tiptap blockquote[dir="rtl"],
+.tiptap .callout[dir="rtl"] {
+  border-radius: 8px 0 0 8px;
+}
+
+/* Note Variant (Accent / Amber) */
+.tiptap .callout-note {
+  border-inline-start-color: var(--accent-color);
+  background-color: var(--accent-light);
+}
+
+/* Tip Variant (Emerald Green) */
+.tiptap .callout-tip {
+  border-inline-start-color: #10B981;
+  background-color: rgba(16, 185, 129, 0.08);
+}
+.dark .tiptap .callout-tip {
+  background-color: rgba(16, 185, 129, 0.15);
+}
+
+/* Info Variant (Blue) */
+.tiptap .callout-info {
+  border-inline-start-color: #3B82F6;
+  background-color: rgba(59, 130, 246, 0.08);
+}
+.dark .tiptap .callout-info {
+  background-color: rgba(59, 130, 246, 0.15);
+}
+
+/* Warning Variant (Amber / Orange) */
+.tiptap .callout-warning {
+  border-inline-start-color: #F59E0B;
+  background-color: rgba(245, 158, 11, 0.09);
+}
+.dark .tiptap .callout-warning {
+  background-color: rgba(245, 158, 11, 0.16);
+}
+
+/* Caution Variant (Rose / Red) */
+.tiptap .callout-caution {
+  border-inline-start-color: #EF4444;
+  background-color: rgba(239, 68, 68, 0.08);
+}
+.dark .tiptap .callout-caution {
+  background-color: rgba(239, 68, 68, 0.15);
+}
+
+/* Quote Variant (Purple / Editorial) */
+.tiptap .callout-quote {
+  border-inline-start-color: #8B5CF6;
+  background-color: rgba(139, 92, 246, 0.07);
+  font-style: italic;
+}
+.dark .tiptap .callout-quote {
+  background-color: rgba(139, 92, 246, 0.14);
+}
+
+/* =========================================================
+   Print & PDF Export Styling (@media print)
+   ========================================================= */
+
+@media print {
+  body {
+    background-color: #FFFFFF !important;
+    color: #1C1C1E !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  header,
+  aside,
+  .titlebar-drag-region,
+  .formatting-bar,
+  .bubble-menu,
+  .slash-menu,
+  .find-replace-bar,
+  .heading-collapse-gutter,
+  .collapsed-indicator-pill,
+  button,
+  [data-no-print="true"] {
+    display: none !important;
+  }
+
+  /* Expand any collapsed headings for complete printing */
+  .collapsed-heading-hidden {
+    display: block !important;
+  }
+
+  .editor-container {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .tiptap {
+    padding-bottom: 0 !important;
+    min-height: auto !important;
+  }
 }
 
 /* Code Blocks */

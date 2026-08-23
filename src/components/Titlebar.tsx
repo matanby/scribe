@@ -9,7 +9,11 @@ import {
   RefreshCw,
   Sidebar as SidebarIcon,
   X,
-  Languages
+  Languages,
+  ChevronLeft,
+  ChevronRight,
+  FileDown,
+  Printer
 } from 'lucide-react';
 
 interface TitlebarProps {
@@ -28,6 +32,12 @@ interface TitlebarProps {
   onToggleSidebar: () => void;
   onToggleDirection?: () => void;
   searchInputRef?: React.RefObject<HTMLInputElement>;
+  onGoBack?: () => void;
+  onGoForward?: () => void;
+  canGoBack?: boolean;
+  canGoForward?: boolean;
+  onExportPDF?: () => void;
+  onPrint?: () => void;
 }
 
 export const Titlebar: React.FC<TitlebarProps> = ({
@@ -45,12 +55,38 @@ export const Titlebar: React.FC<TitlebarProps> = ({
   showSidebar,
   onToggleSidebar,
   onToggleDirection,
-  searchInputRef
+  searchInputRef,
+  onGoBack,
+  onGoForward,
+  canGoBack,
+  canGoForward,
+  onExportPDF,
+  onPrint
 }) => {
   return (
     <header className="titlebar-drag-region h-11 border-b border-[var(--border-color)] flex items-center justify-between px-3 select-none bg-[var(--sidebar-bg)] backdrop-blur-2xl shrink-0 z-30">
-      {/* Left section: traffic lights spacing & sidebar toggle */}
-      <div className="flex items-center gap-2.5 pl-[72px] titlebar-no-drag">
+      {/* Left section: traffic lights spacing, history arrows & sidebar toggle */}
+      <div className="flex items-center gap-1.5 pl-[72px] titlebar-no-drag">
+        {/* Navigation History */}
+        <div className="flex items-center gap-0.5 mr-1">
+          <button
+            onClick={onGoBack}
+            disabled={!canGoBack}
+            title="Back (⌘[)"
+            className="p-1 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors disabled:opacity-25 disabled:pointer-events-none active:scale-95"
+          >
+            <ChevronLeft size={15} />
+          </button>
+          <button
+            onClick={onGoForward}
+            disabled={!canGoForward}
+            title="Forward (⌘])"
+            className="p-1 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors disabled:opacity-25 disabled:pointer-events-none active:scale-95"
+          >
+            <ChevronRight size={15} />
+          </button>
+        </div>
+
         <button
           onClick={onToggleSidebar}
           title={showSidebar ? "Hide Sidebar (⌘\\)" : "Show Sidebar (⌘\\)"}
@@ -114,6 +150,28 @@ export const Titlebar: React.FC<TitlebarProps> = ({
             </>
           ) : null}
         </div>
+
+        {/* Export PDF Button */}
+        {onExportPDF && (
+          <button
+            onClick={onExportPDF}
+            title="Export Note as PDF"
+            className="p-1.5 rounded-md hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+          >
+            <FileDown size={15} />
+          </button>
+        )}
+
+        {/* Print Button */}
+        {onPrint && (
+          <button
+            onClick={onPrint}
+            title="Print Note (⌘⇧P)"
+            className="p-1.5 rounded-md hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+          >
+            <Printer size={15} />
+          </button>
+        )}
 
         {/* Change Folder */}
         <button

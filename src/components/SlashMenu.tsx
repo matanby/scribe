@@ -110,11 +110,46 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ editor }) => {
       }
     },
     {
+      id: 'callout-note',
+      title: 'Note Callout',
+      subtitle: 'Amber highlighted note box',
+      icon: <Sparkles size={15} className="text-amber-500" />,
+      action: (ed) => (ed.chain().focus() as any).toggleCallout('note').run()
+    },
+    {
+      id: 'callout-tip',
+      title: 'Tip Callout',
+      subtitle: 'Green helpful tip box',
+      icon: <CheckSquare size={15} className="text-emerald-500" />,
+      action: (ed) => (ed.chain().focus() as any).toggleCallout('tip').run()
+    },
+    {
+      id: 'callout-info',
+      title: 'Info Callout',
+      subtitle: 'Blue informational notice',
+      icon: <Sparkles size={15} className="text-blue-500" />,
+      action: (ed) => (ed.chain().focus() as any).toggleCallout('info').run()
+    },
+    {
+      id: 'callout-warning',
+      title: 'Warning Callout',
+      subtitle: 'Orange warning attention box',
+      icon: <Sparkles size={15} className="text-orange-500" />,
+      action: (ed) => (ed.chain().focus() as any).toggleCallout('warning').run()
+    },
+    {
+      id: 'callout-caution',
+      title: 'Caution / Danger',
+      subtitle: 'Red critical notice box',
+      icon: <Sparkles size={15} className="text-red-500" />,
+      action: (ed) => (ed.chain().focus() as any).toggleCallout('caution').run()
+    },
+    {
       id: 'quote',
       title: 'Quote',
-      subtitle: 'Capture a quote or callout',
-      icon: <Quote size={15} className="text-orange-500" />,
-      action: (ed) => ed.chain().focus().toggleBlockquote().run()
+      subtitle: 'Capture a stylized quote',
+      icon: <Quote size={15} className="text-purple-500" />,
+      action: (ed) => (ed.chain().focus() as any).toggleCallout('quote').run()
     },
     {
       id: 'code',

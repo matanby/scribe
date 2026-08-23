@@ -169,7 +169,13 @@ export const NoteList: React.FC<NoteListProps> = ({
       <div
         key={note.id}
         onClick={() => onSelectNote(note)}
-        className={`group relative px-3.5 py-2.5 rounded-xl cursor-pointer transition-all duration-150 ${
+        draggable={!isTrash}
+        onDragStart={(e) => {
+          e.dataTransfer.setData('text/plain', note.filePath);
+          e.dataTransfer.setData('application/json', JSON.stringify({ filePath: note.filePath, title: note.title }));
+          e.dataTransfer.effectAllowed = 'move';
+        }}
+        className={`group relative px-3.5 py-2.5 rounded-xl cursor-pointer transition-all duration-150 active:scale-[0.99] select-none ${
           isSelected
             ? 'bg-[var(--card-active)] text-[var(--text-primary)] shadow-sm'
             : 'hover:bg-[var(--card-hover)] text-[var(--text-primary)] opacity-95'

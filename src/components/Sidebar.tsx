@@ -19,6 +19,8 @@ interface SidebarProps {
   allNotesCount: number;
   onOpenFolderDialog: () => void;
   onOpenAppearance: () => void;
+  onMoveNote?: (filePath: string, targetFolderPath: string) => void;
+  onTrashNote?: (filePath: string) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -27,13 +29,43 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectFolder,
   allNotesCount,
   onOpenFolderDialog,
-  onOpenAppearance
+  onOpenAppearance,
+  onMoveNote,
+  onTrashNote
 }) => {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [dragOverTarget, setDragOverTarget] = useState<string | null>(null);
 
   const toggleCollapse = (path: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setCollapsed(prev => ({ ...prev, [path]: !prev[path] }));
+  };
+
+  const handleDragOver = (targetId: string, e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverTarget !== targetId) {
+      setDragOverTarget(targetId);
+    }
+  };
+
+  const handleDragLeave = (targetId: string, e: React.DragEvent) => {
+    if (dragOverTarget === targetId) {
+      setDragOverTarget(null);
+    }
+  };
+
+  const handleDrop = (targetPath: string, isTrash: boolean, e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOverTarget(null);
+    const filePath = e.dataTransfer.getData('text/plain');
+    if (!filePath) return;
+
+    if (isTrash) {
+      onTrashNote?.(filePath);
+    } else {
+      onMoveNote?.(filePath, targetPath);
+    }
   };
 
   const rootFolderName = tree?.rootPath ? tree.rootPath.split('/').filter(Boolean).pop() || 'Notes' : 'Notes';
@@ -42,14 +74,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const isSelected = selectedFolder === node.relativePath;
     const isExpanded = !collapsed[node.path];
     const hasChildren = node.children && node.children.length > 0;
+    const isDragOver = dragOverTarget === node.path;
 
     return (
       <div key={node.path} className="select-none">
         <div
           onClick={() => onSelectFolder(node.relativePath)}
+          onDragOver={(e) => handleDragOver(node.path, e)}
+          onDragLeave={(e) => handleDragLeave(node.path, e)}
+          onDrop={(e) => handleDrop(node.path, false, e)}
           style={{ paddingLeft: `${Math.max(10, depth * 12 + 10)}px` }}
           className={`folder-item group flex items-center justify-between pr-2.5 py-1 rounded-md text-xs cursor-pointer transition-all ${
-            isSelected
+            isDragOver
+              ? 'ring-2 ring-[var(--accent-color)] bg-[var(--card-active)] scale-[1.02] shadow-sm font-semibold'
+              : isSelected
               ? 'bg-[var(--card-active)] text-[var(--text-primary)] font-semibold shadow-xs'
               : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5 opacity-90'
           }`}
@@ -107,8 +145,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
         <div
           onClick={() => onSelectFolder('')}
+          onDragOver={(e) => handleDragOver('__ALL_NOTES__', e)}
+          onDragLeave={(e) => handleDragLeave('__ALL_NOTES__', e)}
+          onDrop={(e) => handleDrop(tree?.rootPath || '', false, e)}
           className={`flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs cursor-pointer transition-all ${
-            selectedFolder === ''
+            dragOverTarget === '__ALL_NOTES__'
+              ? 'ring-2 ring-[var(--accent-color)] bg-[var(--card-active)] scale-[1.02] shadow-sm font-semibold'
+              : selectedFolder === ''
               ? 'bg-[var(--card-active)] text-[var(--text-primary)] font-semibold shadow-xs'
               : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5 opacity-90'
           }`}
@@ -125,8 +168,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Recently Deleted */}
         <div
           onClick={() => onSelectFolder('__TRASH__')}
+          onDragOver={(e) => handleDragOver('__TRASH__', e)}
+          onDragLeave={(e) => handleDragLeave('__TRASH__', e)}
+          onDrop={(e) => handleDrop('', true, e)}
           className={`flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs cursor-pointer transition-all ${
-            selectedFolder === '__TRASH__'
+            dragOverTarget === '__TRASH__'
+              ? 'ring-2 ring-red-500 bg-red-500/20 scale-[1.02] shadow-sm font-semibold text-red-500'
+              : selectedFolder === '__TRASH__'
               ? 'bg-red-500/10 text-red-500 font-semibold shadow-xs'
               : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5 opacity-90'
           }`}

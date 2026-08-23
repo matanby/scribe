@@ -19,12 +19,14 @@ import { Markdown } from 'tiptap-markdown';
 import { BiDiExtension } from '../extensions/BiDiExtension';
 import { CleanBackspaceExtension } from '../extensions/CleanBackspaceExtension';
 import { SearchReplaceExtension } from '../extensions/SearchReplaceExtension';
+import { CalloutExtension } from '../extensions/CalloutExtension';
+import { CollapsibleHeadingsExtension } from '../extensions/CollapsibleHeadingsExtension';
 import { BubbleMenu } from './BubbleMenu';
 import { FormattingBar } from './FormattingBar';
 import { SlashMenu } from './SlashMenu';
 import { FindReplaceBar } from './FindReplaceBar';
 import { NoteMeta } from '../types';
-import { Calendar, Folder, FileText, CheckCircle2 } from 'lucide-react';
+import { Calendar, Folder, FileText, CheckCircle2, Clock, AlignLeft } from 'lucide-react';
 
 const lowlight = createLowlight(common);
 
@@ -32,6 +34,7 @@ interface EditorProps {
   note: NoteMeta | null;
   onSave: (filePath: string, markdown: string, frontmatter?: Record<string, any>) => Promise<void>;
   onRename: (filePath: string, newTitle: string) => Promise<void>;
+  onSelectFolder?: (folderPath: string) => void;
   setIsSaving: (saving: boolean) => void;
   setLastSavedText: (text: string) => void;
   externalReloadTrigger?: number;
@@ -43,6 +46,7 @@ interface TipTapNoteEditorProps {
   initialFrontmatter?: Record<string, any>;
   onSave: (filePath: string, markdown: string, frontmatter?: Record<string, any>) => Promise<void>;
   onRename: (filePath: string, newTitle: string) => Promise<void>;
+  onSelectFolder?: (folderPath: string) => void;
   setIsSaving: (saving: boolean) => void;
   setLastSavedText: (text: string) => void;
 }
@@ -53,6 +57,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   initialFrontmatter,
   onSave,
   onRename,
+  onSelectFolder,
   setIsSaving,
   setLastSavedText
 }) => {
@@ -102,6 +107,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
     extensions: [
       StarterKit.configure({
         codeBlock: false,
+        blockquote: false,
         heading: {
           levels: [1, 2, 3]
         },
@@ -114,6 +120,8 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
           keepAttributes: false
         }
       }),
+      CalloutExtension,
+      CollapsibleHeadingsExtension,
       CodeBlockLowlight.extend({
         addNodeView() {
           return ReactNodeViewRenderer(CodeBlockComponent);
@@ -330,6 +338,9 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
     };
   }, []);
 
+  const text = editor ? editor.getText() : '';
+  const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
+
   const modifiedDate = new Date(note.modifiedAt).toLocaleDateString([], {
     year: 'numeric',
     month: 'short',
@@ -357,23 +368,35 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
       {/* Scrollable Note Content Container */}
       <div className="flex-1 overflow-y-auto relative">
         <div className="max-w-[720px] w-full mx-auto px-6 pt-7 pb-2">
-          {/* Apple Notes Document Metadata Header */}
-          <div className="flex items-center justify-between text-[11px] text-[var(--text-secondary)] mb-4 select-none opacity-75">
-            <div className="flex items-center gap-3">
+          {/* Apple Notes Floating Breadcrumbs & Metadata Header */}
+          <div className="flex items-center justify-between text-[11px] text-[var(--text-secondary)] mb-4 select-none">
+            {/* Breadcrumb Navigation */}
+            <div className="flex items-center gap-1.5 min-w-0">
+              <button
+                onClick={() => onSelectFolder && onSelectFolder(note.folder === '/' ? '' : note.folder)}
+                className="flex items-center gap-1 font-semibold text-[var(--accent-color)] hover:underline opacity-90 transition-opacity truncate"
+                title={`Go to folder: ${note.folder || 'All Notes'}`}
+              >
+                <Folder size={12} />
+                <span>{note.folder && note.folder !== '/' ? note.folder : 'All Notes'}</span>
+              </button>
+              <span className="opacity-30">/</span>
+              <span className="truncate opacity-75 max-w-[240px]" dir="auto">
+                {title || 'Untitled Note'}
+              </span>
+            </div>
+
+            {/* Document Stats & Last Modified */}
+            <div className="flex items-center gap-2.5 opacity-70 shrink-0">
               <div className="flex items-center gap-1">
-                <Calendar size={12} />
+                <AlignLeft size={11} />
+                <span>{wordCount} {wordCount === 1 ? 'word' : 'words'}</span>
+              </div>
+              <span className="opacity-40">•</span>
+              <div className="flex items-center gap-1">
+                <Calendar size={11} />
                 <span>{modifiedDate}</span>
               </div>
-              {note.folder && note.folder !== '/' && (
-                <div className="flex items-center gap-1 font-medium text-[var(--accent-color)]">
-                  <Folder size={12} />
-                  <span>{note.folder}</span>
-                </div>
-              )}
-            </div>
-            <div className="flex items-center gap-1 opacity-70">
-              <CheckCircle2 size={11} className="text-emerald-500" />
-              <span>Synced</span>
             </div>
           </div>
 
@@ -403,6 +426,7 @@ export const Editor: React.FC<EditorProps> = ({
   note,
   onSave,
   onRename,
+  onSelectFolder,
   setIsSaving,
   setLastSavedText,
   externalReloadTrigger
@@ -414,18 +438,18 @@ export const Editor: React.FC<EditorProps> = ({
   } | null>(null);
 
   useEffect(() => {
-    if (!note) {
+    if (!note?.filePath) {
       setLoadedData(null);
       return;
     }
 
     let isMounted = true;
-    window.scribeAPI.readNote(note.filePath).then(({ markdown, frontmatter }) => {
+    window.scribeAPI.readNote(note.filePath).then(data => {
       if (isMounted) {
         setLoadedData({
           filePath: note.filePath,
-          markdown,
-          frontmatter
+          markdown: data.markdown,
+          frontmatter: data.frontmatter
         });
       }
     }).catch(err => {
@@ -469,6 +493,7 @@ export const Editor: React.FC<EditorProps> = ({
       initialFrontmatter={loadedData.frontmatter}
       onSave={onSave}
       onRename={onRename}
+      onSelectFolder={onSelectFolder}
       setIsSaving={setIsSaving}
       setLastSavedText={setLastSavedText}
     />

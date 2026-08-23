@@ -9,6 +9,8 @@ export const scribeAPI = {
     ipcRenderer.invoke('notes:create', payload),
   renameNote: (payload: { filePath: string; newTitle: string }) => 
     ipcRenderer.invoke('notes:rename', payload),
+  moveNote: (payload: { filePath: string; targetFolderPath: string }) =>
+    ipcRenderer.invoke('notes:move', payload),
   deleteNote: (filePath: string) => ipcRenderer.invoke('notes:delete', filePath),
   trashNote: (filePath: string) => ipcRenderer.invoke('notes:trash', filePath),
   restoreNote: (filePath: string) => ipcRenderer.invoke('notes:restore', filePath),
@@ -18,6 +20,8 @@ export const scribeAPI = {
   setNotesPath: (path: string) => ipcRenderer.invoke('notes:setPath', path),
   selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
+  exportPDF: (defaultTitle: string) => ipcRenderer.invoke('notes:exportPDF', defaultTitle),
+  printNote: () => ipcRenderer.invoke('notes:print'),
   onNotesChanged: (callback: (data?: { filePath?: string; eventType?: string }) => void) => {
     const handler = (_: any, data: any) => callback(data);
     ipcRenderer.on('notes:changed', handler);

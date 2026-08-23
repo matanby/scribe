@@ -303,6 +303,39 @@ export async function renameNote(filePath: string, newTitle: string): Promise<No
   };
 }
 
+export async function moveNote(filePath: string, targetFolderPath: string): Promise<NoteMeta> {
+  const fileName = path.basename(filePath);
+  let targetPath = path.join(targetFolderPath, fileName);
+
+  if (filePath !== targetPath) {
+    let counter = 1;
+    const ext = path.extname(fileName);
+    const base = path.basename(fileName, ext);
+    while (fsSync.existsSync(targetPath)) {
+      targetPath = path.join(targetFolderPath, `${base} ${counter}${ext}`);
+      counter++;
+    }
+    await fs.rename(filePath, targetPath);
+  }
+
+  const raw = await fs.readFile(targetPath, 'utf-8');
+  const parsed = safeParseFrontmatter(raw);
+  const stats = await fs.stat(targetPath);
+  const finalFileName = path.basename(targetPath);
+
+  return {
+    id: targetPath,
+    filePath: targetPath,
+    fileName: finalFileName,
+    title: extractTitleFromContent(parsed.content, finalFileName),
+    snippet: cleanMarkdownSnippet(parsed.content),
+    folder: path.basename(targetFolderPath),
+    modifiedAt: stats.mtimeMs,
+    createdAt: stats.birthtimeMs || stats.mtimeMs,
+    frontmatter: parsed.data
+  };
+}
+
 export async function moveToTrash(filePath: string, rootDir: string): Promise<void> {
   const trashDir = getTrashDir(rootDir);
   const fileName = path.basename(filePath);

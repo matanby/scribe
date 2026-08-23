@@ -225,6 +225,101 @@ export const App: React.FC = () => {
     }
   }, []);
 
+  // Navigation History Stack
+  const [history, setHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number>(-1);
+  const isNavigatingHistory = useRef(false);
+
+  const selectNoteWithHistory = useCallback((note: NoteMeta | null) => {
+    setSelectedNote(note);
+    if (!note) return;
+    if (isNavigatingHistory.current) {
+      isNavigatingHistory.current = false;
+      return;
+    }
+    setHistory(prev => {
+      const current = prev[historyIndex];
+      if (current === note.filePath) return prev;
+      const nextHistory = [...prev.slice(0, historyIndex + 1), note.filePath];
+      setHistoryIndex(nextHistory.length - 1);
+      return nextHistory;
+    });
+  }, [historyIndex]);
+
+  const canGoBack = historyIndex > 0;
+  const canGoForward = historyIndex < history.length - 1;
+
+  const handleGoBack = useCallback(() => {
+    if (historyIndex > 0) {
+      const targetPath = history[historyIndex - 1];
+      setHistoryIndex(historyIndex - 1);
+      isNavigatingHistory.current = true;
+      const found = tree?.allNotes.find(n => n.filePath === targetPath);
+      if (found) {
+        setSelectedNote(found);
+      }
+    }
+  }, [historyIndex, history, tree]);
+
+  const handleGoForward = useCallback(() => {
+    if (historyIndex < history.length - 1) {
+      const targetPath = history[historyIndex + 1];
+      setHistoryIndex(historyIndex + 1);
+      isNavigatingHistory.current = true;
+      const found = tree?.allNotes.find(n => n.filePath === targetPath);
+      if (found) {
+        setSelectedNote(found);
+      }
+    }
+  }, [historyIndex, history, tree]);
+
+  const handleGoBackRef = useRef(handleGoBack);
+  handleGoBackRef.current = handleGoBack;
+  const handleGoForwardRef = useRef(handleGoForward);
+  handleGoForwardRef.current = handleGoForward;
+
+  // Move note to another folder
+  const handleMoveNote = useCallback(async (filePath: string, targetFolderPath: string) => {
+    try {
+      const movedNote = await window.scribeAPI.moveNote({ filePath, targetFolderPath });
+      await loadTree(movedNote.filePath);
+      selectNoteWithHistory(movedNote);
+    } catch (err) {
+      console.error('Failed to move note:', err);
+    }
+  }, [loadTree, selectNoteWithHistory]);
+
+  // Trash note via drag or action
+  const handleTrashNoteByPath = useCallback(async (filePath: string) => {
+    try {
+      await window.scribeAPI.trashNote(filePath);
+      await loadTree();
+    } catch (err) {
+      console.error('Failed to trash note:', err);
+    }
+  }, [loadTree]);
+
+  // Export PDF & Print
+  const handleExportPDF = useCallback(async () => {
+    const title = selectedNote?.title || 'Note';
+    if (window.scribeAPI.exportPDF) {
+      await window.scribeAPI.exportPDF(title);
+    }
+  }, [selectedNote]);
+
+  const handlePrint = useCallback(() => {
+    if (window.scribeAPI.printNote) {
+      window.scribeAPI.printNote();
+    } else {
+      window.print();
+    }
+  }, []);
+
+  const handleExportPDFRef = useRef(handleExportPDF);
+  handleExportPDFRef.current = handleExportPDF;
+  const handlePrintRef = useRef(handlePrint);
+  handlePrintRef.current = handlePrint;
+
   // Open Folder dialog handler
   const handleOpenFolderDialog = useCallback(async () => {
     try {
@@ -238,6 +333,7 @@ export const App: React.FC = () => {
       console.error('Failed to open folder:', err);
     }
   }, [loadTree]);
+
   // Create Note
   const handleNewNote = useCallback(async () => {
     try {
@@ -252,11 +348,11 @@ export const App: React.FC = () => {
         setSelectedFolder('');
       }
       await loadTree(newNote.filePath);
-      setSelectedNote(newNote);
+      selectNoteWithHistory(newNote);
     } catch (err) {
       console.error('Failed to create note:', err);
     }
-  }, [tree, selectedFolder, loadTree]);
+  }, [tree, selectedFolder, loadTree, selectNoteWithHistory]);
 
   const handleNewNoteRef = useRef(handleNewNote);
   handleNewNoteRef.current = handleNewNote;
@@ -295,7 +391,23 @@ export const App: React.FC = () => {
       handleNewNoteRef.current();
     });
 
-    // Keyboard Shortcuts: ⌘N -> New Note, ⌘P -> Quick Switcher, ⌘\ -> Toggle Sidebar
+    const unsubscribeGoBack = window.scribeAPI.onMenuEvent?.('menu:goBack', () => {
+      handleGoBackRef.current();
+    });
+
+    const unsubscribeGoForward = window.scribeAPI.onMenuEvent?.('menu:goForward', () => {
+      handleGoForwardRef.current();
+    });
+
+    const unsubscribeExportPDF = window.scribeAPI.onMenuEvent?.('menu:exportPDF', () => {
+      handleExportPDFRef.current();
+    });
+
+    const unsubscribePrintNote = window.scribeAPI.onMenuEvent?.('menu:printNote', () => {
+      handlePrintRef.current();
+    });
+
+    // Keyboard Shortcuts: ⌘N -> New Note, ⌘P -> Quick Switcher, ⌘\ -> Toggle Sidebar, ⌘[ / ⌘] -> History, ⌘⇧P -> Print
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n' && !e.shiftKey && !e.altKey) {
         e.preventDefault();
@@ -305,6 +417,18 @@ export const App: React.FC = () => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'p' && !e.shiftKey && !e.altKey) {
         e.preventDefault();
         setIsQuickSwitcherOpen(prev => !prev);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'p') {
+        e.preventDefault();
+        handlePrintRef.current();
+      }
+      if ((e.metaKey || e.ctrlKey) && (e.key === '[' || e.code === 'BracketLeft')) {
+        e.preventDefault();
+        handleGoBackRef.current();
+      }
+      if ((e.metaKey || e.ctrlKey) && (e.key === ']' || e.code === 'BracketRight')) {
+        e.preventDefault();
+        handleGoForwardRef.current();
       }
       if ((e.metaKey || e.ctrlKey) && (e.key === '\\' || e.code === 'Backslash')) {
         e.preventDefault();
@@ -319,6 +443,10 @@ export const App: React.FC = () => {
       unsubscribeRoot?.();
       unsubscribeQuickSwitcher?.();
       unsubscribeNewNote?.();
+      unsubscribeGoBack?.();
+      unsubscribeGoForward?.();
+      unsubscribeExportPDF?.();
+      unsubscribePrintNote?.();
       window.removeEventListener('keydown', handleKeyDown, true);
     };
   }, [loadTree]);
@@ -499,6 +627,12 @@ export const App: React.FC = () => {
         showSidebar={showSidebar}
         onToggleSidebar={() => setShowSidebar(!showSidebar)}
         searchInputRef={searchInputRef}
+        onGoBack={handleGoBack}
+        onGoForward={handleGoForward}
+        canGoBack={canGoBack}
+        canGoForward={canGoForward}
+        onExportPDF={handleExportPDF}
+        onPrint={handlePrint}
       />
 
       {/* 3-Pane Resizable Layout */}
@@ -521,6 +655,8 @@ export const App: React.FC = () => {
               allNotesCount={tree?.allNotes.length || 0}
               onOpenFolderDialog={handleOpenFolderDialog}
               onOpenAppearance={() => setIsAppearanceOpen(true)}
+              onMoveNote={handleMoveNote}
+              onTrashNote={handleTrashNoteByPath}
             />
           </div>
         </div>
@@ -542,7 +678,7 @@ export const App: React.FC = () => {
           <NoteList
             notes={filteredNotes}
             selectedNoteId={selectedNote?.id || null}
-            onSelectNote={setSelectedNote}
+            onSelectNote={selectNoteWithHistory}
             onDeleteNote={handleDeleteNote}
             isTrash={isTrashView}
             onRestoreNote={handleRestoreNote}
@@ -567,6 +703,7 @@ export const App: React.FC = () => {
             note={selectedNote}
             onSave={handleSaveNote}
             onRename={handleRenameNote}
+            onSelectFolder={setSelectedFolder}
             setIsSaving={setIsSaving}
             setLastSavedText={setLastSavedText}
             externalReloadTrigger={externalReloadTrigger}
@@ -580,7 +717,7 @@ export const App: React.FC = () => {
         onClose={() => setIsQuickSwitcherOpen(false)}
         notes={tree?.allNotes || []}
         onSelectNote={(note) => {
-          setSelectedNote(note);
+          selectNoteWithHistory(note);
           setSelectedFolder('');
         }}
         onNewNote={handleNewNote}

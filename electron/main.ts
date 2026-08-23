@@ -11,6 +11,7 @@ import {
   saveNoteContent, 
   createNote, 
   renameNote, 
+  moveNote,
   moveToTrash,
   restoreFromTrash,
   permanentDeleteNote,
@@ -279,6 +280,27 @@ function setupMenu() {
           accelerator: 'CmdOrCtrl+S',
           click: (_item, focusedWin) => sendToFocusedWindow('menu:saveNote', focusedWin as BrowserWindow)
         },
+        { type: 'separator' as const },
+        {
+          label: 'Export as PDF...',
+          click: (_item, focusedWin) => sendToFocusedWindow('menu:exportPDF', focusedWin as BrowserWindow)
+        },
+        {
+          label: 'Print...',
+          accelerator: 'CmdOrCtrl+Shift+P',
+          click: (_item, focusedWin) => sendToFocusedWindow('menu:printNote', focusedWin as BrowserWindow)
+        },
+        { type: 'separator' as const },
+        {
+          label: 'Back in History',
+          accelerator: 'CmdOrCtrl+[',
+          click: (_item, focusedWin) => sendToFocusedWindow('menu:goBack', focusedWin as BrowserWindow)
+        },
+        {
+          label: 'Forward in History',
+          accelerator: 'CmdOrCtrl+]',
+          click: (_item, focusedWin) => sendToFocusedWindow('menu:goForward', focusedWin as BrowserWindow)
+        },
         ...(isMac ? [{ role: 'close' as const }] : [{ role: 'quit' as const }])
       ]
     },
@@ -399,6 +421,48 @@ ipcMain.handle('notes:create', async (event, { folderPath, title, content }) => 
 
 ipcMain.handle('notes:rename', async (_, { filePath, newTitle }) => {
   return await renameNote(filePath, newTitle);
+});
+
+ipcMain.handle('notes:move', async (_, { filePath, targetFolderPath }) => {
+  return await moveNote(filePath, targetFolderPath);
+});
+
+ipcMain.handle('notes:exportPDF', async (event, defaultTitle: string) => {
+  try {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return { success: false, error: 'No active window' };
+    const res = await dialog.showSaveDialog(win, {
+      title: 'Export Note as PDF',
+      defaultPath: `${defaultTitle || 'Note'}.pdf`,
+      filters: [{ name: 'PDF Documents', extensions: ['pdf'] }]
+    });
+    if (res.canceled || !res.filePath) return { success: false, canceled: true };
+
+    const pdfBuffer = await win.webContents.printToPDF({
+      pageSize: 'A4',
+      printBackground: true,
+      margins: {
+        top: 0.5,
+        bottom: 0.5,
+        left: 0.5,
+        right: 0.5
+      }
+    });
+    await fsSync.promises.writeFile(res.filePath, pdfBuffer);
+    return { success: true, filePath: res.filePath };
+  } catch (err: any) {
+    console.error('Failed to export PDF:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('notes:print', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (win && !win.isDestroyed()) {
+    win.webContents.print({ silent: false });
+    return true;
+  }
+  return false;
 });
 
 ipcMain.handle('notes:delete', async (event, filePath: string) => {
