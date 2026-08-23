@@ -120,6 +120,8 @@ export const BiDiExtension = Extension.create({
               ['paragraph', 'heading', 'listItem', 'taskItem', 'blockquote'].includes(node.type.name)
             ) {
               const text = node.textContent;
+              if (!text || !text.trim()) return;
+
               const detectedDir = getDirection(text);
               const currentDir = node.attrs.dir || 'auto';
 
