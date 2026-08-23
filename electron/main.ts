@@ -133,10 +133,11 @@ export function createWindow(targetFolderPath?: string): BrowserWindow {
   });
 
   allWindows.add(win);
+  const webContentsId = win.webContents.id;
 
   // Set the folder path for this window
   const rootPath = targetFolderPath || loadSavedRoot();
-  setWindowRoot(win.webContents.id, rootPath);
+  setWindowRoot(webContentsId, rootPath);
 
   if (windowState.isMaximized && allWindows.size === 1) {
     win.maximize();
@@ -149,27 +150,30 @@ export function createWindow(targetFolderPath?: string): BrowserWindow {
     if (saveTimeout) clearTimeout(saveTimeout);
     saveTimeout = setTimeout(() => {
       if (!win || win.isDestroyed()) return;
-      const isMax = win.isMaximized();
-      if (isMax) {
-        saveWindowState({ width: windowState.width, height: windowState.height, isMaximized: true });
-      } else if (!win.isFullScreen() && !win.isMinimized()) {
-        const bounds = win.getBounds();
-        saveWindowState({
-          x: bounds.x,
-          y: bounds.y,
-          width: bounds.width,
-          height: bounds.height,
-          isMaximized: false
-        });
-      }
+      try {
+        const isMax = win.isMaximized();
+        if (isMax) {
+          saveWindowState({ width: windowState.width, height: windowState.height, isMaximized: true });
+        } else if (!win.isFullScreen() && !win.isMinimized()) {
+          const bounds = win.getBounds();
+          saveWindowState({
+            x: bounds.x,
+            y: bounds.y,
+            width: bounds.width,
+            height: bounds.height,
+            isMaximized: false
+          });
+        }
+      } catch {}
     }, 250);
   };
 
   win.on('resize', trackWindowState);
   win.on('move', trackWindowState);
   win.on('closed', () => {
+    if (saveTimeout) clearTimeout(saveTimeout);
     allWindows.delete(win);
-    removeWindowTracking(win.webContents.id);
+    removeWindowTracking(webContentsId);
   });
 
   if (process.platform === 'darwin' && app.dock) {
@@ -205,13 +209,24 @@ export function createWindow(targetFolderPath?: string): BrowserWindow {
   }
 
   // Watch for external file changes in this window's workspace folder
-  startWatchingWindow(win.webContents.id, rootPath, (data) => {
+  startWatchingWindow(webContentsId, rootPath, (data) => {
     if (!win.isDestroyed()) {
-      win.webContents.send('notes:changed', data);
+      try {
+        win.webContents.send('notes:changed', data);
+      } catch {}
     }
   });
 
   return win;
+}
+
+function sendToFocusedWindow(channel: string, focusedWin?: BrowserWindow) {
+  const win = focusedWin || BrowserWindow.getFocusedWindow() || Array.from(allWindows)[0];
+  if (win && !win.isDestroyed()) {
+    try {
+      win.webContents.send(channel);
+    } catch {}
+  }
 }
 
 function setupMenu() {
@@ -237,18 +252,12 @@ function setupMenu() {
         {
           label: 'New Note',
           accelerator: 'CmdOrCtrl+N',
-          click: (_item, focusedWin) => {
-            const win = (focusedWin as BrowserWindow) || BrowserWindow.getFocusedWindow() || Array.from(allWindows)[0];
-            win?.webContents?.send('menu:newNote');
-          }
+          click: (_item, focusedWin) => sendToFocusedWindow('menu:newNote', focusedWin as BrowserWindow)
         },
         {
           label: 'Quick Switcher...',
           accelerator: 'CmdOrCtrl+P',
-          click: (_item, focusedWin) => {
-            const win = (focusedWin as BrowserWindow) || BrowserWindow.getFocusedWindow() || Array.from(allWindows)[0];
-            win?.webContents?.send('menu:quickSwitcher');
-          }
+          click: (_item, focusedWin) => sendToFocusedWindow('menu:quickSwitcher', focusedWin as BrowserWindow)
         },
         { type: 'separator' as const },
         {
@@ -256,7 +265,7 @@ function setupMenu() {
           accelerator: 'CmdOrCtrl+O',
           click: async (_item, focusedWin) => {
             const win = focusedWin as BrowserWindow | undefined;
-            const res = win 
+            const res = (win && !win.isDestroyed())
               ? await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] })
               : await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
             if (!res.canceled && res.filePaths.length > 0) {
@@ -268,7 +277,7 @@ function setupMenu() {
         {
           label: 'Save Note',
           accelerator: 'CmdOrCtrl+S',
-          click: (_item, focusedWin) => (focusedWin as BrowserWindow)?.webContents?.send('menu:saveNote')
+          click: (_item, focusedWin) => sendToFocusedWindow('menu:saveNote', focusedWin as BrowserWindow)
         },
         ...(isMac ? [{ role: 'close' as const }] : [{ role: 'quit' as const }])
       ]
@@ -287,12 +296,12 @@ function setupMenu() {
         {
           label: 'Find in Note...',
           accelerator: 'CmdOrCtrl+F',
-          click: (_item, focusedWin) => (focusedWin as BrowserWindow)?.webContents?.send('menu:find')
+          click: (_item, focusedWin) => sendToFocusedWindow('menu:find', focusedWin as BrowserWindow)
         },
         {
           label: 'Find and Replace...',
           accelerator: 'CmdOrCtrl+Shift+F',
-          click: (_item, focusedWin) => (focusedWin as BrowserWindow)?.webContents?.send('menu:findReplace')
+          click: (_item, focusedWin) => sendToFocusedWindow('menu:findReplace', focusedWin as BrowserWindow)
         }
       ]
     },
@@ -302,17 +311,17 @@ function setupMenu() {
         {
           label: 'Bold',
           accelerator: 'CmdOrCtrl+B',
-          click: (_item, focusedWin) => (focusedWin as BrowserWindow)?.webContents?.send('format:bold')
+          click: (_item, focusedWin) => sendToFocusedWindow('format:bold', focusedWin as BrowserWindow)
         },
         {
           label: 'Italic',
           accelerator: 'CmdOrCtrl+I',
-          click: (_item, focusedWin) => (focusedWin as BrowserWindow)?.webContents?.send('format:italic')
+          click: (_item, focusedWin) => sendToFocusedWindow('format:italic', focusedWin as BrowserWindow)
         },
         {
           label: 'Toggle Checklist',
           accelerator: 'CmdOrCtrl+Shift+C',
-          click: (_item, focusedWin) => (focusedWin as BrowserWindow)?.webContents?.send('format:task')
+          click: (_item, focusedWin) => sendToFocusedWindow('format:task', focusedWin as BrowserWindow)
         }
       ]
     },
@@ -422,35 +431,43 @@ ipcMain.handle('notes:getPath', (event) => {
 
 ipcMain.handle('notes:setPath', (event, newPath: string) => {
   setWindowRoot(event.sender.id, newPath);
-  const win = BrowserWindow.fromWebContents(event.sender);
-  if (win && !win.isDestroyed()) {
-    startWatchingWindow(event.sender.id, newPath, (data) => {
-      if (!win.isDestroyed()) {
-        win.webContents.send('notes:changed', data);
-      }
-    });
-  }
+  try {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (win && !win.isDestroyed()) {
+      startWatchingWindow(event.sender.id, newPath, (data) => {
+        if (!win.isDestroyed()) {
+          try {
+            win.webContents.send('notes:changed', data);
+          } catch {}
+        }
+      });
+    }
+  } catch {}
   return getWindowRoot(event.sender.id);
 });
 
 ipcMain.handle('dialog:selectFolder', async (event) => {
-  const win = BrowserWindow.fromWebContents(event.sender);
-  const res = win 
-    ? await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] })
-    : await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
-    
-  if (!res.canceled && res.filePaths.length > 0) {
-    const selected = res.filePaths[0];
-    setWindowRoot(event.sender.id, selected);
-    if (win && !win.isDestroyed()) {
-      startWatchingWindow(event.sender.id, selected, (data) => {
-        if (!win.isDestroyed()) {
-          win.webContents.send('notes:changed', data);
-        }
-      });
+  try {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const res = (win && !win.isDestroyed())
+      ? await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] })
+      : await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
+      
+    if (!res.canceled && res.filePaths.length > 0) {
+      const selected = res.filePaths[0];
+      setWindowRoot(event.sender.id, selected);
+      if (win && !win.isDestroyed()) {
+        startWatchingWindow(event.sender.id, selected, (data) => {
+          if (!win.isDestroyed()) {
+            try {
+              win.webContents.send('notes:changed', data);
+            } catch {}
+          }
+        });
+      }
+      return selected;
     }
-    return selected;
-  }
+  } catch {}
   return null;
 });
 
