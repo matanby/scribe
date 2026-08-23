@@ -114,7 +114,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
       }),
       Markdown.configure({
         html: false,
-        tightLists: false,
+        tightLists: true,
         bulletListMarker: '-'
       }),
       BiDiExtension,
