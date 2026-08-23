@@ -50,25 +50,42 @@ export const App: React.FC = () => {
   // Synchronize CSS variables and theme classes
   useEffect(() => {
     const root = document.documentElement;
-    root.style.setProperty('--accent-color', appearance.accentColor);
+    const accent = appearance.accentColor || '#EAB308';
+    root.style.setProperty('--accent-color', accent);
     
     // Find matching palette hover
-    const found = ACCENT_PALETTES.find(p => p.color.toLowerCase() === appearance.accentColor.toLowerCase());
-    if (found) {
-      root.style.setProperty('--accent-hover', found.hover);
-      root.style.setProperty('--card-active', `${found.color}22`);
-      root.style.setProperty('--selection-bg', `${found.color}40`);
-    }
+    const found = ACCENT_PALETTES.find(p => p.color.toLowerCase() === accent.toLowerCase());
+    const hoverColor = found ? found.hover : accent;
+    root.style.setProperty('--accent-hover', hoverColor);
+
+    const hexToRgba = (hex: string, alpha: number) => {
+      const clean = hex.replace('#', '');
+      if (clean.length === 6) {
+        const r = parseInt(clean.substring(0, 2), 16);
+        const g = parseInt(clean.substring(2, 4), 16);
+        const b = parseInt(clean.substring(4, 6), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+      }
+      return hex;
+    };
+
+    root.style.setProperty('--accent-light', hexToRgba(accent, isDark ? 0.22 : 0.14));
+    root.style.setProperty('--accent-border', hexToRgba(accent, isDark ? 0.45 : 0.3));
+    root.style.setProperty('--card-active', hexToRgba(accent, isDark ? 0.22 : 0.14));
+    root.style.setProperty('--selection-bg', hexToRgba(accent, isDark ? 0.35 : 0.25));
 
     // Theme Mode
+    let darkActive = false;
     if (appearance.themeMode === 'dark') {
-      setIsDark(true);
+      darkActive = true;
     } else if (appearance.themeMode === 'light') {
-      setIsDark(false);
+      darkActive = false;
     } else {
-      setIsDark(window.matchMedia('(prefers-color-scheme: dark)').matches);
+      darkActive = window.matchMedia('(prefers-color-scheme: dark)').matches;
     }
-  }, [appearance]);
+    setIsDark(darkActive);
+    root.classList.toggle('dark', darkActive);
+  }, [appearance, isDark]);
 
   // Resizable Panes State (Saved in LocalStorage)
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {

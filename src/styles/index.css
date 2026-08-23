@@ -17,9 +17,9 @@
     --accent-hover: #CC8E0A;
     --accent-light: rgba(229, 160, 13, 0.12);
     --accent-border: rgba(229, 160, 13, 0.3);
-    --card-active: rgba(229, 160, 13, 0.14);
+    --card-active: rgba(234, 179, 8, 0.14);
     --card-hover: rgba(0, 0, 0, 0.03);
-    --selection-bg: rgba(229, 160, 13, 0.25);
+    --selection-bg: rgba(234, 179, 8, 0.25);
   }
 
   .dark {
@@ -32,13 +32,7 @@
     --text-primary: #F2F2F7;
     --text-secondary: #98989D;
     --text-tertiary: #636366;
-    --accent-color: #F5B83D;
-    --accent-hover: #E5A00D;
-    --accent-light: rgba(245, 184, 61, 0.18);
-    --accent-border: rgba(245, 184, 61, 0.4);
-    --card-active: rgba(245, 184, 61, 0.18);
     --card-hover: rgba(255, 255, 255, 0.04);
-    --selection-bg: rgba(245, 184, 61, 0.32);
   }
 
   ::selection {
