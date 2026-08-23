@@ -4,7 +4,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 const RTL_REGEX = /[\u0590-\u05FF\uFB1D-\uFB4F\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
 const LTR_REGEX = /[a-zA-Z\u00C0-\u024F\u1E00-\u1EFF]/;
 
-function getDirection(text: string): 'rtl' | 'ltr' | 'auto' {
+export function getDirection(text: string): 'rtl' | 'ltr' | 'auto' {
   if (!text || !text.trim()) return 'auto';
   for (const char of text) {
     if (RTL_REGEX.test(char)) return 'rtl';
@@ -51,62 +51,42 @@ export const BiDiExtension = Extension.create({
               };
             },
             parseHTML: (element) => element.getAttribute('dir') || 'auto'
-          },
-          isManualDir: {
-            default: false,
-            rendered: false
           }
         }
       }
     ];
   },
 
-  addCommands() {
-    return {
-      setTextDirection: (dir) => ({ tr, state, dispatch }) => {
-        const { selection } = state;
-        const { from, to } = selection;
+  onCreate() {
+    // Initial pass to set dir on all initial nodes right on load
+    const { state, view } = this.editor;
+    const tr = state.tr;
+    let modified = false;
 
-        state.doc.nodesBetween(from, to, (node, pos) => {
-          if (node.isBlock) {
-            tr.setNodeMarkup(pos, undefined, {
-              ...node.attrs,
-              dir,
-              isManualDir: true
-            });
-          }
-        });
+    state.doc.descendants((node, pos) => {
+      if (
+        node.isBlock &&
+        ['paragraph', 'heading', 'listItem', 'taskItem', 'blockquote'].includes(node.type.name)
+      ) {
+        const text = node.textContent;
+        if (!text || !text.trim()) return;
 
-        if (dispatch) dispatch(tr);
-        return true;
-      },
-      toggleTextDirection: () => ({ tr, state, dispatch }) => {
-        const { selection } = state;
-        const { from, to } = selection;
-
-        state.doc.nodesBetween(from, to, (node, pos) => {
-          if (node.isBlock) {
-            const currentDir = node.attrs.dir === 'rtl' ? 'rtl' : 'ltr';
-            const newDir = currentDir === 'rtl' ? 'ltr' : 'rtl';
-            tr.setNodeMarkup(pos, undefined, {
-              ...node.attrs,
-              dir: newDir,
-              isManualDir: true
-            });
-          }
-        });
-
-        if (dispatch) dispatch(tr);
-        return true;
+        const detectedDir = getDirection(text);
+        if (detectedDir !== 'auto' && node.attrs.dir !== detectedDir) {
+          tr.setNodeMarkup(pos, undefined, {
+            ...node.attrs,
+            dir: detectedDir
+          });
+          modified = true;
+        }
       }
-    };
-  },
+    });
 
-  addKeyboardShortcuts() {
-    return {
-      'Mod-Shift-x': () => this.editor.commands.toggleTextDirection(),
-      'Mod-Shift-X': () => this.editor.commands.toggleTextDirection()
-    };
+    if (modified) {
+      tr.setMeta('addToHistory', false);
+      tr.setMeta('preventUpdate', true);
+      view.dispatch(tr);
+    }
   },
 
   addProseMirrorPlugins() {
@@ -127,9 +107,6 @@ export const BiDiExtension = Extension.create({
             ) {
               const text = node.textContent;
               if (!text || !text.trim()) return;
-
-              // If user explicitly set direction manually, preserve user choice
-              if (node.attrs.isManualDir) return;
 
               const detectedDir = getDirection(text);
               const currentDir = node.attrs.dir || 'auto';

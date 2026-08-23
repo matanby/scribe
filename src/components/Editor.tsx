@@ -30,26 +30,11 @@ interface EditorProps {
 }
 
 const cleanMarkdownOutput = (raw: string): string => {
-  let unescaped = raw
+  return raw
     .replace(/&lt;br&gt;/g, '<br>')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&');
-
-  const lines = unescaped.split('\n');
-  const result: string[] = [];
-  for (let i = 0; i < lines.length; i++) {
-    result.push(lines[i]);
-    if (i + 2 < lines.length) {
-      const currIsList = /^\s*([-*+]|\d+\.)\s+/.test(lines[i]);
-      const nextIsEmpty = lines[i + 1].trim() === '';
-      const afterIsList = /^\s*([-*+]|\d+\.)\s+/.test(lines[i + 2]);
-      if (currIsList && nextIsEmpty && afterIsList) {
-        i++; // skip loose blank line between list items
-      }
-    }
-  }
-  return result.join('\n');
 };
 
 interface TipTapNoteEditorProps {
@@ -129,7 +114,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
       }),
       Markdown.configure({
         html: false,
-        tightLists: true,
+        tightLists: false,
         bulletListMarker: '-'
       }),
       BiDiExtension,

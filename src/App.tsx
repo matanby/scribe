@@ -50,6 +50,7 @@ export const App: React.FC = () => {
   selectedNoteRef.current = selectedNote;
   const isSavingRef = useRef<boolean>(isSaving);
   isSavingRef.current = isSaving;
+  const lastLocalSaveTimeRef = useRef<number>(0);
 
   const isDraggingSidebar = useRef(false);
   const isDraggingNoteList = useRef(false);
@@ -186,14 +187,16 @@ export const App: React.FC = () => {
     const unsubscribe = window.scribeAPI.onNotesChanged(async (data) => {
       await loadTree();
 
-      // If active note was modified externally and user is not currently auto-saving
+      const now = Date.now();
+      // Only reload active note if modification came from an external app (>1500ms after last local save)
       if (
         data?.filePath && 
         selectedNoteRef.current && 
         selectedNoteRef.current.filePath === data.filePath && 
-        !isSavingRef.current
+        !isSavingRef.current &&
+        now - lastLocalSaveTimeRef.current > 1500
       ) {
-        setExternalReloadTrigger(Date.now());
+        setExternalReloadTrigger(now);
       }
     });
 
@@ -269,6 +272,7 @@ export const App: React.FC = () => {
 
   // Save Note Content
   const handleSaveNote = useCallback(async (filePath: string, markdown: string, frontmatter?: Record<string, any>) => {
+    lastLocalSaveTimeRef.current = Date.now();
     await window.scribeAPI.saveNote({ filePath, markdown, frontmatter });
     setTree(prev => {
       if (!prev) return prev;

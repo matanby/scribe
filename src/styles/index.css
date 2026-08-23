@@ -121,6 +121,8 @@
   margin-top: 1.5rem;
   margin-bottom: 0.5rem;
   color: var(--text-primary);
+  unicode-bidi: plaintext;
+  text-align: start;
 }
 
 .tiptap h2 {
@@ -131,6 +133,8 @@
   margin-top: 1.25rem;
   margin-bottom: 0.4rem;
   color: var(--text-primary);
+  unicode-bidi: plaintext;
+  text-align: start;
 }
 
 .tiptap h3 {
@@ -140,6 +144,8 @@
   margin-top: 1rem;
   margin-bottom: 0.35rem;
   color: var(--text-primary);
+  unicode-bidi: plaintext;
+  text-align: start;
 }
 
 /* Paragraphs */
@@ -148,6 +154,8 @@
   line-height: 1.78; /* Optimal line height for Hebrew & English */
   margin-bottom: 0.65rem;
   color: var(--text-primary);
+  unicode-bidi: plaintext;
+  text-align: start;
 }
 
 /* =========================================================
