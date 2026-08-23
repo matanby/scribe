@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import Fuse, { FuseResultMatch } from 'fuse.js';
 import { NoteMeta } from '../types';
-import { Search, FileText, Folder, Calendar, ArrowRight, CornerDownLeft } from 'lucide-react';
+import { Search, FileText, Folder, CornerDownLeft, Sparkles } from 'lucide-react';
 
 interface QuickSwitcherProps {
   isOpen: boolean;
@@ -8,6 +9,12 @@ interface QuickSwitcherProps {
   notes: NoteMeta[];
   onSelectNote: (note: NoteMeta) => void;
   onNewNote: () => void;
+}
+
+interface FilteredItem {
+  note: NoteMeta;
+  titleMatches?: readonly [number, number][];
+  snippetMatches?: readonly [number, number][];
 }
 
 export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
@@ -22,16 +29,49 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
 
-  // Filter notes
-  const filteredNotes = notes.filter(n => {
-    if (!query.trim()) return true;
-    const q = query.toLowerCase();
-    return (
-      n.title.toLowerCase().includes(q) ||
-      n.folder.toLowerCase().includes(q) ||
-      n.snippet.toLowerCase().includes(q)
-    );
-  }).slice(0, 20);
+  // Configure Fuse.js with balanced fuzzy search parameters
+  const fuse = useMemo(() => {
+    return new Fuse(notes, {
+      keys: [
+        { name: 'title', weight: 0.7 },
+        { name: 'folder', weight: 0.2 },
+        { name: 'snippet', weight: 0.1 }
+      ],
+      threshold: 0.45,
+      distance: 100,
+      ignoreLocation: true,
+      includeMatches: true,
+      minMatchCharLength: 1,
+      findAllMatches: true
+    });
+  }, [notes]);
+
+  // Compute fuzzy matches
+  const filteredItems: FilteredItem[] = useMemo(() => {
+    if (!query.trim()) {
+      return notes.slice(0, 25).map(note => ({ note }));
+    }
+
+    const results = fuse.search(query.trim());
+    return results.slice(0, 25).map(result => {
+      let titleMatches: readonly [number, number][] | undefined;
+      let snippetMatches: readonly [number, number][] | undefined;
+
+      result.matches?.forEach((match: FuseResultMatch) => {
+        if (match.key === 'title') {
+          titleMatches = match.indices;
+        } else if (match.key === 'snippet') {
+          snippetMatches = match.indices;
+        }
+      });
+
+      return {
+        note: result.item,
+        titleMatches,
+        snippetMatches
+      };
+    });
+  }, [query, fuse, notes]);
 
   useEffect(() => {
     if (isOpen) {
@@ -60,14 +100,14 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       onClose();
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setSelectedIndex(prev => (prev + 1) % (filteredNotes.length || 1));
+      setSelectedIndex(prev => (prev + 1) % (filteredItems.length || 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setSelectedIndex(prev => (prev - 1 + filteredNotes.length) % (filteredNotes.length || 1));
+      setSelectedIndex(prev => (prev - 1 + filteredItems.length) % (filteredItems.length || 1));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (filteredNotes.length > 0) {
-        onSelectNote(filteredNotes[selectedIndex]);
+      if (filteredItems.length > 0) {
+        onSelectNote(filteredItems[selectedIndex].note);
         onClose();
       } else if (query.trim()) {
         onNewNote();
@@ -81,12 +121,53 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
   };
 
+  // Helper to visually highlight matched character ranges
+  const renderHighlighted = (text: string, matches?: readonly [number, number][]) => {
+    if (!matches || matches.length === 0) return text;
+
+    // Merge overlapping/adjacent ranges
+    const merged: [number, number][] = [];
+    const sorted = [...matches].sort((a, b) => a[0] - b[0]);
+
+    for (const [start, end] of sorted) {
+      if (merged.length > 0 && start <= merged[merged.length - 1][1] + 1) {
+        merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], end);
+      } else {
+        merged.push([start, end]);
+      }
+    }
+
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+
+    merged.forEach(([start, end], i) => {
+      if (start > lastIndex) {
+        parts.push(text.slice(lastIndex, start));
+      }
+      parts.push(
+        <span 
+          key={i} 
+          className="text-[var(--accent-color)] font-bold bg-[var(--accent-color)]/15 px-0.5 rounded-xs"
+        >
+          {text.slice(start, end + 1)}
+        </span>
+      );
+      lastIndex = end + 1;
+    });
+
+    if (lastIndex < text.length) {
+      parts.push(text.slice(lastIndex));
+    }
+
+    return parts;
+  };
+
   if (!isOpen) return null;
 
   return (
     <div 
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-start justify-center pt-[14vh] bg-black/40 dark:bg-black/60 backdrop-blur-md animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-start justify-center pt-[14vh] bg-black/40 dark:bg-black/60 backdrop-blur-md animate-in fade-in duration-150 p-4"
     >
       <div 
         onClick={(e) => e.stopPropagation()}
@@ -101,18 +182,18 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Quick Switcher (type to search notes, folders, text)..."
+            placeholder="Quick Switcher (⌘P) — type to fuzzy search notes..."
             className="w-full bg-transparent text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] outline-none font-medium"
           />
           <span className="text-[10px] font-mono text-[var(--text-tertiary)] border border-[var(--border-color)] px-1.5 py-0.5 rounded-md shrink-0">
-            esc to close
+            esc
           </span>
         </div>
 
         {/* Results List */}
         <div className="overflow-y-auto p-2 space-y-1">
-          {filteredNotes.length > 0 ? (
-            filteredNotes.map((note, index) => {
+          {filteredItems.length > 0 ? (
+            filteredItems.map(({ note, titleMatches, snippetMatches }, index) => {
               const isSelected = index === selectedIndex;
               return (
                 <div
@@ -136,8 +217,8 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                     />
                     <div className="flex flex-col min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-[var(--text-primary)] truncate">
-                          {note.title}
+                        <span className="text-xs font-semibold text-[var(--text-primary)] truncate" dir="auto">
+                          {renderHighlighted(note.title, titleMatches)}
                         </span>
                         {note.folder && note.folder !== '/' && (
                           <span className="flex items-center gap-1 text-[10px] text-[var(--text-secondary)] opacity-70 truncate bg-black/5 dark:bg-white/5 px-1.5 py-0.5 rounded">
@@ -147,8 +228,8 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
                         )}
                       </div>
                       {note.snippet && (
-                        <p className="text-[11px] text-[var(--text-secondary)] opacity-70 truncate mt-0.5">
-                          {note.snippet}
+                        <p className="text-[11px] text-[var(--text-secondary)] opacity-70 truncate mt-0.5" dir="auto">
+                          {renderHighlighted(note.snippet, snippetMatches)}
                         </p>
                       )}
                     </div>

@@ -30,6 +30,7 @@
     "@tiptap/starter-kit": "^2.11.5",
     "chokidar": "^4.0.3",
     "clsx": "^2.1.1",
+    "fuse.js": "^7.5.0",
     "gray-matter": "^4.0.3",
     "lowlight": "^3.3.0",
     "lucide-react": "^1.16.0",
