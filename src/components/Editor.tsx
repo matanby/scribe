@@ -6,7 +6,6 @@ import { createLowlight, common } from 'lowlight';
 import { CodeBlockComponent } from './CodeBlockComponent';
 import TaskList from '@tiptap/extension-task-list';
 import { CustomTaskItem } from '../extensions/CustomTaskItem';
-import { CustomParagraph } from '../extensions/CustomParagraph';
 import Link from '@tiptap/extension-link';
 import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
@@ -36,14 +35,6 @@ interface EditorProps {
   setLastSavedText: (text: string) => void;
   externalReloadTrigger?: number;
 }
-
-const cleanMarkdownOutput = (raw: string): string => {
-  return raw
-    .replace(/&lt;br&gt;/g, '<br>')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&');
-};
 
 interface TipTapNoteEditorProps {
   note: NoteMeta;
@@ -109,7 +100,6 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
     content: initialMarkdown,
     extensions: [
       StarterKit.configure({
-        paragraph: false,
         codeBlock: false,
         heading: {
           levels: [1, 2, 3]
@@ -123,7 +113,6 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
           keepAttributes: false
         }
       }),
-      CustomParagraph,
       CodeBlockLowlight.extend({
         addNodeView() {
           return ReactNodeViewRenderer(CodeBlockComponent);
@@ -259,8 +248,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
       }
 
       saveTimeoutRef.current = setTimeout(async () => {
-        const rawMarkdown = (editor.storage as any).markdown.getMarkdown();
-        const markdown = cleanMarkdownOutput(rawMarkdown);
+        const markdown = (editor.storage as any).markdown.getMarkdown();
 
         // Safety guard: prevent accidental wipeout
         if (!markdown.trim() && note.snippet && note.title !== 'Untitled Note') {
@@ -327,8 +315,10 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
         showReplaceInitial={showReplaceMode}
         onClose={() => setIsFindOpen(false)} 
       />
-      <BubbleMenu editor={editor} />
-      <SlashMenu editor={editor} />
+      <div key="tiptap-floating-menus" className="pointer-events-none">
+        <BubbleMenu editor={editor} />
+        <SlashMenu editor={editor} />
+      </div>
 
       <div className="max-w-[720px] w-full mx-auto px-6 pt-7 pb-2">
         {/* Apple Notes Document Metadata Header */}

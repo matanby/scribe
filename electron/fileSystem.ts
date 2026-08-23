@@ -87,6 +87,8 @@ export function setNotesRoot(newPath: string, webContentsId?: number) {
 function cleanMarkdownSnippet(raw: string): string {
   return raw
     .replace(/^---[\s\S]*?---/, '') // remove frontmatter
+    .replace(/<br\s*\/?>/gi, ' ')   // remove <br>
+    .replace(/<[^>]*>/g, '')        // remove html
     .replace(/#+\s+/g, '')          // remove headings
     .replace(/[-*+]\s+\[[ x]\]\s+/g, '') // remove task checkboxes
     .replace(/[-*+]\s+/g, '')       // remove list bullets
