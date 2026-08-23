@@ -156,7 +156,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
         }
       }),
       Markdown.configure({
-        html: true,
+        html: false,
         tightLists: true,
         bulletListMarker: '-'
       }),

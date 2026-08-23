@@ -88,6 +88,19 @@ export const CustomTaskItem = TaskItem.extend({
     };
   },
 
+  addStorage() {
+    return {
+      markdown: {
+        serialize(state: any, node: any) {
+          state.write(`[${node.attrs.checked ? 'x' : ' '}] `);
+          state.renderInline(node);
+          state.closeBlock(node);
+        },
+        parse: {}
+      }
+    };
+  },
+
   addKeyboardShortcuts() {
     return {
       ...this.parent?.(),
