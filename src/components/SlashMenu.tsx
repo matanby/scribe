@@ -12,7 +12,8 @@ import {
   Quote, 
   Minus,
   Sparkles,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Sigma
 } from 'lucide-react';
 
 interface SlashMenuProps {
@@ -162,9 +163,23 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ editor }) => {
     {
       id: 'divider',
       title: 'Divider',
-      subtitle: 'Visual dividing line',
+      subtitle: 'Visual dividing line (---)',
       icon: <Minus size={15} className="text-gray-400" />,
       action: (ed) => ed.chain().focus().setHorizontalRule().run()
+    },
+    {
+      id: 'math-block',
+      title: 'Math Block (LaTeX)',
+      subtitle: 'Centered $$...$$ formula',
+      icon: <Sigma size={15} className="text-indigo-500" />,
+      action: (ed) => ed.chain().focus().insertContent('$$\n\\int_{-\\infty}^{\\infty} e^{-x^2} dx = \\sqrt{\\pi}\n$$\n').run()
+    },
+    {
+      id: 'math-inline',
+      title: 'Inline Math',
+      subtitle: 'Inline $...$ formula',
+      icon: <Sigma size={15} className="text-indigo-400" />,
+      action: (ed) => ed.chain().focus().insertContent('$E = mc^2$ ').run()
     }
   ];
 

@@ -1,7 +1,70 @@
 import TaskItem from '@tiptap/extension-task-item';
 import { getDirection } from './BiDiExtension';
 
+declare module '@tiptap/extension-task-item' {
+  interface TaskItemOptions {
+    autoSort?: boolean;
+  }
+}
+
+function reorderTasksInList(editor: any, pos: number) {
+  try {
+    const tr = editor.state.tr;
+    const $pos = tr.doc.resolve(pos);
+    let taskListDepth = -1;
+    for (let d = $pos.depth; d > 0; d--) {
+      if ($pos.node(d).type.name === 'taskList') {
+        taskListDepth = d;
+        break;
+      }
+    }
+    if (taskListDepth === -1) return;
+
+    const taskListPos = $pos.before(taskListDepth);
+    const taskListNode = $pos.node(taskListDepth);
+
+    const uncheckedItems: any[] = [];
+    const checkedItems: any[] = [];
+
+    taskListNode.forEach((childNode: any) => {
+      if (childNode.attrs.checked) {
+        checkedItems.push(childNode);
+      } else {
+        uncheckedItems.push(childNode);
+      }
+    });
+
+    // If all are checked or none are checked, no reorder needed
+    if (uncheckedItems.length === 0 || checkedItems.length === 0) return;
+
+    const sortedChildren = [...uncheckedItems, ...checkedItems];
+    let changed = false;
+    taskListNode.forEach((childNode: any, offset: number, index: number) => {
+      if (childNode !== sortedChildren[index]) {
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      const newTaskList = taskListNode.type.create(taskListNode.attrs, sortedChildren);
+      tr.replaceWith(taskListPos, taskListPos + taskListNode.nodeSize, newTaskList);
+      editor.view.dispatch(tr);
+    }
+  } catch (err) {
+    console.error('Error auto-sorting tasks:', err);
+  }
+}
+
 export const CustomTaskItem = TaskItem.extend({
+  addOptions() {
+    return {
+      ...this.parent?.(),
+      nested: false,
+      autoSort: true,
+      HTMLAttributes: {}
+    };
+  },
+
   addNodeView() {
     return ({ node, HTMLAttributes, getPos, editor }) => {
       const listItem = document.createElement('li');
@@ -38,6 +101,19 @@ export const CustomTaskItem = TaskItem.extend({
                 checked
               });
               editor.view.dispatch(tr);
+
+              // Auto-sort tasks on check and uncheck (if enabled in storage or options)
+              const autoSortEnabled = (editor.storage?.taskItem as any)?.autoSort ?? (this.options.autoSort !== false);
+              if (autoSortEnabled) {
+                setTimeout(() => {
+                  if (typeof getPos === 'function') {
+                    const currentPos = getPos();
+                    if (typeof currentPos === 'number') {
+                      reorderTasksInList(editor, currentPos);
+                    }
+                  }
+                }, 200);
+              }
             }
           }
         }
@@ -90,6 +166,7 @@ export const CustomTaskItem = TaskItem.extend({
 
   addStorage() {
     return {
+      autoSort: true,
       markdown: {
         serialize(state: any, node: any) {
           const check = node.attrs.checked ? '[x]' : '[ ]';

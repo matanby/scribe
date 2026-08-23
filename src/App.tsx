@@ -35,7 +35,9 @@ export const App: React.FC = () => {
       accentColor: '#EAB308',
       fontFamily: 'sans',
       fontSize: 'normal',
-      themeMode: 'system'
+      themeMode: 'system',
+      smartTypography: true,
+      autoSortTasks: true
     };
   });
 
@@ -683,11 +685,11 @@ export const App: React.FC = () => {
       });
     }
 
-    if (searchQuery.trim()) {
+    if (searchQuery && typeof searchQuery === 'string' && searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       list = list.filter(n => 
-        n.title.toLowerCase().includes(q) || 
-        n.snippet.toLowerCase().includes(q)
+        (n.title || '').toLowerCase().includes(q) || 
+        (n.snippet || '').toLowerCase().includes(q)
       );
     }
 
@@ -825,6 +827,9 @@ export const App: React.FC = () => {
             setIsSaving={setIsSaving}
             setLastSavedText={setLastSavedText}
             externalReloadTrigger={externalReloadTrigger}
+            searchQuery={searchQuery}
+            smartTypography={appearance.smartTypography !== false}
+            autoSortTasks={appearance.autoSortTasks !== false}
           />
         </div>
       </main>

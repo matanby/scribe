@@ -15,12 +15,14 @@ import TableHeader from '@tiptap/extension-table-header';
 import Highlight from '@tiptap/extension-highlight';
 import Underline from '@tiptap/extension-underline';
 import Image from '@tiptap/extension-image';
+import Typography from '@tiptap/extension-typography';
 import { Markdown } from 'tiptap-markdown';
 import { BiDiExtension } from '../extensions/BiDiExtension';
 import { CleanBackspaceExtension } from '../extensions/CleanBackspaceExtension';
 import { SearchReplaceExtension } from '../extensions/SearchReplaceExtension';
 import { CalloutExtension } from '../extensions/CalloutExtension';
 import { CollapsibleHeadingsExtension } from '../extensions/CollapsibleHeadingsExtension';
+import { MathExtension } from '../extensions/MathExtension';
 import { BubbleMenu } from './BubbleMenu';
 import { FormattingBar } from './FormattingBar';
 import { TableControls } from './TableControls';
@@ -40,6 +42,9 @@ interface EditorProps {
   setIsSaving: (saving: boolean) => void;
   setLastSavedText: (text: string) => void;
   externalReloadTrigger?: number;
+  searchQuery?: string;
+  smartTypography?: boolean;
+  autoSortTasks?: boolean;
 }
 
 interface TipTapNoteEditorProps {
@@ -51,6 +56,9 @@ interface TipTapNoteEditorProps {
   onSelectFolder?: (folderPath: string) => void;
   setIsSaving: (saving: boolean) => void;
   setLastSavedText: (text: string) => void;
+  searchQuery?: string;
+  smartTypography?: boolean;
+  autoSortTasks?: boolean;
 }
 
 const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
@@ -61,38 +69,40 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   onRename,
   onSelectFolder,
   setIsSaving,
-  setLastSavedText
+  setLastSavedText,
+  searchQuery,
+  smartTypography = true,
+  autoSortTasks = true
 }) => {
   const [title, setTitle] = useState(note.title);
   const [frontmatter, setFrontmatter] = useState(initialFrontmatter);
   const [isFindOpen, setIsFindOpen] = useState(false);
   const [showReplaceMode, setShowReplaceMode] = useState(false);
+  const [findTrigger, setFindTrigger] = useState(0);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const titleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const openFind = (replace: boolean) => {
+    setShowReplaceMode(replace);
+    setIsFindOpen(true);
+    setFindTrigger(prev => prev + 1);
+  };
 
   // Keyboard shortcut listeners for Find (⌘F) and Find/Replace (⌘⇧F)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
         e.preventDefault();
-        if (e.shiftKey || e.altKey) {
-          setShowReplaceMode(true);
-          setIsFindOpen(true);
-        } else {
-          setShowReplaceMode(false);
-          setIsFindOpen(true);
-        }
+        openFind(e.shiftKey || e.altKey);
       }
     };
 
     const unsubscribeMenuFind = window.scribeAPI.onMenuEvent?.('menu:find', () => {
-      setShowReplaceMode(false);
-      setIsFindOpen(true);
+      openFind(false);
     });
 
     const unsubscribeMenuFindReplace = window.scribeAPI.onMenuEvent?.('menu:findReplace', () => {
-      setShowReplaceMode(true);
-      setIsFindOpen(true);
+      openFind(true);
     });
 
     window.addEventListener('keydown', handleKeyDown);
@@ -170,6 +180,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
       }),
       CustomTaskItem.configure({
         nested: true,
+        autoSort: autoSortTasks !== false,
         HTMLAttributes: {
           class: 'task-item'
         }
@@ -213,6 +224,8 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
         multicolor: true
       }),
       Underline,
+      ...(smartTypography ? [Typography] : []),
+      MathExtension,
       Image.configure({
         inline: true,
         allowBase64: true,
@@ -363,8 +376,25 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
     };
   }, []);
 
+  // Sync in-document search highlight when global search query is active
+  useEffect(() => {
+    if (!editor) return;
+    if (searchQuery && searchQuery.trim()) {
+      editor.commands.setSearchTerm(searchQuery.trim());
+    } else if (!isFindOpen) {
+      editor.commands.clearSearch();
+    }
+  }, [editor, searchQuery, isFindOpen]);
+
+  // Sync autoSort checklist setting dynamically without remounting editor
+  useEffect(() => {
+    if (editor && (editor.storage as any)?.taskItem) {
+      (editor.storage as any).taskItem.autoSort = autoSortTasks;
+    }
+  }, [editor, autoSortTasks]);
+
   const text = editor ? editor.getText() : '';
-  const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
+  const wordCount = (text || '').trim() ? (text || '').trim().split(/\s+/).length : 0;
 
   const modifiedDate = new Date(note.modifiedAt).toLocaleDateString([], {
     year: 'numeric',
@@ -383,6 +413,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
         editor={editor} 
         isOpen={isFindOpen} 
         showReplaceInitial={showReplaceMode}
+        findTrigger={findTrigger}
         onClose={() => setIsFindOpen(false)} 
       />
 
@@ -462,7 +493,10 @@ export const Editor: React.FC<EditorProps> = ({
   onSelectFolder,
   setIsSaving,
   setLastSavedText,
-  externalReloadTrigger
+  externalReloadTrigger,
+  searchQuery,
+  smartTypography = true,
+  autoSortTasks = true
 }) => {
   const [loadedData, setLoadedData] = useState<{
     filePath: string;
@@ -529,6 +563,9 @@ export const Editor: React.FC<EditorProps> = ({
       onSelectFolder={onSelectFolder}
       setIsSaving={setIsSaving}
       setLastSavedText={setLastSavedText}
+      searchQuery={searchQuery}
+      smartTypography={smartTypography}
+      autoSortTasks={autoSortTasks}
     />
   );
 };

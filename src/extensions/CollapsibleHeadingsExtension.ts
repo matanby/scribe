@@ -13,8 +13,8 @@ interface CollapsiblePluginState {
 }
 
 function getHeadingKey(doc: any, pos: number, node: any): string {
-  const text = node.textContent.trim().slice(0, 40);
-  return `${node.attrs.level}_${text}_${pos}`;
+  const text = (node?.textContent || '').trim().slice(0, 40);
+  return `${node?.attrs?.level || 1}_${text}_${pos}`;
 }
 
 export const CollapsibleHeadingsExtension = Extension.create<CollapsibleHeadingsOptions>({

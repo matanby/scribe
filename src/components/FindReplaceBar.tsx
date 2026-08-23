@@ -12,6 +12,7 @@ interface FindReplaceBarProps {
   editor: Editor | null;
   isOpen: boolean;
   showReplaceInitial?: boolean;
+  findTrigger?: number;
   onClose: () => void;
 }
 
@@ -19,6 +20,7 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
   editor,
   isOpen,
   showReplaceInitial = false,
+  findTrigger,
   onClose
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -34,24 +36,39 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
 
   useEffect(() => {
     if (isOpen) {
+      let currentSearch = searchTerm;
+
+      // When text is selected in the document, populate the search bar with it
+      if (editor && !editor.isDestroyed) {
+        const { from, to } = editor.state.selection;
+        if (from < to) {
+          const selectedText = editor.state.doc.textBetween(from, to, ' ');
+          if (selectedText && selectedText.trim()) {
+            currentSearch = selectedText.trim();
+            setSearchTerm(currentSearch);
+            editor.commands.setSearchTerm(currentSearch);
+          }
+        }
+      }
+
       if (showReplaceInitial) {
         setShowReplace(true);
       }
       setTimeout(() => {
-        if (showReplaceInitial && searchTerm) {
+        if (showReplaceInitial && currentSearch) {
           replaceInputRef.current?.focus();
           replaceInputRef.current?.select();
         } else {
           inputRef.current?.focus();
           inputRef.current?.select();
         }
-      }, 50);
+      }, 40);
     } else {
       if (editor && !editor.isDestroyed) {
         editor.commands.clearSearch();
       }
     }
-  }, [isOpen, showReplaceInitial]);
+  }, [isOpen, showReplaceInitial, findTrigger]);
 
   const handleSearchChange = (val: string) => {
     setSearchTerm(val);

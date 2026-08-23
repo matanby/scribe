@@ -26,7 +26,9 @@ import {
   Share,
   Printer,
   Download,
-  FileText
+  FileText,
+  Minus,
+  Sigma
 } from 'lucide-react';
 
 interface FormattingBarProps {
@@ -396,6 +398,22 @@ export const FormattingBar: React.FC<FormattingBarProps> = ({ editor }) => {
           title="Insert Link (⌘K)"
         >
           <LinkIcon size={13.5} />
+        </button>
+
+        <button
+          onClick={() => editor.chain().focus().setHorizontalRule().run()}
+          className="p-1.5 rounded-md text-xs text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-all"
+          title="Insert Divider Line (---)"
+        >
+          <Minus size={13.5} />
+        </button>
+
+        <button
+          onClick={() => editor.chain().focus().insertContent('$E = mc^2$ ').run()}
+          className="p-1.5 rounded-md text-xs text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-all"
+          title="Insert LaTeX Math Formula ($...$)"
+        >
+          <Sigma size={13.5} />
         </button>
       </div>
 

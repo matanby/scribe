@@ -54,11 +54,12 @@ export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorag
       setSearchTerm:
         (searchTerm: string) =>
         ({ tr, dispatch }) => {
-          this.storage.searchTerm = searchTerm;
+          const term = searchTerm || '';
+          this.storage.searchTerm = term;
           this.storage.currentIndex = 0;
           if (dispatch) {
-            tr.setMeta(searchPluginKey, { searchTerm });
-            if (searchTerm.trim()) {
+            tr.setMeta(searchPluginKey, { searchTerm: term });
+            if (term.trim()) {
               scrollToActiveMatch();
             }
           }
@@ -68,7 +69,7 @@ export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorag
       setReplaceTerm:
         (replaceTerm: string) =>
         () => {
-          this.storage.replaceTerm = replaceTerm;
+          this.storage.replaceTerm = replaceTerm || '';
           return true;
         },
 
@@ -79,7 +80,8 @@ export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorag
           this.storage.currentIndex = 0;
           if (dispatch) {
             tr.setMeta(searchPluginKey, { caseSensitive });
-            if (this.storage.searchTerm.trim()) {
+            const currentTerm = this.storage.searchTerm || '';
+            if (currentTerm.trim()) {
               scrollToActiveMatch();
             }
           }
@@ -182,14 +184,15 @@ export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorag
             return DecorationSet.empty;
           },
           apply(tr, oldDecoSet, oldState, newState) {
-            const { searchTerm, caseSensitive } = extension.storage;
-            if (!searchTerm || !searchTerm.trim()) {
-              extension.storage.results = [];
+            const rawTerm = extension.storage?.searchTerm || '';
+            const caseSensitive = !!extension.storage?.caseSensitive;
+            if (!rawTerm || !rawTerm.trim()) {
+              if (extension.storage) extension.storage.results = [];
               return DecorationSet.empty;
             }
 
             const results: { from: number; to: number }[] = [];
-            const term = caseSensitive ? searchTerm : searchTerm.toLowerCase();
+            const term = caseSensitive ? rawTerm : rawTerm.toLowerCase();
 
             newState.doc.descendants((node, pos) => {
               if (node.isText && node.text) {

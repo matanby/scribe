@@ -899,3 +899,60 @@ u,
   scroll-margin-bottom: 110px;
 }
 
+/* LaTeX & Math Formulas */
+.math-inline {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  padding: 0.1rem 0.35rem;
+  border-radius: 6px;
+  background-color: rgba(0, 0, 0, 0.035);
+  font-size: 0.98em;
+}
+
+.dark .math-inline {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+
+.math-block {
+  margin: 1.5rem 0;
+  padding: 1.25rem 1rem;
+  border-radius: 14px;
+  background-color: rgba(0, 0, 0, 0.02);
+  border: 1px solid var(--border-color);
+  text-align: center;
+  overflow-x: auto;
+}
+
+.dark .math-block {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+/* Aesthetic Dividers */
+.tiptap hr {
+  border: none;
+  height: 1px;
+  background: var(--border-color);
+  margin: 2rem 0;
+  border-radius: 9999px;
+  opacity: 0.8;
+}
+
+/* Live Math Preview Source Hiding & Editing */
+.math-hidden-source {
+  font-size: 0 !important;
+  line-height: 0 !important;
+  opacity: 0 !important;
+  display: inline-block !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+  user-select: none !important;
+}
+
+.math-editing-inline,
+.math-editing-block {
+  transition: all 0.15s ease-in-out;
+}
+

@@ -7,6 +7,8 @@ export interface AppearanceSettings {
   fontFamily: 'sans' | 'serif' | 'mono';
   fontSize: 'compact' | 'normal' | 'large';
   themeMode: 'system' | 'light' | 'dark';
+  smartTypography?: boolean;
+  autoSortTasks?: boolean;
 }
 
 export const ACCENT_PALETTES = [
@@ -182,6 +184,62 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
                 <span>Dark</span>
               </button>
             </div>
+          </div>
+
+          {/* Smart Typography Replacements Toggle */}
+          <div className="pt-3 border-t border-[var(--border-color)] flex items-center justify-between">
+            <div className="pr-4">
+              <div className="text-xs font-semibold text-[var(--text-primary)]">
+                Smart Typography
+              </div>
+              <div className="text-[11px] text-[var(--text-secondary)] mt-0.5 leading-snug">
+                Auto-convert quotes (“ ”), dashes (—), arrows (→), and fractions (½)
+              </div>
+            </div>
+
+            <button
+              type="button"
+              role="switch"
+              aria-checked={settings.smartTypography !== false}
+              onClick={() => onUpdateSettings({ smartTypography: settings.smartTypography === false ? true : false })}
+              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                settings.smartTypography !== false ? 'bg-[var(--accent-color)]' : 'bg-black/20 dark:bg-white/20'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                  settings.smartTypography !== false ? 'translate-x-4' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Auto-Sort Checklists Toggle */}
+          <div className="pt-3 border-t border-[var(--border-color)] flex items-center justify-between">
+            <div className="pr-4">
+              <div className="text-xs font-semibold text-[var(--text-primary)]">
+                Auto-Sort Checklists
+              </div>
+              <div className="text-[11px] text-[var(--text-secondary)] mt-0.5 leading-snug">
+                Automatically slide checked items to the bottom and unchecked items to the top
+              </div>
+            </div>
+
+            <button
+              type="button"
+              role="switch"
+              aria-checked={settings.autoSortTasks !== false}
+              onClick={() => onUpdateSettings({ autoSortTasks: settings.autoSortTasks === false ? true : false })}
+              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                settings.autoSortTasks !== false ? 'bg-[var(--accent-color)]' : 'bg-black/20 dark:bg-white/20'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                  settings.autoSortTasks !== false ? 'translate-x-4' : 'translate-x-0'
+                }`}
+              />
+            </button>
           </div>
         </div>
 
