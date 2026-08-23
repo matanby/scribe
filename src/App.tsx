@@ -221,6 +221,28 @@ export const App: React.FC = () => {
       console.error('Failed to open folder:', err);
     }
   }, [loadTree]);
+  // Create Note
+  const handleNewNote = useCallback(async () => {
+    try {
+      const root = tree?.rootPath || '';
+      const folderPath = selectedFolder && selectedFolder !== '__TRASH__' ? `${root}/${selectedFolder}` : root;
+      const newNote = await window.scribeAPI.createNote({
+        folderPath,
+        title: 'Untitled Note',
+        content: '# Untitled Note\n\n'
+      });
+      if (selectedFolder === '__TRASH__') {
+        setSelectedFolder('');
+      }
+      await loadTree(newNote.filePath);
+      setSelectedNote(newNote);
+    } catch (err) {
+      console.error('Failed to create note:', err);
+    }
+  }, [tree, selectedFolder, loadTree]);
+
+  const handleNewNoteRef = useRef(handleNewNote);
+  handleNewNoteRef.current = handleNewNote;
 
   useEffect(() => {
     loadTree();
@@ -252,9 +274,18 @@ export const App: React.FC = () => {
       setIsQuickSwitcherOpen(true);
     });
 
-    // Keyboard Shortcut: ⌘P -> Quick Switcher, ⌘\ -> Toggle Sidebar
+    const unsubscribeNewNote = window.scribeAPI.onMenuEvent?.('menu:newNote', () => {
+      handleNewNoteRef.current();
+    });
+
+    // Keyboard Shortcuts: ⌘N -> New Note, ⌘P -> Quick Switcher, ⌘\ -> Toggle Sidebar
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'p' && !e.shiftKey) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n' && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleNewNoteRef.current();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'p' && !e.shiftKey && !e.altKey) {
         e.preventDefault();
         setIsQuickSwitcherOpen(prev => !prev);
       }
@@ -264,35 +295,16 @@ export const App: React.FC = () => {
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
 
     return () => {
       unsubscribe();
       unsubscribeRoot?.();
       unsubscribeQuickSwitcher?.();
-      window.removeEventListener('keydown', handleKeyDown);
+      unsubscribeNewNote?.();
+      window.removeEventListener('keydown', handleKeyDown, true);
     };
   }, [loadTree]);
-
-  // Create Note
-  const handleNewNote = useCallback(async () => {
-    try {
-      const root = tree?.rootPath || '';
-      const folderPath = selectedFolder && selectedFolder !== '__TRASH__' ? `${root}/${selectedFolder}` : root;
-      const newNote = await window.scribeAPI.createNote({
-        folderPath,
-        title: 'Untitled Note',
-        content: '# Untitled Note\n\n'
-      });
-      if (selectedFolder === '__TRASH__') {
-        setSelectedFolder('');
-      }
-      await loadTree(newNote.filePath);
-      setSelectedNote(newNote);
-    } catch (err) {
-      console.error('Failed to create note:', err);
-    }
-  }, [tree, selectedFolder, loadTree]);
 
   // Delete / Trash Note
   const handleDeleteNote = useCallback(async (note: NoteMeta, e: React.MouseEvent) => {

@@ -237,12 +237,18 @@ function setupMenu() {
         {
           label: 'New Note',
           accelerator: 'CmdOrCtrl+N',
-          click: (_item, focusedWin) => (focusedWin as BrowserWindow)?.webContents?.send('menu:newNote')
+          click: (_item, focusedWin) => {
+            const win = (focusedWin as BrowserWindow) || BrowserWindow.getFocusedWindow() || Array.from(allWindows)[0];
+            win?.webContents?.send('menu:newNote');
+          }
         },
         {
           label: 'Quick Switcher...',
           accelerator: 'CmdOrCtrl+P',
-          click: (_item, focusedWin) => (focusedWin as BrowserWindow)?.webContents?.send('menu:quickSwitcher')
+          click: (_item, focusedWin) => {
+            const win = (focusedWin as BrowserWindow) || BrowserWindow.getFocusedWindow() || Array.from(allWindows)[0];
+            win?.webContents?.send('menu:quickSwitcher');
+          }
         },
         { type: 'separator' as const },
         {
@@ -376,8 +382,10 @@ ipcMain.handle('notes:save', async (_, { filePath, markdown, frontmatter }) => {
   return await saveNoteContent(filePath, markdown, frontmatter);
 });
 
-ipcMain.handle('notes:create', async (_, { folderPath, title, content }) => {
-  return await createNote(folderPath, title, content);
+ipcMain.handle('notes:create', async (event, { folderPath, title, content }) => {
+  const root = getWindowRoot(event.sender.id);
+  const targetFolder = folderPath || root;
+  return await createNote(targetFolder, title, content);
 });
 
 ipcMain.handle('notes:rename', async (_, { filePath, newTitle }) => {
