@@ -505,3 +505,20 @@ u,
   text-underline-offset: 3px;
 }
 
+/* Horizontal Rule / Divider (Apple Notes Elegant Subtle Divider) */
+.tiptap hr,
+.ProseMirror hr {
+  border: none !important;
+  height: 1px !important;
+  background: var(--border-color) !important;
+  margin: 1.75rem auto !important;
+  width: 100% !important;
+  opacity: 0.55 !important;
+}
+
+.dark .tiptap hr,
+.dark .ProseMirror hr {
+  background: rgba(255, 255, 255, 0.08) !important;
+  opacity: 0.75 !important;
+}
+
