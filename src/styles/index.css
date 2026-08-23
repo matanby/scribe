@@ -405,26 +405,36 @@ li[data-type="taskItem"][data-checked="true"] > div,
 
 /* Code Blocks */
 .tiptap pre {
-  background: rgba(0, 0, 0, 0.04);
-  border: 1px solid var(--border-color);
-  padding: 0.9rem 1.2rem;
-  border-radius: 10px;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
   font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
-  font-size: 0.9rem;
-  line-height: 1.6;
-  margin: 1rem 0;
   direction: ltr !important;
   text-align: left !important;
-  overflow-x: auto;
 }
 
-.dark .tiptap pre {
-  background: rgba(255, 255, 255, 0.05);
+.tiptap pre code {
+  background: transparent !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  color: inherit !important;
+  border: none !important;
+  box-shadow: none !important;
+  font-size: inherit !important;
+  display: block !important;
 }
 
-.tiptap code {
+/* Inline Code ONLY */
+.tiptap :not(pre) > code,
+.tiptap p > code,
+.tiptap li > code,
+.tiptap h1 > code,
+.tiptap h2 > code,
+.tiptap h3 > code,
+.tiptap blockquote > code {
   background: rgba(0, 0, 0, 0.045);
-  padding: 0.2rem 0.4rem;
+  padding: 0.18rem 0.38rem;
   border-radius: 5px;
   font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
   font-size: 0.88rem;
@@ -433,7 +443,13 @@ li[data-type="taskItem"][data-checked="true"] > div,
   color: #D97706;
 }
 
-.dark .tiptap code {
+.dark .tiptap :not(pre) > code,
+.dark .tiptap p > code,
+.dark .tiptap li > code,
+.dark .tiptap h1 > code,
+.dark .tiptap h2 > code,
+.dark .tiptap h3 > code,
+.dark .tiptap blockquote > code {
   background: rgba(255, 255, 255, 0.08);
   color: #FBBF24;
 }
