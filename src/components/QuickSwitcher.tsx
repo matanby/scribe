@@ -77,7 +77,7 @@ function renderHighlightedText(text: string, ranges: [number, number][]) {
     parts.push(
       <span
         key={i}
-        className="text-[var(--accent-color)] font-semibold bg-[var(--accent-color)]/20 px-1 py-0.5 rounded-sm"
+        className="font-bold text-[var(--accent-color)] underline decoration-[var(--accent-color)]/40 underline-offset-[3px]"
       >
         {text.slice(start, end + 1)}
       </span>
