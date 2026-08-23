@@ -107,7 +107,7 @@ export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorag
 
       replaceCurrent:
         () =>
-        ({ editor, state }) => {
+        ({ editor }) => {
           const { results, currentIndex, replaceTerm } = this.storage;
           if (results.length === 0) return false;
           const current = results[currentIndex];
@@ -118,7 +118,11 @@ export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorag
             .focus()
             .insertContentAt({ from: current.from, to: current.to }, replaceTerm)
             .run();
-          
+
+          setTimeout(() => {
+            editor.commands.findNext();
+          }, 20);
+
           return true;
         },
 
@@ -132,7 +136,9 @@ export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorag
           // Replace backwards so positions remain valid
           for (let i = results.length - 1; i >= 0; i--) {
             const { from, to } = results[i];
-            tr = tr.replaceWith(from, to, state.schema.text(replaceTerm));
+            if (from < to && to <= state.doc.content.size) {
+              tr = tr.replaceWith(from, to, state.schema.text(replaceTerm));
+            }
           }
           editor.view.dispatch(tr);
           return true;
@@ -177,10 +183,11 @@ export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorag
                 const text = caseSensitive ? node.text : node.text.toLowerCase();
                 let index = text.indexOf(term);
                 while (index !== -1) {
-                  results.push({
-                    from: pos + index,
-                    to: pos + index + term.length,
-                  });
+                  const from = pos + index;
+                  const to = from + term.length;
+                  if (from < to && to <= newState.doc.content.size) {
+                    results.push({ from, to });
+                  }
                   index = text.indexOf(term, index + term.length);
                 }
               }
@@ -191,13 +198,16 @@ export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorag
               extension.storage.currentIndex = 0;
             }
 
-            const decorations = results.map((result, i) => {
+            const decorations: Decoration[] = [];
+            results.forEach((result, i) => {
               const isCurrent = i === extension.storage.currentIndex;
-              return Decoration.inline(result.from, result.to, {
-                class: isCurrent
-                  ? 'search-result-active bg-amber-400 text-black rounded-xs shadow-xs'
-                  : 'search-result-match bg-yellow-200/80 dark:bg-yellow-500/40 rounded-xs',
-              });
+              decorations.push(
+                Decoration.inline(result.from, result.to, {
+                  class: isCurrent
+                    ? 'search-result-active bg-amber-400 text-black rounded-xs shadow-xs font-semibold'
+                    : 'search-result-match bg-yellow-200/80 dark:bg-yellow-500/40 rounded-xs',
+                })
+              );
             });
 
             return DecorationSet.create(newState.doc, decorations);
@@ -205,7 +215,7 @@ export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorag
         },
         props: {
           decorations(state) {
-            return this.getState(state);
+            return searchPluginKey.getState(state) || DecorationSet.empty;
           },
         },
       }),
