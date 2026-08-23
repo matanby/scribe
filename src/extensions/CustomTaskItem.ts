@@ -95,7 +95,6 @@ export const CustomTaskItem = TaskItem.extend({
           const check = node.attrs.checked ? '[x]' : '[ ]';
           state.write(`${check} `);
           state.renderInline(node);
-          state.closeBlock(node);
         },
         parse: {
           updateDOM(element: HTMLElement) {

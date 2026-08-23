@@ -6,7 +6,6 @@ import { createLowlight, common } from 'lowlight';
 import { CodeBlockComponent } from './CodeBlockComponent';
 import TaskList from '@tiptap/extension-task-list';
 import { CustomTaskItem } from '../extensions/CustomTaskItem';
-import { CustomParagraph } from '../extensions/CustomParagraph';
 import Link from '@tiptap/extension-link';
 import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
@@ -101,7 +100,6 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
     content: initialMarkdown,
     extensions: [
       StarterKit.configure({
-        paragraph: false,
         codeBlock: false,
         heading: {
           levels: [1, 2, 3]
@@ -115,7 +113,6 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
           keepAttributes: false
         }
       }),
-      CustomParagraph,
       CodeBlockLowlight.extend({
         addNodeView() {
           return ReactNodeViewRenderer(CodeBlockComponent);
