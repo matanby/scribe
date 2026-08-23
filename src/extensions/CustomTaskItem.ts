@@ -88,6 +88,31 @@ export const CustomTaskItem = TaskItem.extend({
     };
   },
 
+  addStorage() {
+    return {
+      markdown: {
+        serialize(state: any, node: any) {
+          const check = node.attrs.checked ? '[x]' : '[ ]';
+          state.write(`${check} `);
+          state.renderInline(node);
+          state.closeBlock(node);
+        },
+        parse: {
+          updateDOM(element: HTMLElement) {
+            element.querySelectorAll('.task-list-item').forEach((item: any) => {
+              const input = item.querySelector('input');
+              item.setAttribute('data-type', 'taskItem');
+              if (input) {
+                item.setAttribute('data-checked', String(input.checked));
+                input.remove();
+              }
+            });
+          }
+        }
+      }
+    };
+  },
+
   addKeyboardShortcuts() {
     return {
       ...this.parent?.(),
@@ -150,7 +175,6 @@ export const CustomTaskItem = TaskItem.extend({
           const text = $from.parent.textContent;
           const offset = $from.parentOffset;
 
-          // If cursor is at start of a 1-character task item and presses Delete
           if (text.length === 1 && offset === 0) {
             const tr = state.tr.delete($from.pos, $from.pos + 1);
             dispatch(tr);
