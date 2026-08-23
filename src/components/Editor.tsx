@@ -121,7 +121,35 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
         lowlight,
         defaultLanguage: null
       }),
-      TaskList.configure({
+      TaskList.extend({
+        addAttributes() {
+          return {
+            ...this.parent?.(),
+            tight: {
+              default: true,
+              parseHTML: () => true,
+              renderHTML: () => ({ 'data-tight': 'true' })
+            }
+          };
+        },
+        addStorage() {
+          return {
+            markdown: {
+              serialize(state: any, node: any) {
+                return state.renderList(node, "  ", () => "- ");
+              },
+              parse: {
+                updateDOM(element: HTMLElement) {
+                  element.querySelectorAll('.contains-task-list').forEach((list: any) => {
+                    list.setAttribute('data-type', 'taskList');
+                    list.setAttribute('data-tight', 'true');
+                  });
+                }
+              }
+            }
+          };
+        }
+      }).configure({
         HTMLAttributes: {
           class: 'task-list'
         }

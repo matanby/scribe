@@ -94,7 +94,7 @@ export const CustomTaskItem = TaskItem.extend({
         serialize(state: any, node: any) {
           const check = node.attrs.checked ? '[x]' : '[ ]';
           state.write(`${check} `);
-          state.renderInline(node);
+          state.renderContent(node);
         },
         parse: {
           updateDOM(element: HTMLElement) {
