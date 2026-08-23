@@ -12,6 +12,7 @@ import Highlight from '@tiptap/extension-highlight';
 import Underline from '@tiptap/extension-underline';
 import { Markdown } from 'tiptap-markdown';
 import { BiDiExtension } from '../extensions/BiDiExtension';
+import { CleanBackspaceExtension } from '../extensions/CleanBackspaceExtension';
 import { BubbleMenu } from './BubbleMenu';
 import { FormattingBar } from './FormattingBar';
 import { NoteMeta } from '../types';
@@ -110,7 +111,8 @@ export const Editor: React.FC<EditorProps> = ({
         tightLists: true,
         bulletListMarker: '-'
       }),
-      BiDiExtension
+      BiDiExtension,
+      CleanBackspaceExtension
     ],
     editorProps: {
       attributes: {
