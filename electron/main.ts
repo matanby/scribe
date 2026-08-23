@@ -263,9 +263,14 @@ function setupMenu() {
         { role: 'selectAll' as const },
         { type: 'separator' as const },
         {
-          label: 'Find in Note',
+          label: 'Find in Note...',
           accelerator: 'CmdOrCtrl+F',
           click: (_item, focusedWin) => (focusedWin as BrowserWindow)?.webContents?.send('menu:find')
+        },
+        {
+          label: 'Find and Replace...',
+          accelerator: 'CmdOrCtrl+Shift+F',
+          click: (_item, focusedWin) => (focusedWin as BrowserWindow)?.webContents?.send('menu:findReplace')
         }
       ]
     },

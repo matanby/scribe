@@ -67,26 +67,40 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   const [title, setTitle] = useState(note.title);
   const [frontmatter, setFrontmatter] = useState(initialFrontmatter);
   const [isFindOpen, setIsFindOpen] = useState(false);
+  const [showReplaceMode, setShowReplaceMode] = useState(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const titleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Keyboard shortcut listener for Find in note (⌘F)
+  // Keyboard shortcut listeners for Find (⌘F) and Find/Replace (⌘⇧F)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
         e.preventDefault();
-        setIsFindOpen(prev => !prev);
+        if (e.shiftKey || e.altKey) {
+          setShowReplaceMode(true);
+          setIsFindOpen(true);
+        } else {
+          setShowReplaceMode(false);
+          setIsFindOpen(true);
+        }
       }
     };
 
-    const unsubscribeMenu = window.scribeAPI.onMenuEvent?.('menu:find', () => {
+    const unsubscribeMenuFind = window.scribeAPI.onMenuEvent?.('menu:find', () => {
+      setShowReplaceMode(false);
+      setIsFindOpen(true);
+    });
+
+    const unsubscribeMenuFindReplace = window.scribeAPI.onMenuEvent?.('menu:findReplace', () => {
+      setShowReplaceMode(true);
       setIsFindOpen(true);
     });
 
     window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      unsubscribeMenu?.();
+      unsubscribeMenuFind?.();
+      unsubscribeMenuFindReplace?.();
     };
   }, []);
 
@@ -307,7 +321,12 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   return (
     <div className="flex-1 h-full bg-[var(--editor-bg)] flex flex-col overflow-y-auto relative">
       <FormattingBar editor={editor} />
-      <FindReplaceBar editor={editor} isOpen={isFindOpen} onClose={() => setIsFindOpen(false)} />
+      <FindReplaceBar 
+        editor={editor} 
+        isOpen={isFindOpen} 
+        showReplaceInitial={showReplaceMode}
+        onClose={() => setIsFindOpen(false)} 
+      />
       <BubbleMenu editor={editor} />
       <SlashMenu editor={editor} />
 

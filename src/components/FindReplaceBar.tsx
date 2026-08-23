@@ -4,7 +4,6 @@ import {
   ChevronUp, 
   ChevronDown, 
   X, 
-  Replace, 
   CaseSensitive,
   ChevronRight
 } from 'lucide-react';
@@ -12,19 +11,22 @@ import {
 interface FindReplaceBarProps {
   editor: Editor | null;
   isOpen: boolean;
+  showReplaceInitial?: boolean;
   onClose: () => void;
 }
 
 export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
   editor,
   isOpen,
+  showReplaceInitial = false,
   onClose
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [replaceTerm, setReplaceTerm] = useState('');
-  const [showReplace, setShowReplace] = useState(false);
+  const [showReplace, setShowReplace] = useState(showReplaceInitial);
   const [caseSensitive, setCaseSensitive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const replaceInputRef = useRef<HTMLInputElement>(null);
 
   const storage = editor?.storage?.searchReplace as any;
   const resultsCount = storage?.results?.length || 0;
@@ -32,16 +34,24 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
 
   useEffect(() => {
     if (isOpen) {
+      if (showReplaceInitial) {
+        setShowReplace(true);
+      }
       setTimeout(() => {
-        inputRef.current?.focus();
-        inputRef.current?.select();
+        if (showReplaceInitial && searchTerm) {
+          replaceInputRef.current?.focus();
+          replaceInputRef.current?.select();
+        } else {
+          inputRef.current?.focus();
+          inputRef.current?.select();
+        }
       }, 50);
     } else {
       if (editor) {
         editor.commands.clearSearch();
       }
     }
-  }, [isOpen, editor]);
+  }, [isOpen, showReplaceInitial, editor]);
 
   const handleSearchChange = (val: string) => {
     setSearchTerm(val);
@@ -98,13 +108,17 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="absolute top-3 right-6 z-30 flex flex-col bg-white/95 dark:bg-[#222226]/95 backdrop-blur-2xl border border-[var(--border-color)] shadow-2xl rounded-2xl p-1.5 transition-all text-xs select-none">
+    <div className="absolute top-3 right-6 z-30 flex flex-col bg-white/95 dark:bg-[#222226]/95 backdrop-blur-2xl border border-[var(--border-color)] shadow-2xl rounded-2xl p-1.5 transition-all text-xs select-none animate-in fade-in slide-in-from-top-2 duration-150">
       {/* Top Search Row */}
       <div className="flex items-center gap-1.5">
         <button
           onClick={() => setShowReplace(!showReplace)}
-          className="p-1 rounded-md text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-          title="Toggle Replace"
+          className={`p-1 rounded-md transition-colors ${
+            showReplace 
+              ? 'bg-[var(--accent-color)]/20 text-[var(--accent-color)]' 
+              : 'text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/10'
+          }`}
+          title="Toggle Replace (⌘⇧F)"
         >
           <ChevronRight size={13} className={`transition-transform duration-150 ${showReplace ? 'rotate-90' : ''}`} />
         </button>
@@ -116,7 +130,7 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
             value={searchTerm}
             onChange={(e) => handleSearchChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Find in note..."
+            placeholder="Find in note (⌘F)..."
             className="w-44 px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-transparent focus:border-[var(--accent-color)] focus:bg-transparent text-[var(--text-primary)] placeholder-[var(--text-tertiary)] outline-none text-xs"
           />
           {searchTerm && (
@@ -169,9 +183,10 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
 
       {/* Expandable Replace Row */}
       {showReplace && (
-        <div className="flex items-center gap-1.5 mt-1.5 pt-1.5 border-t border-[var(--border-color)]">
+        <div className="flex items-center gap-1.5 mt-1.5 pt-1.5 border-t border-[var(--border-color)] animate-in fade-in duration-100">
           <span className="w-5" />
           <input
+            ref={replaceInputRef}
             type="text"
             value={replaceTerm}
             onChange={(e) => handleReplaceChange(e.target.value)}
