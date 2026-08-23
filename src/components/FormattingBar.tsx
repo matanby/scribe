@@ -71,25 +71,6 @@ export const FormattingBar: React.FC<FormattingBarProps> = ({ editor }) => {
     return 'Body';
   };
 
-  const getActiveDir = () => {
-    try {
-      const { $from } = editor.state.selection;
-      let dir = 'ltr';
-      for (let d = $from.depth; d >= 0; d--) {
-        const node = $from.node(d);
-        if (node?.attrs?.dir) {
-          dir = node.attrs.dir;
-          break;
-        }
-      }
-      return dir;
-    } catch {
-      return 'ltr';
-    }
-  };
-
-  const activeDir = getActiveDir();
-
   const setLink = () => {
     const previousUrl = editor.getAttributes('link').href;
     const url = window.prompt('Enter Link URL:', previousUrl);
@@ -482,24 +463,6 @@ export const FormattingBar: React.FC<FormattingBarProps> = ({ editor }) => {
             </div>
           )}
         </div>
-
-        <div className="w-[1px] h-3.5 bg-[var(--border-color)]" />
-
-        {/* Direction Switcher with active visual feedback */}
-        <button
-          onClick={() => (editor.commands as any).toggleTextDirection()}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border transition-all active:scale-95 ${
-            activeDir === 'rtl'
-              ? 'bg-[var(--accent-color)] text-white border-[var(--accent-color)] shadow-xs'
-              : 'bg-black/5 dark:bg-white/10 text-[var(--text-primary)] border-transparent hover:bg-black/10 dark:hover:bg-white/15'
-          }`}
-          title="Toggle Text Direction (⌘⇧X)"
-        >
-          {activeDir === 'rtl' ? <AlignRight size={13} /> : <AlignLeft size={13} />}
-          <span className="text-[10.5px] font-bold uppercase tracking-wider">
-            {activeDir === 'rtl' ? 'RTL' : 'LTR'}
-          </span>
-        </button>
       </div>
     </div>
   );

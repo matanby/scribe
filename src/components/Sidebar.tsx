@@ -83,7 +83,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <aside className="w-52 h-full bg-[var(--sidebar-bg)] border-r border-[var(--border-color)] flex flex-col p-2 shrink-0 overflow-y-auto select-none backdrop-blur-2xl">
+    <aside className="w-full h-full bg-[var(--sidebar-bg)] border-r border-[var(--border-color)] flex flex-col p-2 shrink-0 overflow-y-auto select-none backdrop-blur-2xl">
       {/* Quick filters / Smart Views */}
       <div className="space-y-0.5 mb-3">
         <div className="text-[9.5px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider px-2.5 py-1">

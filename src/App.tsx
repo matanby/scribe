@@ -20,9 +20,22 @@ export const App: React.FC = () => {
     return false;
   });
   const [showSidebar, setShowSidebar] = useState(true);
+
+  // Resizable Panes State (Saved in LocalStorage)
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('scribe_sidebar_width');
+    return saved ? Math.max(160, Math.min(360, parseInt(saved, 10))) : 210;
+  });
+
+  const [noteListWidth, setNoteListWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('scribe_notelist_width');
+    return saved ? Math.max(220, Math.min(460, parseInt(saved, 10))) : 260;
+  });
+
   const [sortMode, setSortMode] = useState<SortMode>(() => {
     return (localStorage.getItem('scribe_sort_mode') as SortMode) || 'date-edited-desc';
   });
+
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(() => {
     try {
       const saved = localStorage.getItem('scribe_pinned_notes');
@@ -37,6 +50,63 @@ export const App: React.FC = () => {
   selectedNoteRef.current = selectedNote;
   const isSavingRef = useRef<boolean>(isSaving);
   isSavingRef.current = isSaving;
+
+  const isDraggingSidebar = useRef(false);
+  const isDraggingNoteList = useRef(false);
+
+  // Resize Handler for Sidebar (Pane 1)
+  const handleSidebarMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingSidebar.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      if (!isDraggingSidebar.current) return;
+      const newWidth = Math.max(160, Math.min(360, moveEvent.clientX));
+      setSidebarWidth(newWidth);
+      localStorage.setItem('scribe_sidebar_width', newWidth.toString());
+    };
+
+    const onMouseUp = () => {
+      isDraggingSidebar.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  }, []);
+
+  // Resize Handler for Note List (Pane 2)
+  const handleNoteListMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingNoteList.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const currentSidebarOffset = showSidebar ? sidebarWidth : 0;
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      if (!isDraggingNoteList.current) return;
+      const newWidth = Math.max(220, Math.min(480, moveEvent.clientX - currentSidebarOffset));
+      setNoteListWidth(newWidth);
+      localStorage.setItem('scribe_notelist_width', newWidth.toString());
+    };
+
+    const onMouseUp = () => {
+      isDraggingNoteList.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  }, [showSidebar, sidebarWidth]);
 
   // Handle Sort Change
   const handleSortChange = useCallback((mode: SortMode) => {
@@ -319,44 +389,70 @@ export const App: React.FC = () => {
         searchInputRef={searchInputRef}
       />
 
-      {/* 3-Pane Main Layout */}
+      {/* 3-Pane Resizable Layout */}
       <main className="flex-1 flex overflow-hidden relative">
-        {/* Pane 1: Sidebar Folders (Foldable with smooth transition) */}
-        <div className={`transition-all duration-200 ease-in-out shrink-0 overflow-hidden ${
-          showSidebar ? 'w-52 opacity-100' : 'w-0 opacity-0 pointer-events-none'
-        }`}>
-          <Sidebar
-            tree={tree}
-            selectedFolder={selectedFolder}
-            onSelectFolder={setSelectedFolder}
-            allNotesCount={tree?.allNotes.length || 0}
+        {/* Pane 1: Sidebar Folders (Resizable & Foldable) */}
+        {showSidebar && (
+          <>
+            <div 
+              style={{ width: `${sidebarWidth}px` }} 
+              className="h-full shrink-0 overflow-hidden"
+            >
+              <Sidebar
+                tree={tree}
+                selectedFolder={selectedFolder}
+                onSelectFolder={setSelectedFolder}
+                allNotesCount={tree?.allNotes.length || 0}
+              />
+            </div>
+
+            {/* Draggable Divider 1 (Sidebar <-> NoteList) */}
+            <div
+              onMouseDown={handleSidebarMouseDown}
+              className="w-[4px] h-full cursor-col-resize hover:bg-[var(--accent-color)]/60 active:bg-[var(--accent-color)] transition-colors z-20 shrink-0 select-none -mr-[2px] -ml-[2px]"
+              title="Drag to resize sidebar"
+            />
+          </>
+        )}
+
+        {/* Pane 2: Note List (Resizable) */}
+        <div 
+          style={{ width: `${noteListWidth}px` }} 
+          className="h-full shrink-0 overflow-hidden"
+        >
+          <NoteList
+            notes={filteredNotes}
+            selectedNoteId={selectedNote?.id || null}
+            onSelectNote={setSelectedNote}
+            onDeleteNote={handleDeleteNote}
+            isTrash={isTrashView}
+            onRestoreNote={handleRestoreNote}
+            onEmptyTrash={handleEmptyTrash}
+            sortMode={sortMode}
+            onSortChange={handleSortChange}
+            pinnedIds={pinnedIds}
+            onTogglePin={handleTogglePin}
           />
         </div>
 
-        {/* Pane 2: Note List */}
-        <NoteList
-          notes={filteredNotes}
-          selectedNoteId={selectedNote?.id || null}
-          onSelectNote={setSelectedNote}
-          onDeleteNote={handleDeleteNote}
-          isTrash={isTrashView}
-          onRestoreNote={handleRestoreNote}
-          onEmptyTrash={handleEmptyTrash}
-          sortMode={sortMode}
-          onSortChange={handleSortChange}
-          pinnedIds={pinnedIds}
-          onTogglePin={handleTogglePin}
+        {/* Draggable Divider 2 (NoteList <-> Editor) */}
+        <div
+          onMouseDown={handleNoteListMouseDown}
+          className="w-[4px] h-full cursor-col-resize hover:bg-[var(--accent-color)]/60 active:bg-[var(--accent-color)] transition-colors z-20 shrink-0 select-none -mr-[2px] -ml-[2px]"
+          title="Drag to resize note list"
         />
 
-        {/* Pane 3: WYSIWYG Editor */}
-        <Editor
-          note={selectedNote}
-          onSave={handleSaveNote}
-          onRename={handleRenameNote}
-          setIsSaving={setIsSaving}
-          setLastSavedText={setLastSavedText}
-          externalReloadTrigger={externalReloadTrigger}
-        />
+        {/* Pane 3: WYSIWYG Editor (Takes remaining space) */}
+        <div className="flex-1 h-full min-w-0 overflow-hidden">
+          <Editor
+            note={selectedNote}
+            onSave={handleSaveNote}
+            onRename={handleRenameNote}
+            setIsSaving={setIsSaving}
+            setLastSavedText={setLastSavedText}
+            externalReloadTrigger={externalReloadTrigger}
+          />
+        </div>
       </main>
     </div>
   );

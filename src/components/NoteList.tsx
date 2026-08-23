@@ -258,7 +258,7 @@ export const NoteList: React.FC<NoteListProps> = ({
   };
 
   return (
-    <div className="w-68 h-full bg-[var(--notelist-bg)] border-r border-[var(--border-color)] flex flex-col shrink-0 select-none backdrop-blur-2xl">
+    <div className="w-full h-full bg-[var(--notelist-bg)] border-r border-[var(--border-color)] flex flex-col shrink-0 select-none backdrop-blur-2xl">
       {/* Header bar: Sort Selector & Trash Info */}
       <div className="flex items-center justify-between px-3.5 py-2 border-b border-[var(--border-subtle)]">
         <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">
