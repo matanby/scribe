@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { NoteMeta, SortMode } from '../types';
+import { FolderNode, NoteMeta, SortMode } from '../types';
 import { 
   Trash2, 
   FileText, 
@@ -8,7 +8,9 @@ import {
   Pin, 
   ArrowUpDown, 
   Check, 
-  Calendar
+  Calendar,
+  FolderSearch,
+  Copy
 } from 'lucide-react';
 
 interface NoteListProps {
@@ -23,6 +25,11 @@ interface NoteListProps {
   onSortChange: (mode: SortMode) => void;
   pinnedIds: Set<string>;
   onTogglePin: (filePath: string, e: React.MouseEvent) => void;
+  folders?: FolderNode[];
+  onDuplicateNote?: (note: NoteMeta) => void;
+  onMoveNote?: (filePath: string, targetFolderPath: string) => void;
+  onRevealInFinder?: (filePath: string) => void;
+  onExportPDF?: (title: string) => void;
 }
 
 function formatDate(timestamp: number): string {
@@ -64,7 +71,12 @@ export const NoteList: React.FC<NoteListProps> = ({
   sortMode,
   onSortChange,
   pinnedIds,
-  onTogglePin
+  onTogglePin,
+  folders = [],
+  onDuplicateNote,
+  onMoveNote,
+  onRevealInFinder,
+  onExportPDF
 }) => {
   const [showSortMenu, setShowSortMenu] = useState(false);
   const sortMenuRef = useRef<HTMLDivElement>(null);
@@ -78,6 +90,46 @@ export const NoteList: React.FC<NoteListProps> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  const handleContextMenu = async (note: NoteMeta, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onSelectNote(note);
+
+    if (window.scribeAPI.showNoteContextMenu) {
+      const isPinned = pinnedIds.has(note.filePath) || !!note.frontmatter?.pinned;
+      const res: any = await window.scribeAPI.showNoteContextMenu({
+        note,
+        isPinned,
+        isTrash: !!isTrash,
+        folders
+      });
+
+      if (res?.action) {
+        if (res.action === 'togglePin') {
+          onTogglePin(note.filePath, e);
+        } else if (res.action === 'duplicate') {
+          onDuplicateNote?.(note);
+        } else if (res.action === 'revealInFinder') {
+          if (onRevealInFinder) {
+            onRevealInFinder(note.filePath);
+          } else {
+            window.scribeAPI.showInFinder?.(note.filePath);
+          }
+        } else if (res.action === 'moveToFolder' && res.targetPath) {
+          onMoveNote?.(note.filePath, res.targetPath);
+        } else if (res.action === 'exportPDF') {
+          onExportPDF?.(note.title);
+        } else if (res.action === 'trash') {
+          onDeleteNote(note, e);
+        } else if (res.action === 'restore') {
+          onRestoreNote?.(note, e);
+        } else if (res.action === 'permanentDelete') {
+          onDeleteNote(note, e);
+        }
+      }
+    }
+  };
 
   const sortOptions: { id: SortMode; label: string }[] = [
     { id: 'date-edited-desc', label: 'Date Modified (Newest)' },
@@ -169,6 +221,7 @@ export const NoteList: React.FC<NoteListProps> = ({
       <div
         key={note.id}
         onClick={() => onSelectNote(note)}
+        onContextMenu={(e) => handleContextMenu(note, e)}
         draggable={!isTrash}
         onDragStart={(e) => {
           e.dataTransfer.setData('text/plain', note.filePath);

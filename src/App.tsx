@@ -289,6 +289,80 @@ export const App: React.FC = () => {
     }
   }, [loadTree, selectNoteWithHistory]);
 
+  // Duplicate Note
+  const handleDuplicateNote = useCallback(async (noteToDuplicate?: NoteMeta | null) => {
+    const target = noteToDuplicate || selectedNote;
+    if (!target) return;
+    try {
+      const duplicated = await window.scribeAPI.duplicateNote(target.filePath);
+      await loadTree(duplicated.filePath);
+      selectNoteWithHistory(duplicated);
+    } catch (err) {
+      console.error('Failed to duplicate note:', err);
+    }
+  }, [selectedNote, loadTree, selectNoteWithHistory]);
+
+  const handleDuplicateNoteRef = useRef(handleDuplicateNote);
+  handleDuplicateNoteRef.current = handleDuplicateNote;
+
+  // Reveal in Finder
+  const handleRevealInFinder = useCallback((filePath?: string) => {
+    const target = filePath || selectedNote?.filePath;
+    if (target) {
+      window.scribeAPI.showInFinder(target);
+    }
+  }, [selectedNote]);
+
+  const handleRevealInFinderRef = useRef(handleRevealInFinder);
+  handleRevealInFinderRef.current = handleRevealInFinder;
+
+  // Folder CRUD handlers
+  const handleCreateFolder = useCallback(async (parentPath: string, name: string) => {
+    try {
+      const createdPath = await window.scribeAPI.createFolder({ parentPath, name });
+      await loadTree();
+      if (tree?.rootPath && createdPath) {
+        const rootClean = tree.rootPath.replace(/\/$/, '');
+        const rel = createdPath.startsWith(rootClean)
+          ? createdPath.slice(rootClean.length).replace(/^\//, '')
+          : '';
+        if (rel) {
+          setSelectedFolder(rel);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to create folder:', err);
+    }
+  }, [tree?.rootPath, loadTree]);
+
+  const handleRenameFolder = useCallback(async (folderPath: string, newName: string) => {
+    try {
+      const renamedPath = await window.scribeAPI.renameFolder({ folderPath, newName });
+      await loadTree();
+      if (tree?.rootPath && renamedPath) {
+        const rootClean = tree.rootPath.replace(/\/$/, '');
+        const rel = renamedPath.startsWith(rootClean)
+          ? renamedPath.slice(rootClean.length).replace(/^\//, '')
+          : '';
+        if (rel) {
+          setSelectedFolder(rel);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to rename folder:', err);
+    }
+  }, [tree?.rootPath, loadTree]);
+
+  const handleDeleteFolder = useCallback(async (folderPath: string) => {
+    try {
+      await window.scribeAPI.deleteFolder(folderPath);
+      setSelectedFolder('');
+      await loadTree();
+    } catch (err) {
+      console.error('Failed to delete folder:', err);
+    }
+  }, [loadTree]);
+
   // Trash note via drag or action
   const handleTrashNoteByPath = useCallback(async (filePath: string) => {
     try {
@@ -353,6 +427,20 @@ export const App: React.FC = () => {
   const handleNewNoteRef = useRef(handleNewNote);
   handleNewNoteRef.current = handleNewNote;
 
+  const handleNewNoteInFolder = useCallback(async (folderPath: string) => {
+    try {
+      const newNote = await window.scribeAPI.createNote({
+        folderPath,
+        title: 'Untitled Note',
+        content: '# Untitled Note\n\n'
+      });
+      await loadTree(newNote.filePath);
+      selectNoteWithHistory(newNote);
+    } catch (err) {
+      console.error('Failed to create note in folder:', err);
+    }
+  }, [loadTree, selectNoteWithHistory]);
+
   useEffect(() => {
     loadTree();
 
@@ -387,6 +475,14 @@ export const App: React.FC = () => {
       handleNewNoteRef.current();
     });
 
+    const unsubscribeDuplicateNote = window.scribeAPI.onMenuEvent?.('menu:duplicateNote', () => {
+      handleDuplicateNoteRef.current();
+    });
+
+    const unsubscribeRevealInFinder = window.scribeAPI.onMenuEvent?.('menu:revealInFinder', () => {
+      handleRevealInFinderRef.current();
+    });
+
     const unsubscribeGoBack = window.scribeAPI.onMenuEvent?.('menu:goBack', () => {
       handleGoBackRef.current();
     });
@@ -403,12 +499,22 @@ export const App: React.FC = () => {
       handlePrintRef.current();
     });
 
-    // Keyboard Shortcuts: ⌘N -> New Note, ⌘P -> Quick Switcher, ⌘\ -> Toggle Sidebar, ⌘[ / ⌘] -> History, ⌘⇧P -> Print
+    // Keyboard Shortcuts: ⌘N -> New Note, ⌘D -> Duplicate Note, ⌘⇧R -> Reveal in Finder, ⌘P -> Quick Switcher, ⌘\ -> Toggle Sidebar, ⌘[ / ⌘] -> History, ⌘⇧P -> Print
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n' && !e.shiftKey && !e.altKey) {
         e.preventDefault();
         e.stopPropagation();
         handleNewNoteRef.current();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'd' && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleDuplicateNoteRef.current();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'r') {
+        e.preventDefault();
+        e.stopPropagation();
+        handleRevealInFinderRef.current();
       }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'p' && !e.shiftKey && !e.altKey) {
         e.preventDefault();
@@ -430,6 +536,10 @@ export const App: React.FC = () => {
         e.preventDefault();
         setShowSidebar(prev => !prev);
       }
+      if (e.key === 'Escape') {
+        setIsAppearanceOpen(false);
+        setIsQuickSwitcherOpen(false);
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown, true);
@@ -439,6 +549,8 @@ export const App: React.FC = () => {
       unsubscribeRoot?.();
       unsubscribeQuickSwitcher?.();
       unsubscribeNewNote?.();
+      unsubscribeDuplicateNote?.();
+      unsubscribeRevealInFinder?.();
       unsubscribeGoBack?.();
       unsubscribeGoForward?.();
       unsubscribeExportPDF?.();
@@ -653,6 +765,11 @@ export const App: React.FC = () => {
               onOpenAppearance={() => setIsAppearanceOpen(true)}
               onMoveNote={handleMoveNote}
               onTrashNote={handleTrashNoteByPath}
+              onNewNoteInFolder={handleNewNoteInFolder}
+              onCreateFolder={handleCreateFolder}
+              onRenameFolder={handleRenameFolder}
+              onDeleteFolder={handleDeleteFolder}
+              onRevealInFinder={handleRevealInFinder}
             />
           </div>
         </div>
@@ -683,6 +800,11 @@ export const App: React.FC = () => {
             onSortChange={handleSortChange}
             pinnedIds={pinnedIds}
             onTogglePin={handleTogglePin}
+            folders={tree?.folders || []}
+            onDuplicateNote={handleDuplicateNote}
+            onMoveNote={handleMoveNote}
+            onRevealInFinder={handleRevealInFinder}
+            onExportPDF={handleExportPDF}
           />
         </div>
 

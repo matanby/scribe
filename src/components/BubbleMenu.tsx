@@ -37,6 +37,10 @@ export const BubbleMenu: React.FC<BubbleMenuProps> = ({ editor }) => {
   return (
     <TipTapBubbleMenu
       editor={editor}
+      pluginKey="textBubbleMenu"
+      shouldShow={({ state, editor }) => {
+        return !state.selection.empty && !editor.isActive('image') && !editor.isActive('codeBlock');
+      }}
       tippyOptions={{ 
         duration: 120, 
         placement: 'top', 

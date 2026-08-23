@@ -20,6 +20,16 @@ export const scribeAPI = {
   setNotesPath: (path: string) => ipcRenderer.invoke('notes:setPath', path),
   selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
+  showInFinder: (filePath: string) => ipcRenderer.invoke('shell:showInFinder', filePath),
+  duplicateNote: (filePath: string) => ipcRenderer.invoke('notes:duplicate', filePath),
+  createFolder: (payload: { parentPath: string; name: string }) => ipcRenderer.invoke('folders:create', payload),
+  renameFolder: (payload: { folderPath: string; newName: string }) => ipcRenderer.invoke('folders:rename', payload),
+  deleteFolder: (folderPath: string) => ipcRenderer.invoke('folders:delete', folderPath),
+  copyToClipboard: (text: string) => ipcRenderer.invoke('clipboard:writeText', text),
+  showNoteContextMenu: (payload: { note: any; isPinned: boolean; isTrash: boolean; folders: any[] }) =>
+    ipcRenderer.invoke('contextMenu:note', payload),
+  showFolderContextMenu: (payload: { folderPath: string; isRoot: boolean }) =>
+    ipcRenderer.invoke('contextMenu:folder', payload),
   exportPDF: (defaultTitle: string) => ipcRenderer.invoke('notes:exportPDF', defaultTitle),
   printNote: () => ipcRenderer.invoke('notes:print'),
   onNotesChanged: (callback: (data?: { filePath?: string; eventType?: string }) => void) => {

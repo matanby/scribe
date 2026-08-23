@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import { FolderNode, NotesTree } from '../types';
 
+import { FolderDialog, FolderDialogState } from './FolderDialog';
+
 interface SidebarProps {
   tree: NotesTree | null;
   selectedFolder: string;
@@ -21,6 +23,11 @@ interface SidebarProps {
   onOpenAppearance: () => void;
   onMoveNote?: (filePath: string, targetFolderPath: string) => void;
   onTrashNote?: (filePath: string) => void;
+  onNewNoteInFolder?: (folderPath: string) => void;
+  onCreateFolder?: (parentPath: string, name: string) => void;
+  onRenameFolder?: (folderPath: string, newName: string) => void;
+  onDeleteFolder?: (folderPath: string) => void;
+  onRevealInFinder?: (path: string) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -31,10 +38,77 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenFolderDialog,
   onOpenAppearance,
   onMoveNote,
-  onTrashNote
+  onTrashNote,
+  onNewNoteInFolder,
+  onCreateFolder,
+  onRenameFolder,
+  onDeleteFolder,
+  onRevealInFinder
 }) => {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [dragOverTarget, setDragOverTarget] = useState<string | null>(null);
+  const [dialogState, setDialogState] = useState<FolderDialogState>({
+    isOpen: false,
+    mode: 'newFolder',
+    parentPath: '',
+    initialValue: '',
+    title: 'New Folder'
+  });
+
+  const handleDialogConfirm = (name: string) => {
+    if (dialogState.mode === 'newFolder' || dialogState.mode === 'newSubfolder') {
+      onCreateFolder?.(dialogState.parentPath, name);
+      // Auto-expand parent folder so user sees the new folder
+      setCollapsed(prev => ({ ...prev, [dialogState.parentPath]: false }));
+    } else if (dialogState.mode === 'renameFolder') {
+      onRenameFolder?.(dialogState.parentPath, name);
+    }
+  };
+
+  const handleFolderContextMenu = async (folderPath: string, folderName: string, isRoot: boolean, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (window.scribeAPI.showFolderContextMenu) {
+      const res: any = await window.scribeAPI.showFolderContextMenu({
+        folderPath,
+        isRoot
+      });
+
+      if (res?.action) {
+        if (res.action === 'newNote') {
+          onNewNoteInFolder?.(folderPath);
+        } else if (res.action === 'newSubfolder') {
+          setDialogState({
+            isOpen: true,
+            mode: 'newSubfolder',
+            parentPath: folderPath,
+            initialValue: '',
+            title: `New Subfolder in "${folderName}"`
+          });
+        } else if (res.action === 'revealInFinder') {
+          if (onRevealInFinder) {
+            onRevealInFinder(folderPath);
+          } else {
+            window.scribeAPI.showInFinder?.(folderPath);
+          }
+        } else if (res.action === 'renameFolder') {
+          setDialogState({
+            isOpen: true,
+            mode: 'renameFolder',
+            parentPath: folderPath,
+            initialValue: folderName,
+            title: `Rename "${folderName}"`
+          });
+        } else if (res.action === 'deleteFolder') {
+          const confirmDelete = window.confirm(`Move folder "${folderName}" and its contents to Trash?`);
+          if (confirmDelete) {
+            onDeleteFolder?.(folderPath);
+          }
+        }
+      }
+    }
+  };
 
   const toggleCollapse = (path: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -80,6 +154,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div key={node.path} className="select-none">
         <div
           onClick={() => onSelectFolder(node.relativePath)}
+          onContextMenu={(e) => handleFolderContextMenu(node.path, node.name, false, e)}
           onDragOver={(e) => handleDragOver(node.path, e)}
           onDragLeave={(e) => handleDragLeave(node.path, e)}
           onDrop={(e) => handleDrop(node.path, false, e)}
@@ -191,17 +266,39 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Folders hierarchy */}
       <div className="flex-1 space-y-0.5">
-        <div className="flex items-center justify-between px-2.5 py-1">
+        <div 
+          onContextMenu={(e) => tree?.rootPath && handleFolderContextMenu(tree.rootPath, rootFolderName, true, e)}
+          className="flex items-center justify-between px-2.5 py-1"
+        >
           <span className="text-[9.5px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider truncate">
             {rootFolderName}
           </span>
-          <button
-            onClick={onOpenFolderDialog}
-            className="p-1 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-            title="Open another folder..."
-          >
-            <FolderInput size={12} />
-          </button>
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={() => {
+                if (tree?.rootPath) {
+                  setDialogState({
+                    isOpen: true,
+                    mode: 'newFolder',
+                    parentPath: tree.rootPath,
+                    initialValue: '',
+                    title: 'New Folder'
+                  });
+                }
+              }}
+              className="p-1 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+              title="New Folder..."
+            >
+              <FolderPlus size={12} />
+            </button>
+            <button
+              onClick={onOpenFolderDialog}
+              className="p-1 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+              title="Open another folder..."
+            >
+              <FolderInput size={12} />
+            </button>
+          </div>
         </div>
 
         {tree?.folders.map(rootNode => 
@@ -234,6 +331,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <Sliders size={13} />
         </button>
       </div>
+
+      {/* Folder Create & Rename Modal Dialog */}
+      <FolderDialog
+        state={dialogState}
+        onClose={() => setDialogState(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={handleDialogConfirm}
+      />
     </aside>
   );
 };

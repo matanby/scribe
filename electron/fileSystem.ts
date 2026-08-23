@@ -362,6 +362,77 @@ export async function emptyTrash(rootDir: string): Promise<void> {
   }
 }
 
+export async function duplicateNote(filePath: string): Promise<NoteMeta> {
+  const dir = path.dirname(filePath);
+  const ext = path.extname(filePath) || '.md';
+  const baseName = path.basename(filePath, ext);
+
+  let newTitle = `${baseName} copy`;
+  let newFileName = `${newTitle}${ext}`;
+  let newFilePath = path.join(dir, newFileName);
+  let counter = 2;
+
+  while (fsSync.existsSync(newFilePath)) {
+    newTitle = `${baseName} copy ${counter}`;
+    newFileName = `${newTitle}${ext}`;
+    newFilePath = path.join(dir, newFileName);
+    counter++;
+  }
+
+  const raw = await fs.readFile(filePath, 'utf-8');
+  await fs.writeFile(newFilePath, raw, 'utf-8');
+
+  const parsed = safeParseFrontmatter(raw);
+  const stats = await fs.stat(newFilePath);
+
+  return {
+    id: newFilePath,
+    filePath: newFilePath,
+    fileName: newFileName,
+    title: extractTitleFromContent(parsed.content, newFileName),
+    snippet: cleanMarkdownSnippet(parsed.content),
+    folder: path.basename(dir),
+    modifiedAt: stats.mtimeMs,
+    createdAt: stats.birthtimeMs || stats.mtimeMs,
+    frontmatter: parsed.data
+  };
+}
+
+export async function createFolder(parentPath: string, folderName: string): Promise<string> {
+  const sanitized = folderName.replace(/[/\\?%*:|"<>]/g, '-').trim() || 'New Folder';
+  let target = path.join(parentPath, sanitized);
+  let counter = 1;
+  while (fsSync.existsSync(target)) {
+    target = path.join(parentPath, `${sanitized} ${counter}`);
+    counter++;
+  }
+  await fs.mkdir(target, { recursive: true });
+  return target;
+}
+
+export async function renameFolder(folderPath: string, newName: string): Promise<string> {
+  const parent = path.dirname(folderPath);
+  const sanitized = newName.replace(/[/\\?%*:|"<>]/g, '-').trim() || 'Folder';
+  const target = path.join(parent, sanitized);
+  if (folderPath !== target) {
+    await fs.rename(folderPath, target);
+  }
+  return target;
+}
+
+export async function deleteFolder(folderPath: string, rootDir: string): Promise<void> {
+  const trashDir = getTrashDir(rootDir);
+  const folderName = path.basename(folderPath);
+  const targetPath = path.join(trashDir, folderName);
+  let counter = 1;
+  let finalTarget = targetPath;
+  while (fsSync.existsSync(finalTarget)) {
+    finalTarget = `${targetPath}_${counter}`;
+    counter++;
+  }
+  await fs.rename(folderPath, finalTarget);
+}
+
 export function startWatchingWindow(
   webContentsId: number,
   rootDir: string,

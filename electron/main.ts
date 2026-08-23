@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu, shell, screen, MenuItemConstructorOptions } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu, shell, screen, clipboard, MenuItemConstructorOptions } from 'electron';
 import path from 'path';
 import fsSync from 'fs';
 import { 
@@ -10,6 +10,10 @@ import {
   readNoteContent, 
   saveNoteContent, 
   createNote, 
+  duplicateNote,
+  createFolder,
+  renameFolder,
+  deleteFolder,
   renameNote, 
   moveNote,
   moveToTrash,
@@ -280,6 +284,16 @@ function setupMenu() {
           accelerator: 'CmdOrCtrl+S',
           click: (_item, focusedWin) => sendToFocusedWindow('menu:saveNote', focusedWin as BrowserWindow)
         },
+        {
+          label: 'Duplicate Note',
+          accelerator: 'CmdOrCtrl+D',
+          click: (_item, focusedWin) => sendToFocusedWindow('menu:duplicateNote', focusedWin as BrowserWindow)
+        },
+        {
+          label: 'Reveal in Finder',
+          accelerator: 'CmdOrCtrl+Shift+R',
+          click: (_item, focusedWin) => sendToFocusedWindow('menu:revealInFinder', focusedWin as BrowserWindow)
+        },
         { type: 'separator' as const },
         {
           label: 'Export as PDF...',
@@ -541,4 +555,203 @@ ipcMain.handle('shell:openExternal', async (_, url: string) => {
     return true;
   }
   return false;
+});
+
+ipcMain.handle('shell:showInFinder', async (_, filePath: string) => {
+  if (filePath) {
+    shell.showItemInFolder(filePath);
+    return true;
+  }
+  return false;
+});
+
+ipcMain.handle('notes:duplicate', async (_, filePath: string) => {
+  return await duplicateNote(filePath);
+});
+
+ipcMain.handle('folders:create', async (_, { parentPath, name }: { parentPath: string; name: string }) => {
+  return await createFolder(parentPath, name);
+});
+
+ipcMain.handle('folders:rename', async (_, { folderPath, newName }: { folderPath: string; newName: string }) => {
+  return await renameFolder(folderPath, newName);
+});
+
+ipcMain.handle('folders:delete', async (event, folderPath: string) => {
+  const root = getWindowRoot(event.sender.id);
+  return await deleteFolder(folderPath, root);
+});
+
+ipcMain.handle('clipboard:writeText', async (_, text: string) => {
+  clipboard.writeText(text);
+  return true;
+});
+
+ipcMain.handle('contextMenu:note', async (event, { note, isPinned, isTrash, folders }) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return null;
+
+  return new Promise((resolve) => {
+    const template: MenuItemConstructorOptions[] = [];
+
+    if (!isTrash) {
+      template.push(
+        {
+          label: isPinned ? 'Unpin Note' : 'Pin Note',
+          click: () => resolve({ action: 'togglePin', filePath: note.filePath })
+        },
+        {
+          label: 'Duplicate Note',
+          accelerator: 'CmdOrCtrl+D',
+          click: () => resolve({ action: 'duplicate', filePath: note.filePath })
+        },
+        { type: 'separator' },
+        {
+          label: 'Reveal in Finder',
+          accelerator: 'CmdOrCtrl+Shift+R',
+          click: () => {
+            shell.showItemInFolder(note.filePath);
+            resolve({ action: 'revealInFinder', filePath: note.filePath });
+          }
+        },
+        {
+          label: 'Open in New Window',
+          click: () => {
+            createWindow(path.dirname(note.filePath));
+            resolve({ action: 'openInNewWindow', filePath: note.filePath });
+          }
+        },
+        { type: 'separator' }
+      );
+
+      // Move to Folder Submenu
+      if (folders && folders.length > 0) {
+        const buildFolderSubmenu = (nodes: any[]): MenuItemConstructorOptions[] => {
+          const items: MenuItemConstructorOptions[] = [];
+          for (const node of nodes) {
+            items.push({
+              label: node.name,
+              click: () => resolve({ action: 'moveToFolder', filePath: note.filePath, targetPath: node.path }),
+              submenu: node.children && node.children.length > 0 ? buildFolderSubmenu(node.children) : undefined
+            });
+          }
+          return items;
+        };
+
+        const folderItems = buildFolderSubmenu(folders[0]?.children || []);
+        folderItems.unshift({
+          label: 'All Notes (Root)',
+          click: () => resolve({ action: 'moveToFolder', filePath: note.filePath, targetPath: folders[0]?.path })
+        });
+
+        template.push({
+          label: 'Move to Folder',
+          submenu: folderItems
+        });
+      }
+
+      template.push(
+        {
+          label: 'Copy Note Link',
+          click: () => {
+            clipboard.writeText(`[[${note.title}]]`);
+            resolve({ action: 'copyLink', filePath: note.filePath });
+          }
+        },
+        {
+          label: 'Copy File Path',
+          click: () => {
+            clipboard.writeText(note.filePath);
+            resolve({ action: 'copyPath', filePath: note.filePath });
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Export as PDF...',
+          click: () => resolve({ action: 'exportPDF', filePath: note.filePath })
+        },
+        { type: 'separator' },
+        {
+          label: 'Move to Trash',
+          accelerator: 'CmdOrCtrl+Backspace',
+          click: () => resolve({ action: 'trash', filePath: note.filePath })
+        }
+      );
+    } else {
+      template.push(
+        {
+          label: 'Restore Note',
+          click: () => resolve({ action: 'restore', filePath: note.filePath })
+        },
+        {
+          label: 'Reveal in Finder',
+          click: () => {
+            shell.showItemInFolder(note.filePath);
+            resolve({ action: 'revealInFinder', filePath: note.filePath });
+          }
+        },
+        { type: 'separator' },
+        {
+          label: 'Delete Permanently',
+          click: () => resolve({ action: 'permanentDelete', filePath: note.filePath })
+        }
+      );
+    }
+
+    const menu = Menu.buildFromTemplate(template);
+    menu.popup({
+      window: win,
+      callback: () => {
+        setTimeout(() => resolve(null), 100);
+      }
+    });
+  });
+});
+
+ipcMain.handle('contextMenu:folder', async (event, { folderPath, isRoot }) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return null;
+
+  return new Promise((resolve) => {
+    const template: MenuItemConstructorOptions[] = [
+      {
+        label: 'New Note in Folder',
+        click: () => resolve({ action: 'newNote', folderPath })
+      },
+      {
+        label: 'New Subfolder...',
+        click: () => resolve({ action: 'newSubfolder', folderPath })
+      },
+      { type: 'separator' },
+      {
+        label: 'Reveal in Finder',
+        click: () => {
+          shell.showItemInFolder(folderPath);
+          resolve({ action: 'revealInFinder', folderPath });
+        }
+      }
+    ];
+
+    if (!isRoot) {
+      template.push(
+        { type: 'separator' },
+        {
+          label: 'Rename Folder...',
+          click: () => resolve({ action: 'renameFolder', folderPath })
+        },
+        {
+          label: 'Delete Folder',
+          click: () => resolve({ action: 'deleteFolder', folderPath })
+        }
+      );
+    }
+
+    const menu = Menu.buildFromTemplate(template);
+    menu.popup({
+      window: win,
+      callback: () => {
+        setTimeout(() => resolve(null), 100);
+      }
+    });
+  });
 });

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import Fuse from 'fuse.js';
 import { NoteMeta } from '../types';
 import { Search, FileText, Folder, CornerDownLeft } from 'lucide-react';
@@ -176,12 +177,25 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
     return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
   };
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown, true);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown, true);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
-  return (
+  const modalContent = (
     <div 
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-start justify-center pt-[14vh] bg-black/40 dark:bg-black/60 backdrop-blur-md animate-in fade-in duration-150 p-4"
+      className="fixed inset-0 z-[100] flex items-start justify-center pt-[14vh] bg-black/40 dark:bg-black/60 backdrop-blur-md animate-in fade-in duration-150 p-4"
     >
       <div 
         onClick={(e) => e.stopPropagation()}
@@ -281,4 +295,6 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 };

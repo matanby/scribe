@@ -23,10 +23,12 @@ import { CalloutExtension } from '../extensions/CalloutExtension';
 import { CollapsibleHeadingsExtension } from '../extensions/CollapsibleHeadingsExtension';
 import { BubbleMenu } from './BubbleMenu';
 import { FormattingBar } from './FormattingBar';
+import { TableControls } from './TableControls';
 import { SlashMenu } from './SlashMenu';
 import { FindReplaceBar } from './FindReplaceBar';
+import { getTableInfo } from '../utils/tableUtils';
 import { NoteMeta } from '../types';
-import { Calendar, Folder, FileText, CheckCircle2, Clock, AlignLeft } from 'lucide-react';
+import { Calendar, Folder, FileText, CheckCircle2, Clock, AlignLeft, FolderSearch } from 'lucide-react';
 
 const lowlight = createLowlight(common);
 
@@ -178,7 +180,30 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
           class: 'text-[var(--accent-color)] underline cursor-pointer hover:opacity-80'
         }
       }),
-      Table.configure({
+      Table.extend({
+        addKeyboardShortcuts() {
+          return {
+            ...this.parent?.(),
+            Tab: () => {
+              if (this.editor.isActive('table')) {
+                const info = getTableInfo(this.editor);
+                if (info.inTable && info.currentRowIndex === info.rowCount - 1 && info.currentColIndex === info.colCount - 1) {
+                  this.editor.chain().focus().addRowAfter().goToNextCell().run();
+                  return true;
+                }
+                return this.editor.commands.goToNextCell();
+              }
+              return false;
+            },
+            'Shift-Tab': () => {
+              if (this.editor.isActive('table')) {
+                return this.editor.commands.goToPreviousCell();
+              }
+              return false;
+            }
+          };
+        }
+      }).configure({
         resizable: true
       }),
       TableRow,
@@ -353,6 +378,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
     <div className="flex-1 h-full bg-[var(--editor-bg)] flex flex-col relative overflow-hidden">
       {/* Top Pinned Formatting & Search/Replace Bars */}
       <FormattingBar editor={editor} />
+      <TableControls editor={editor} />
       <FindReplaceBar 
         editor={editor} 
         isOpen={isFindOpen} 
@@ -384,8 +410,17 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
               </span>
             </div>
 
-            {/* Document Stats & Last Modified */}
-            <div className="flex items-center gap-2.5 opacity-70 shrink-0">
+            {/* Document Stats, Last Modified & Reveal in Finder */}
+            <div className="flex items-center gap-2.5 opacity-75 shrink-0">
+              <button
+                onClick={() => window.scribeAPI.showInFinder?.(note.filePath)}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-black/5 dark:hover:bg-white/10 hover:text-[var(--text-primary)] transition-colors text-[10.5px]"
+                title="Reveal Note in macOS Finder (⌘⇧R)"
+              >
+                <FolderSearch size={11} />
+                <span>Finder</span>
+              </button>
+              <span className="opacity-40">•</span>
               <div className="flex items-center gap-1">
                 <AlignLeft size={11} />
                 <span>{wordCount} {wordCount === 1 ? 'word' : 'words'}</span>
