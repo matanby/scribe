@@ -5,6 +5,7 @@ import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { createLowlight, common } from 'lowlight';
 import { CodeBlockComponent } from './CodeBlockComponent';
 import TaskList from '@tiptap/extension-task-list';
+import taskListPlugin from 'markdown-it-task-lists';
 import { CustomTaskItem } from '../extensions/CustomTaskItem';
 import Link from '@tiptap/extension-link';
 import Table from '@tiptap/extension-table';
@@ -139,6 +140,9 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
                 return state.renderList(node, "  ", () => "- ");
               },
               parse: {
+                setup(markdownit: any) {
+                  markdownit.use(taskListPlugin);
+                },
                 updateDOM(element: HTMLElement) {
                   element.querySelectorAll('.contains-task-list').forEach((list: any) => {
                     list.setAttribute('data-type', 'taskList');
