@@ -22,7 +22,11 @@ import {
   Plus,
   Trash2,
   Columns,
-  Rows
+  Rows,
+  Share,
+  Printer,
+  Download,
+  FileText
 } from 'lucide-react';
 
 interface FormattingBarProps {
@@ -32,8 +36,10 @@ interface FormattingBarProps {
 export const FormattingBar: React.FC<FormattingBarProps> = ({ editor }) => {
   const [showAaMenu, setShowAaMenu] = useState(false);
   const [showTableMenu, setShowTableMenu] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
   const aaMenuRef = useRef<HTMLDivElement>(null);
   const tableMenuRef = useRef<HTMLDivElement>(null);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
 
   // Close menus when clicking outside
   useEffect(() => {
@@ -43,6 +49,9 @@ export const FormattingBar: React.FC<FormattingBarProps> = ({ editor }) => {
       }
       if (tableMenuRef.current && !tableMenuRef.current.contains(e.target as Node)) {
         setShowTableMenu(false);
+      }
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -390,8 +399,74 @@ export const FormattingBar: React.FC<FormattingBarProps> = ({ editor }) => {
         </button>
       </div>
 
-      {/* Right side: Direction Switcher */}
-      <div className="flex items-center gap-1">
+      {/* Right side: Export & Direction Switcher */}
+      <div className="flex items-center gap-1.5">
+        {/* Export Button */}
+        <div className="relative" ref={exportMenuRef}>
+          <button
+            onClick={() => setShowExportMenu(!showExportMenu)}
+            className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-all active:scale-95"
+            title="Export / Print Note"
+          >
+            <Share size={12.5} />
+            <span className="text-[11px] font-medium">Export</span>
+          </button>
+
+          {showExportMenu && (
+            <div className="absolute right-0 top-full mt-1.5 w-44 p-1.5 rounded-xl bg-white dark:bg-[#252528] border border-[var(--border-color)] shadow-2xl z-50 space-y-0.5 text-xs">
+              <button
+                onClick={() => {
+                  window.print();
+                  setShowExportMenu(false);
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-primary)]"
+              >
+                <Printer size={13} />
+                <span>Print / PDF...</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  const rawMarkdown = (editor.storage as any).markdown.getMarkdown();
+                  const blob = new Blob([rawMarkdown], { type: 'text/markdown' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'Note.md';
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  setShowExportMenu(false);
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-primary)]"
+              >
+                <Download size={13} />
+                <span>Export Markdown</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Note</title><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:720px;margin:2rem auto;padding:0 1rem;line-height:1.7;}table{border-collapse:collapse;width:100%;}td,th{border:1px solid #ccc;padding:8px;}</style></head><body>${editor.getHTML()}</body></html>`;
+                  const blob = new Blob([html], { type: 'text/html' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'Note.html';
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  setShowExportMenu(false);
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-primary)]"
+              >
+                <FileText size={13} />
+                <span>Export HTML</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="w-[1px] h-3.5 bg-[var(--border-color)]" />
+
+        {/* Direction Switcher */}
         <button
           onClick={() => (editor.commands as any).toggleTextDirection()}
           className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-all active:scale-95"

@@ -25,3 +25,12 @@ export interface NotesTree {
   trashNotes: NoteMeta[];
   trashCount: number;
 }
+
+export type SortMode = 
+  | 'date-edited-desc'
+  | 'date-edited-asc'
+  | 'date-created-desc'
+  | 'date-created-asc'
+  | 'title-asc'
+  | 'title-desc';
+

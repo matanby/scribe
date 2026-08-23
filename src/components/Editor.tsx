@@ -24,6 +24,7 @@ interface EditorProps {
   onRename: (filePath: string, newTitle: string) => Promise<void>;
   setIsSaving: (saving: boolean) => void;
   setLastSavedText: (text: string) => void;
+  externalReloadTrigger?: number;
 }
 
 export const Editor: React.FC<EditorProps> = ({
@@ -31,7 +32,8 @@ export const Editor: React.FC<EditorProps> = ({
   onSave,
   onRename,
   setIsSaving,
-  setLastSavedText
+  setLastSavedText,
+  externalReloadTrigger
 }) => {
   const [title, setTitle] = useState('');
   const [frontmatter, setFrontmatter] = useState<Record<string, any> | undefined>(undefined);
@@ -178,7 +180,7 @@ export const Editor: React.FC<EditorProps> = ({
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
       if (titleTimeoutRef.current) clearTimeout(titleTimeoutRef.current);
     };
-  }, [note?.id, editor]);
+  }, [note?.filePath, externalReloadTrigger, editor]);
 
   // Handle note Title rename
   const handleTitleChange = (newTitle: string) => {

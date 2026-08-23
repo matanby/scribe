@@ -31,6 +31,7 @@ function createWindow() {
     vibrancy: 'under-window',
     visualEffectState: 'active',
     backgroundColor: '#00000000',
+    icon: path.join(__dirname, '../public/icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -39,6 +40,14 @@ function createWindow() {
     }
   });
 
+  if (process.platform === 'darwin' && app.dock) {
+    try {
+      app.dock.setIcon(path.join(__dirname, '../public/icon.png'));
+    } catch (e) {
+      console.error('Could not set dock icon:', e);
+    }
+  }
+
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
@@ -46,9 +55,9 @@ function createWindow() {
   }
 
   // Watch for external file changes in Google Drive
-  startWatching(() => {
+  startWatching((data) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('notes:changed');
+      mainWindow.webContents.send('notes:changed', data);
     }
   });
 }

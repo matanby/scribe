@@ -3,7 +3,7 @@ import { Titlebar } from './components/Titlebar';
 import { Sidebar } from './components/Sidebar';
 import { NoteList } from './components/NoteList';
 import { Editor } from './components/Editor';
-import { NoteMeta, NotesTree } from './types';
+import { NoteMeta, NotesTree, SortMode } from './types';
 
 export const App: React.FC = () => {
   const [tree, setTree] = useState<NotesTree | null>(null);
@@ -12,6 +12,7 @@ export const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
   const [lastSavedText, setLastSavedText] = useState('');
+  const [externalReloadTrigger, setExternalReloadTrigger] = useState<number>(0);
   const [isDark, setIsDark] = useState<boolean>(() => {
     if (typeof window !== 'undefined' && window.matchMedia) {
       return window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -19,7 +20,44 @@ export const App: React.FC = () => {
     return false;
   });
   const [showSidebar, setShowSidebar] = useState(true);
+  const [sortMode, setSortMode] = useState<SortMode>(() => {
+    return (localStorage.getItem('scribe_sort_mode') as SortMode) || 'date-edited-desc';
+  });
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('scribe_pinned_notes');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const selectedNoteRef = useRef<NoteMeta | null>(selectedNote);
+  selectedNoteRef.current = selectedNote;
+  const isSavingRef = useRef<boolean>(isSaving);
+  isSavingRef.current = isSaving;
+
+  // Handle Sort Change
+  const handleSortChange = useCallback((mode: SortMode) => {
+    setSortMode(mode);
+    localStorage.setItem('scribe_sort_mode', mode);
+  }, []);
+
+  // Handle Pin / Unpin Note
+  const handleTogglePin = useCallback((filePath: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPinnedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(filePath)) {
+        next.delete(filePath);
+      } else {
+        next.add(filePath);
+      }
+      localStorage.setItem('scribe_pinned_notes', JSON.stringify(Array.from(next)));
+      return next;
+    });
+  }, []);
 
   // Sync with system light/dark theme dynamically
   useEffect(() => {
@@ -74,9 +112,19 @@ export const App: React.FC = () => {
   useEffect(() => {
     loadTree();
 
-    // Listen for file changes from Google Drive watcher
-    const unsubscribe = window.scribeAPI.onNotesChanged(() => {
-      loadTree();
+    // Listen for external file modifications in Google Drive
+    const unsubscribe = window.scribeAPI.onNotesChanged(async (data) => {
+      await loadTree();
+
+      // If active note was modified externally and user is not currently auto-saving
+      if (
+        data?.filePath && 
+        selectedNoteRef.current && 
+        selectedNoteRef.current.filePath === data.filePath && 
+        !isSavingRef.current
+      ) {
+        setExternalReloadTrigger(Date.now());
+      }
     });
 
     return () => {
@@ -211,10 +259,10 @@ export const App: React.FC = () => {
 
   const isTrashView = selectedFolder === '__TRASH__';
 
-  // Filter notes based on folder and search query
+  // Filter and sort notes based on folder, sortMode, and search query
   const filteredNotes = useMemo(() => {
     if (!tree) return [];
-    let list = isTrashView ? tree.trashNotes : tree.allNotes;
+    let list = [...(isTrashView ? tree.trashNotes : tree.allNotes)];
 
     if (!isTrashView && selectedFolder) {
       list = list.filter(n => n.folder === selectedFolder || n.folder.startsWith(`${selectedFolder}/`));
@@ -228,8 +276,28 @@ export const App: React.FC = () => {
       );
     }
 
+    // Apply Sorting
+    list.sort((a, b) => {
+      switch (sortMode) {
+        case 'date-edited-desc':
+          return b.modifiedAt - a.modifiedAt;
+        case 'date-edited-asc':
+          return a.modifiedAt - b.modifiedAt;
+        case 'date-created-desc':
+          return b.createdAt - a.createdAt;
+        case 'date-created-asc':
+          return a.createdAt - b.createdAt;
+        case 'title-asc':
+          return a.title.localeCompare(b.title, undefined, { numeric: true });
+        case 'title-desc':
+          return b.title.localeCompare(a.title, undefined, { numeric: true });
+        default:
+          return b.modifiedAt - a.modifiedAt;
+      }
+    });
+
     return list;
-  }, [tree, selectedFolder, isTrashView, searchQuery]);
+  }, [tree, selectedFolder, isTrashView, searchQuery, sortMode]);
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-[var(--app-bg)] text-[var(--text-primary)]">
@@ -274,6 +342,10 @@ export const App: React.FC = () => {
           isTrash={isTrashView}
           onRestoreNote={handleRestoreNote}
           onEmptyTrash={handleEmptyTrash}
+          sortMode={sortMode}
+          onSortChange={handleSortChange}
+          pinnedIds={pinnedIds}
+          onTogglePin={handleTogglePin}
         />
 
         {/* Pane 3: WYSIWYG Editor */}
@@ -283,6 +355,7 @@ export const App: React.FC = () => {
           onRename={handleRenameNote}
           setIsSaving={setIsSaving}
           setLastSavedText={setLastSavedText}
+          externalReloadTrigger={externalReloadTrigger}
         />
       </main>
     </div>

@@ -258,7 +258,7 @@ export async function emptyTrash(): Promise<void> {
   }
 }
 
-export function startWatching(onChange: () => void) {
+export function startWatching(onChange: (data: { filePath: string; eventType: string }) => void) {
   if (activeWatcher) {
     activeWatcher.close();
   }
@@ -271,10 +271,10 @@ export function startWatching(onChange: () => void) {
   });
 
   activeWatcher
-    .on('add', () => onChange())
-    .on('change', () => onChange())
-    .on('unlink', () => onChange())
-    .on('addDir', () => onChange())
-    .on('unlinkDir', () => onChange());
+    .on('add', (filePath) => onChange({ filePath, eventType: 'add' }))
+    .on('change', (filePath) => onChange({ filePath, eventType: 'change' }))
+    .on('unlink', (filePath) => onChange({ filePath, eventType: 'unlink' }))
+    .on('addDir', (dirPath) => onChange({ filePath: dirPath, eventType: 'addDir' }))
+    .on('unlinkDir', (dirPath) => onChange({ filePath: dirPath, eventType: 'unlinkDir' }));
 }
 
