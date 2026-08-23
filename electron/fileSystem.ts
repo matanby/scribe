@@ -102,15 +102,7 @@ function cleanMarkdownSnippet(raw: string): string {
 }
 
 function extractTitleFromContent(content: string, fileName: string): string {
-  const baseName = fileName.replace(/\.md$/i, '');
-  const lines = content.split('\n');
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith('# ')) {
-      return trimmed.replace(/^#\s+/, '').trim();
-    }
-  }
-  return baseName;
+  return fileName.replace(/\.md$/i, '');
 }
 
 function getTrashDir(rootDir: string): string {
@@ -285,8 +277,9 @@ export async function createNote(folderPath: string, title = 'Untitled Note', in
 
 export async function renameNote(filePath: string, newTitle: string): Promise<NoteMeta> {
   const dir = path.dirname(filePath);
-  const ext = path.extname(filePath);
-  const newFileName = `${newTitle}${ext}`;
+  const ext = path.extname(filePath) || '.md';
+  const sanitizedTitle = newTitle.replace(/[/\\?%*:|"<>]/g, '-').trim() || 'Untitled Note';
+  const newFileName = `${sanitizedTitle}${ext}`;
   const newFilePath = path.join(dir, newFileName);
 
   if (filePath !== newFilePath) {
@@ -301,7 +294,7 @@ export async function renameNote(filePath: string, newTitle: string): Promise<No
     id: newFilePath,
     filePath: newFilePath,
     fileName: newFileName,
-    title: newTitle,
+    title: sanitizedTitle,
     snippet: cleanMarkdownSnippet(parsed.content),
     folder: path.basename(dir),
     modifiedAt: stats.mtimeMs,
