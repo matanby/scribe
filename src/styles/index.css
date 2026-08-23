@@ -1,0 +1,452 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --app-bg: #F4F4F6;
+    --sidebar-bg: rgba(245, 245, 247, 0.92);
+    --notelist-bg: rgba(255, 255, 255, 0.88);
+    --editor-bg: #FFFFFF;
+    --border-color: rgba(0, 0, 0, 0.07);
+    --border-subtle: rgba(0, 0, 0, 0.04);
+    --text-primary: #1C1C1E;
+    --text-secondary: #8E8E93;
+    --text-tertiary: #AEAEB2;
+    --accent-color: #E5A00D; /* Apple Notes Gold */
+    --accent-hover: #CC8E0A;
+    --accent-light: rgba(229, 160, 13, 0.14);
+    --accent-border: rgba(229, 160, 13, 0.35);
+    --card-active: #E5E5EA;
+    --card-hover: rgba(0, 0, 0, 0.035);
+    --selection-bg: rgba(229, 160, 13, 0.22);
+  }
+
+  .dark {
+    --app-bg: #121214;
+    --sidebar-bg: rgba(24, 24, 26, 0.94);
+    --notelist-bg: rgba(30, 30, 32, 0.92);
+    --editor-bg: #1C1C1E;
+    --border-color: rgba(255, 255, 255, 0.07);
+    --border-subtle: rgba(255, 255, 255, 0.04);
+    --text-primary: #F2F2F7;
+    --text-secondary: #98989D;
+    --text-tertiary: #636366;
+    --accent-color: #F5B83D;
+    --accent-hover: #E5A00D;
+    --accent-light: rgba(245, 184, 61, 0.18);
+    --accent-border: rgba(245, 184, 61, 0.4);
+    --card-active: #2C2C2E;
+    --card-hover: rgba(255, 255, 255, 0.045);
+    --selection-bg: rgba(245, 184, 61, 0.3);
+  }
+
+  ::selection {
+    background-color: var(--selection-bg);
+  }
+
+  body {
+    background-color: var(--app-bg);
+    color: var(--text-primary);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Arial Hebrew", "Heebo", "Rubik", "Noto Sans Hebrew", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+}
+
+/* macOS Smooth Overlay Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 9999px;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.22);
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.titlebar-drag-region {
+  -webkit-app-region: drag;
+}
+.titlebar-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* =========================================================
+   Apple Notes / Craft WYSIWYG Editor Styling
+   ========================================================= */
+
+.tiptap {
+  outline: none !important;
+  min-height: calc(100vh - 200px);
+  padding-bottom: 240px;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Arial Hebrew", "Heebo", "Rubik", "Noto Sans Hebrew", sans-serif;
+}
+
+/* Document Title in Editor */
+.editor-title-input {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Arial Hebrew", "Heebo", sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+/* Placeholder */
+.tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: inline-start;
+  color: var(--text-tertiary);
+  pointer-events: none;
+  height: 0;
+  font-weight: 400;
+}
+
+/* Headings */
+.tiptap h1 {
+  font-size: 1.85rem;
+  font-weight: 700;
+  line-height: 1.28;
+  letter-spacing: -0.02em;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+}
+
+.tiptap h2 {
+  font-size: 1.42rem;
+  font-weight: 650;
+  line-height: 1.32;
+  letter-spacing: -0.015em;
+  margin-top: 1.25rem;
+  margin-bottom: 0.4rem;
+  color: var(--text-primary);
+}
+
+.tiptap h3 {
+  font-size: 1.18rem;
+  font-weight: 600;
+  line-height: 1.38;
+  margin-top: 1rem;
+  margin-bottom: 0.35rem;
+  color: var(--text-primary);
+}
+
+/* Paragraphs */
+.tiptap p {
+  font-size: 1.05rem;
+  line-height: 1.78; /* Optimal line height for Hebrew & English */
+  margin-bottom: 0.65rem;
+  color: var(--text-primary);
+}
+
+/* =========================================================
+   Bidirectional (RTL / LTR) List Alignment Rules
+   ========================================================= */
+
+/* LTR Paragraphs & Lists */
+.tiptap [dir="ltr"],
+.tiptap [data-dir="ltr"] {
+  direction: ltr !important;
+  text-align: left !important;
+}
+
+/* RTL Paragraphs & Lists (Hebrew / Arabic) */
+.tiptap [dir="rtl"],
+.tiptap [data-dir="rtl"] {
+  direction: rtl !important;
+  text-align: right !important;
+}
+
+/* Standard Lists */
+.tiptap ul,
+.tiptap ol {
+  margin-bottom: 0.85rem;
+  padding-inline-start: 1.75rem;
+}
+
+.tiptap ul {
+  list-style-type: disc;
+}
+
+.tiptap ol {
+  list-style-type: decimal;
+}
+
+.tiptap li {
+  margin-bottom: 0.3rem;
+  line-height: 1.72;
+}
+
+.tiptap li > p {
+  margin-bottom: 0;
+}
+
+/* RTL Lists override for markers */
+.tiptap ul[data-dir="rtl"],
+.tiptap ol[data-dir="rtl"],
+.tiptap li[data-dir="rtl"] {
+  direction: rtl !important;
+  text-align: right !important;
+}
+
+/* =========================================================
+   Apple Reminders / Notes Style Interactive Checklists
+   ========================================================= */
+
+ul.task-list,
+ul[data-type="taskList"],
+.ProseMirror ul[data-type="taskList"],
+.tiptap ul[data-type="taskList"] {
+  list-style: none !important;
+  padding: 0 !important;
+  padding-inline-start: 0 !important;
+  margin-top: 0.35rem !important;
+  margin-bottom: 0.5rem !important;
+}
+
+ul.task-list > li,
+li.task-item,
+li[data-type="taskItem"],
+.ProseMirror ul[data-type="taskList"] > li,
+.ProseMirror li[data-type="taskItem"],
+.tiptap li[data-type="taskItem"] {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start !important;
+  gap: 0.65rem !important;
+  margin-bottom: 0.25rem !important;
+  line-height: 1.72 !important;
+  position: relative !important;
+  list-style: none !important;
+  width: 100% !important;
+}
+
+/* For RTL task items: checkbox on right, text on right */
+ul.task-list > li[dir="rtl"],
+ul.task-list > li[data-dir="rtl"],
+li.task-item[dir="rtl"],
+li[data-type="taskItem"][data-dir="rtl"],
+li[data-type="taskItem"][dir="rtl"],
+.ProseMirror li[data-type="taskItem"][data-dir="rtl"],
+.ProseMirror li[data-type="taskItem"][dir="rtl"] {
+  direction: rtl !important;
+  text-align: right !important;
+}
+
+/* For LTR task items: checkbox on left, text on left */
+ul.task-list > li[dir="ltr"],
+ul.task-list > li[data-dir="ltr"],
+li.task-item[dir="ltr"],
+li[data-type="taskItem"][data-dir="ltr"],
+li[data-type="taskItem"][dir="ltr"],
+.ProseMirror li[data-type="taskItem"][data-dir="ltr"],
+.ProseMirror li[data-type="taskItem"][dir="ltr"] {
+  direction: ltr !important;
+  text-align: left !important;
+}
+
+/* Checkbox container */
+ul.task-list > li > label,
+li.task-item > label,
+li[data-type="taskItem"] > label,
+.ProseMirror li[data-type="taskItem"] > label,
+.tiptap li[data-type="taskItem"] > label {
+  user-select: none !important;
+  cursor: pointer !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  margin: 0.32rem 0 0 0 !important;
+  flex: 0 0 auto !important;
+  line-height: 1 !important;
+}
+
+ul.task-list > li > label input[type="checkbox"],
+li.task-item > label input[type="checkbox"],
+li[data-type="taskItem"] > label > input[type="checkbox"],
+.ProseMirror li[data-type="taskItem"] > label > input[type="checkbox"],
+.tiptap li[data-type="taskItem"] > label > input[type="checkbox"] {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  width: 1.15rem !important;
+  height: 1.15rem !important;
+  border: 1.75px solid #8E8E93 !important;
+  border-radius: 5px !important;
+  background-color: transparent !important;
+  cursor: pointer !important;
+  display: grid !important;
+  place-content: center !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+ul.task-list > li > label input[type="checkbox"]:hover,
+li.task-item > label input[type="checkbox"]:hover,
+li[data-type="taskItem"] > label > input[type="checkbox"]:hover,
+.ProseMirror li[data-type="taskItem"] > label > input[type="checkbox"]:hover {
+  border-color: var(--accent-color) !important;
+  background-color: var(--accent-light) !important;
+}
+
+ul.task-list > li > label input[type="checkbox"]:checked,
+li.task-item > label input[type="checkbox"]:checked,
+li[data-type="taskItem"] > label > input[type="checkbox"]:checked,
+.ProseMirror li[data-type="taskItem"] > label > input[type="checkbox"]:checked {
+  background-color: var(--accent-color) !important;
+  border-color: var(--accent-color) !important;
+  transform: scale(1.05);
+}
+
+ul.task-list > li > label input[type="checkbox"]:checked::before,
+li.task-item > label input[type="checkbox"]:checked::before,
+li[data-type="taskItem"] > label > input[type="checkbox"]:checked::before,
+.ProseMirror li[data-type="taskItem"] > label > input[type="checkbox"]:checked::before {
+  content: "" !important;
+  width: 0.38rem !important;
+  height: 0.68rem !important;
+  border: solid white !important;
+  border-width: 0 2.2px 2.2px 0 !important;
+  transform: rotate(45deg) translate(-1px, -1px) !important;
+}
+
+/* Task Item Text Body - strictly inline with no line breaks */
+ul.task-list > li > div,
+li.task-item > div,
+li[data-type="taskItem"] > div,
+.ProseMirror li[data-type="taskItem"] > div,
+.tiptap li[data-type="taskItem"] > div {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: block !important;
+}
+
+ul.task-list > li > div > p,
+li.task-item > div > p,
+li[data-type="taskItem"] > div > p,
+.ProseMirror li[data-type="taskItem"] > div > p,
+.tiptap li[data-type="taskItem"] > div > p {
+  margin: 0 !important;
+  padding: 0 !important;
+  display: inline !important;
+  line-height: inherit !important;
+}
+
+ul.task-list > li[data-checked="true"] > div,
+li.task-item[data-checked="true"] > div,
+li[data-type="taskItem"][data-checked="true"] > div,
+.ProseMirror li[data-type="taskItem"][data-checked="true"] > div {
+  text-decoration: line-through !important;
+  color: var(--text-tertiary) !important;
+  opacity: 0.75 !important;
+  transition: color 0.15s ease, opacity 0.15s ease !important;
+}
+
+/* Blockquotes */
+.tiptap blockquote {
+  border-inline-start: 3.5px solid var(--accent-color);
+  padding-inline-start: 1.1rem;
+  margin-inline-start: 0;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  color: var(--text-secondary);
+  font-style: italic;
+  background-color: var(--card-hover);
+  padding-top: 0.4rem;
+  padding-bottom: 0.4rem;
+  border-radius: 0 6px 6px 0;
+}
+
+.tiptap blockquote[dir="rtl"] {
+  border-radius: 6px 0 0 6px;
+}
+
+/* Code Blocks */
+.tiptap pre {
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--border-color);
+  padding: 0.9rem 1.2rem;
+  border-radius: 10px;
+  font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  margin: 1rem 0;
+  direction: ltr !important;
+  text-align: left !important;
+  overflow-x: auto;
+}
+
+.dark .tiptap pre {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tiptap code {
+  background: rgba(0, 0, 0, 0.045);
+  padding: 0.2rem 0.4rem;
+  border-radius: 5px;
+  font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 0.88rem;
+  direction: ltr !important;
+  unicode-bidi: isolate;
+  color: #D97706;
+}
+
+.dark .tiptap code {
+  background: rgba(255, 255, 255, 0.08);
+  color: #FBBF24;
+}
+
+/* Tables */
+.tiptap table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  margin: 1.25rem 0;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+}
+
+.tiptap td,
+.tiptap th {
+  min-width: 1em;
+  border-bottom: 1px solid var(--border-color);
+  border-inline-end: 1px solid var(--border-color);
+  padding: 0.6rem 0.9rem;
+  vertical-align: top;
+  box-sizing: border-box;
+  position: relative;
+  font-size: 0.95rem;
+}
+
+.tiptap tr:last-child td {
+  border-bottom: none;
+}
+
+.tiptap th:last-child,
+.tiptap td:last-child {
+  border-inline-end: none;
+}
+
+.tiptap th {
+  font-weight: 600;
+  background-color: rgba(0, 0, 0, 0.025);
+  color: var(--text-primary);
+}
+
+.dark .tiptap th {
+  background-color: rgba(255, 255, 255, 0.04);
+}
