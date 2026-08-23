@@ -53,5 +53,21 @@
     "vite": "^6.2.0",
     "vite-plugin-electron": "^0.29.0",
     "vite-plugin-electron-renderer": "^0.14.6"
+  },
+  "build": {
+    "appId": "com.scribe.notes",
+    "productName": "Scribe",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "public/icon.icns",
+      "target": [
+        "dir"
+      ]
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "public/**/*"
+    ]
   }
 }

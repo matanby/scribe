@@ -326,6 +326,12 @@ function setupMenu() {
 }
 
 app.whenReady().then(() => {
+  if (process.platform === 'darwin' && app.dock) {
+    const iconPath = path.join(__dirname, '../public/icon.png');
+    if (fsSync.existsSync(iconPath)) {
+      app.dock.setIcon(iconPath);
+    }
+  }
   setupMenu();
   createWindow();
 
