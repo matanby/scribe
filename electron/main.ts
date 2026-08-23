@@ -23,6 +23,19 @@ process.env.VITE_PUBLIC = app.isPackaged ? process.env.DIST : path.join(process.
 
 const allWindows = new Set<BrowserWindow>();
 
+function getAppIconPath(): string {
+  const possiblePaths = [
+    path.join(__dirname, '../public/icon.png'),
+    path.join(__dirname, '../dist/icon.png'),
+    path.join(process.env.VITE_PUBLIC || '', 'icon.png'),
+    path.join(process.env.DIST || '', 'icon.png')
+  ];
+  for (const p of possiblePaths) {
+    if (p && fsSync.existsSync(p)) return p;
+  }
+  return path.join(__dirname, '../public/icon.png');
+}
+
 interface WindowState {
   x?: number;
   y?: number;
@@ -110,7 +123,7 @@ export function createWindow(targetFolderPath?: string): BrowserWindow {
     vibrancy: 'under-window',
     visualEffectState: 'active',
     backgroundColor: '#00000000',
-    icon: path.join(__dirname, '../public/icon.png'),
+    icon: getAppIconPath(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -161,7 +174,10 @@ export function createWindow(targetFolderPath?: string): BrowserWindow {
 
   if (process.platform === 'darwin' && app.dock) {
     try {
-      app.dock.setIcon(path.join(__dirname, '../public/icon.png'));
+      const iconPath = getAppIconPath();
+      if (fsSync.existsSync(iconPath)) {
+        app.dock.setIcon(iconPath);
+      }
     } catch (e) {
       console.error('Could not set dock icon:', e);
     }
@@ -327,7 +343,7 @@ function setupMenu() {
 
 app.whenReady().then(() => {
   if (process.platform === 'darwin' && app.dock) {
-    const iconPath = path.join(__dirname, '../public/icon.png');
+    const iconPath = getAppIconPath();
     if (fsSync.existsSync(iconPath)) {
       app.dock.setIcon(iconPath);
     }

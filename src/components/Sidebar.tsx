@@ -48,7 +48,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div
           onClick={() => onSelectFolder(node.relativePath)}
           style={{ paddingLeft: `${Math.max(10, depth * 12 + 10)}px` }}
-          className={`group flex items-center justify-between pr-2.5 py-1 rounded-md text-xs cursor-pointer transition-all ${
+          className={`folder-item group flex items-center justify-between pr-2.5 py-1 rounded-md text-xs cursor-pointer transition-all ${
             isSelected
               ? 'bg-[var(--card-active)] text-[var(--text-primary)] font-semibold shadow-xs'
               : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5 opacity-90'
@@ -58,18 +58,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {hasChildren ? (
               <button
                 onClick={(e) => toggleCollapse(node.path, e)}
-                className="p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 text-[var(--text-secondary)]"
+                className="p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 text-[var(--text-secondary)] transition-transform duration-200"
               >
-                {isExpanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                <ChevronRight 
+                  size={11} 
+                  className={`transition-transform duration-200 ease-out ${isExpanded ? 'rotate-90' : 'rotate-0'}`} 
+                />
               </button>
             ) : (
               <span className="w-3" />
             )}
             
             {isSelected ? (
-              <FolderOpen size={14} className="text-[var(--accent-color)] shrink-0" />
+              <FolderOpen size={14} className="text-[var(--accent-color)] shrink-0 transition-transform duration-150" />
             ) : (
-              <Folder size={14} className="text-[var(--accent-color)] shrink-0 opacity-90" />
+              <Folder size={14} className="text-[var(--accent-color)] shrink-0 opacity-90 transition-transform duration-150" />
             )}
             
             <span className="truncate">{node.name}</span>
@@ -80,9 +83,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </span>
         </div>
 
-        {hasChildren && isExpanded && (
-          <div className="mt-0.5">
-            {node.children.map(child => renderFolderNode(child, depth + 1))}
+        {hasChildren && (
+          <div 
+            className={`grid transition-[grid-template-rows,opacity] duration-200 ease-out ${
+              isExpanded ? 'grid-rows-[1fr] opacity-100 mt-0.5' : 'grid-rows-[0fr] opacity-0 pointer-events-none'
+            }`}
+          >
+            <div className="overflow-hidden">
+              {node.children.map(child => renderFolderNode(child, depth + 1))}
+            </div>
           </div>
         )}
       </div>

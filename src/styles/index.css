@@ -55,6 +55,46 @@
   }
 }
 
+/* =========================================================
+   Smooth Theme (Light/Dark) & Layout Transitions
+   ========================================================= */
+
+body,
+header,
+aside,
+main,
+section,
+article,
+nav,
+.titlebar-drag-region,
+.modal-backdrop,
+.modal-panel,
+.notelist-card,
+.folder-item {
+  transition: background-color 0.28s cubic-bezier(0.2, 0.9, 0.3, 1),
+              border-color 0.28s cubic-bezier(0.2, 0.9, 0.3, 1),
+              color 0.22s ease,
+              box-shadow 0.28s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+/* View Transitions API smooth cross-fade animation */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.28s;
+  animation-timing-function: cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+/* Exclude active editor cursor & typing inputs from transition latency */
+.tiptap,
+.tiptap *,
+.ProseMirror,
+.ProseMirror *,
+input:focus,
+textarea:focus {
+  transition-property: color, background-color, border-color;
+  transition-duration: 0.15s;
+}
+
 .font-sans-mode {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Arial Hebrew", "Heebo", "Rubik", "Noto Sans Hebrew", sans-serif !important;
 }

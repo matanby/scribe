@@ -103,11 +103,30 @@ export const App: React.FC = () => {
 
   const isDraggingSidebar = useRef(false);
   const isDraggingNoteList = useRef(false);
+  const [isResizing, setIsResizing] = useState(false);
+
+  // Smooth Theme Toggle Handler
+  const handleToggleTheme = useCallback(() => {
+    const applyThemeChange = () => {
+      setIsDark(prev => {
+        const next = !prev;
+        handleUpdateAppearance({ themeMode: next ? 'dark' : 'light' });
+        return next;
+      });
+    };
+
+    if (typeof document !== 'undefined' && 'startViewTransition' in document) {
+      (document as any).startViewTransition(applyThemeChange);
+    } else {
+      applyThemeChange();
+    }
+  }, []);
 
   // Resize Handler for Sidebar (Pane 1)
   const handleSidebarMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     isDraggingSidebar.current = true;
+    setIsResizing(true);
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
 
@@ -120,6 +139,7 @@ export const App: React.FC = () => {
 
     const onMouseUp = () => {
       isDraggingSidebar.current = false;
+      setIsResizing(false);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
       window.removeEventListener('mousemove', onMouseMove);
@@ -134,6 +154,7 @@ export const App: React.FC = () => {
   const handleNoteListMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     isDraggingNoteList.current = true;
+    setIsResizing(true);
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
 
@@ -150,6 +171,7 @@ export const App: React.FC = () => {
 
     const onMouseUp = () => {
       isDraggingNoteList.current = false;
+      setIsResizing(false);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
       window.removeEventListener('mousemove', onMouseMove);
@@ -230,11 +252,15 @@ export const App: React.FC = () => {
       setIsQuickSwitcherOpen(true);
     });
 
-    // Keyboard Shortcut: ⌘P -> Quick Switcher
+    // Keyboard Shortcut: ⌘P -> Quick Switcher, ⌘\ -> Toggle Sidebar
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'p' && !e.shiftKey) {
         e.preventDefault();
         setIsQuickSwitcherOpen(prev => !prev);
+      }
+      if ((e.metaKey || e.ctrlKey) && (e.key === '\\' || e.code === 'Backslash')) {
+        e.preventDefault();
+        setShowSidebar(prev => !prev);
       }
     };
 
@@ -440,7 +466,7 @@ export const App: React.FC = () => {
         isSaving={isSaving}
         lastSavedText={lastSavedText}
         isDark={isDark}
-        onToggleTheme={() => setIsDark(!isDark)}
+        onToggleTheme={handleToggleTheme}
         showSidebar={showSidebar}
         onToggleSidebar={() => setShowSidebar(!showSidebar)}
         searchInputRef={searchInputRef}
@@ -448,31 +474,36 @@ export const App: React.FC = () => {
 
       {/* 3-Pane Resizable Layout */}
       <main className="flex-1 flex overflow-hidden relative">
-        {/* Pane 1: Sidebar Folders (Resizable & Foldable) */}
-        {showSidebar && (
-          <>
-            <div 
-              style={{ width: `${sidebarWidth}px` }} 
-              className="h-full shrink-0 overflow-hidden"
-            >
-              <Sidebar
-                tree={tree}
-                selectedFolder={selectedFolder}
-                onSelectFolder={setSelectedFolder}
-                allNotesCount={tree?.allNotes.length || 0}
-                onOpenFolderDialog={handleOpenFolderDialog}
-                onOpenAppearance={() => setIsAppearanceOpen(true)}
-              />
-            </div>
-
-            {/* Draggable Divider 1 (Sidebar <-> NoteList) */}
-            <div
-              onMouseDown={handleSidebarMouseDown}
-              className="w-[4px] h-full cursor-col-resize hover:bg-[var(--accent-color)]/60 active:bg-[var(--accent-color)] transition-colors z-20 shrink-0 select-none -mr-[2px] -ml-[2px]"
-              title="Drag to resize sidebar"
+        {/* Pane 1: Sidebar Folders (Resizable & Foldable with smooth animation) */}
+        <div 
+          style={{ 
+            width: showSidebar ? `${sidebarWidth}px` : '0px',
+            opacity: showSidebar ? 1 : 0,
+          }} 
+          className={`h-full shrink-0 overflow-hidden ${
+            isResizing ? '' : 'transition-[width,opacity] duration-300 ease-[cubic-bezier(0.2,0.9,0.3,1)]'
+          }`}
+        >
+          <div style={{ width: `${sidebarWidth}px` }} className="h-full">
+            <Sidebar
+              tree={tree}
+              selectedFolder={selectedFolder}
+              onSelectFolder={setSelectedFolder}
+              allNotesCount={tree?.allNotes.length || 0}
+              onOpenFolderDialog={handleOpenFolderDialog}
+              onOpenAppearance={() => setIsAppearanceOpen(true)}
             />
-          </>
-        )}
+          </div>
+        </div>
+
+        {/* Draggable Divider 1 (Sidebar <-> NoteList) */}
+        <div
+          onMouseDown={handleSidebarMouseDown}
+          className={`w-[4px] h-full cursor-col-resize hover:bg-[var(--accent-color)]/60 active:bg-[var(--accent-color)] z-20 shrink-0 select-none -mr-[2px] -ml-[2px] ${
+            !showSidebar ? 'pointer-events-none opacity-0' : 'opacity-100'
+          } ${isResizing ? '' : 'transition-opacity duration-300 ease-[cubic-bezier(0.2,0.9,0.3,1)]'}`}
+          title="Drag to resize sidebar"
+        />
 
         {/* Pane 2: Note List (Resizable) */}
         <div 
