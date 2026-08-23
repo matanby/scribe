@@ -308,11 +308,7 @@ export const App: React.FC = () => {
   }, [selectedNote]);
 
   const handlePrint = useCallback(() => {
-    if (window.scribeAPI.printNote) {
-      window.scribeAPI.printNote();
-    } else {
-      window.print();
-    }
+    window.print();
   }, []);
 
   const handleExportPDFRef = useRef(handleExportPDF);
@@ -643,7 +639,7 @@ export const App: React.FC = () => {
             width: showSidebar ? `${sidebarWidth}px` : '0px',
             opacity: showSidebar ? 1 : 0,
           }} 
-          className={`h-full shrink-0 overflow-hidden ${
+          className={`h-full shrink-0 overflow-hidden no-print ${
             isResizing ? '' : 'transition-[width,opacity] duration-300 ease-[cubic-bezier(0.2,0.9,0.3,1)]'
           }`}
         >
@@ -664,7 +660,7 @@ export const App: React.FC = () => {
         {/* Draggable Divider 1 (Sidebar <-> NoteList) */}
         <div
           onMouseDown={handleSidebarMouseDown}
-          className={`w-[4px] h-full cursor-col-resize hover:bg-[var(--accent-color)]/60 active:bg-[var(--accent-color)] z-20 shrink-0 select-none -mr-[2px] -ml-[2px] ${
+          className={`w-[4px] h-full cursor-col-resize hover:bg-[var(--accent-color)]/60 active:bg-[var(--accent-color)] z-20 shrink-0 select-none -mr-[2px] -ml-[2px] no-print ${
             !showSidebar ? 'pointer-events-none opacity-0' : 'opacity-100'
           } ${isResizing ? '' : 'transition-opacity duration-300 ease-[cubic-bezier(0.2,0.9,0.3,1)]'}`}
           title="Drag to resize sidebar"
@@ -673,7 +669,7 @@ export const App: React.FC = () => {
         {/* Pane 2: Note List (Resizable) */}
         <div 
           style={{ width: `${noteListWidth}px` }} 
-          className="h-full shrink-0 overflow-hidden"
+          className="h-full shrink-0 overflow-hidden no-print"
         >
           <NoteList
             notes={filteredNotes}
@@ -693,7 +689,7 @@ export const App: React.FC = () => {
         {/* Draggable Divider 2 (NoteList <-> Editor) */}
         <div
           onMouseDown={handleNoteListMouseDown}
-          className="w-[4px] h-full cursor-col-resize hover:bg-[var(--accent-color)]/60 active:bg-[var(--accent-color)] transition-colors z-20 shrink-0 select-none -mr-[2px] -ml-[2px]"
+          className="w-[4px] h-full cursor-col-resize hover:bg-[var(--accent-color)]/60 active:bg-[var(--accent-color)] transition-colors z-20 shrink-0 select-none -mr-[2px] -ml-[2px] no-print"
           title="Drag to resize note list"
         />
 

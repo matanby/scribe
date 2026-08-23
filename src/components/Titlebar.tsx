@@ -64,7 +64,7 @@ export const Titlebar: React.FC<TitlebarProps> = ({
   onPrint
 }) => {
   return (
-    <header className="titlebar-drag-region h-11 border-b border-[var(--border-color)] flex items-center justify-between px-3 select-none bg-[var(--sidebar-bg)] backdrop-blur-2xl shrink-0 z-30">
+    <header className="titlebar-drag-region no-print h-11 border-b border-[var(--border-color)] flex items-center justify-between px-3 select-none bg-[var(--sidebar-bg)] backdrop-blur-2xl shrink-0 z-30">
       {/* Left section: traffic lights spacing, history arrows & sidebar toggle */}
       <div className="flex items-center gap-1.5 pl-[72px] titlebar-no-drag">
         {/* Navigation History */}

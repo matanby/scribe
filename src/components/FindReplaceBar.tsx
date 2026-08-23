@@ -107,7 +107,7 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
 
   return (
     <div 
-      className={`absolute top-3 right-6 z-30 flex flex-col bg-white/95 dark:bg-[#222226]/95 backdrop-blur-2xl border border-[var(--border-color)] shadow-2xl rounded-2xl p-1.5 transition-all text-xs select-none ${
+      className={`no-print absolute top-3 right-6 z-30 flex flex-col bg-white/95 dark:bg-[#222226]/95 backdrop-blur-2xl border border-[var(--border-color)] shadow-2xl rounded-2xl p-1.5 transition-all text-xs select-none ${
         isOpen ? 'block animate-in fade-in duration-100' : 'hidden'
       }`}
     >

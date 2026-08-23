@@ -83,7 +83,7 @@ export const FormattingBar: React.FC<FormattingBarProps> = ({ editor }) => {
   };
 
   return (
-    <div className="flex items-center justify-between px-6 py-1.5 border-b border-[var(--border-subtle)] bg-[var(--editor-bg)]/80 backdrop-blur-md select-none shrink-0 sticky top-0 z-20">
+    <div className="no-print flex items-center justify-between px-6 py-1.5 border-b border-[var(--border-subtle)] bg-[var(--editor-bg)]/80 backdrop-blur-md select-none shrink-0 sticky top-0 z-20">
       <div className="flex items-center gap-1">
         {/* Apple Notes Aa Paragraph Style Popover */}
         <div className="relative" ref={aaMenuRef}>

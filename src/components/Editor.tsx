@@ -367,7 +367,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
       <div className="flex-1 overflow-y-auto relative">
         <div className="max-w-[720px] w-full mx-auto px-6 pt-7 pb-2">
           {/* Apple Notes Floating Breadcrumbs & Metadata Header */}
-          <div className="flex items-center justify-between text-[11px] text-[var(--text-secondary)] mb-4 select-none">
+          <div className="no-print flex items-center justify-between text-[11px] text-[var(--text-secondary)] mb-4 select-none">
             {/* Breadcrumb Navigation */}
             <div className="flex items-center gap-1.5 min-w-0">
               <button
@@ -408,7 +408,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
             className="w-full text-2xl font-bold bg-transparent text-[var(--text-primary)] placeholder-[var(--text-tertiary)] border-none focus:outline-none focus:ring-0 mb-3 px-0 tracking-tight"
           />
 
-          <div className="h-[1px] bg-[var(--border-subtle)] mb-5" />
+          <div className="h-[1px] bg-[var(--border-subtle)] mb-5 no-print" />
         </div>
 
         {/* TipTap Document Area */}

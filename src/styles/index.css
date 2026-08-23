@@ -588,24 +588,46 @@ li[data-type="taskItem"][data-checked="true"] > div,
    ========================================================= */
 
 @media print {
-  body {
-    background-color: #FFFFFF !important;
-    color: #1C1C1E !important;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
+  @page {
+    margin: 15mm;
+    size: auto;
   }
 
+  html, 
+  body, 
+  #root, 
+  #root > div,
+  main,
+  .overflow-hidden,
+  .overflow-y-auto {
+    height: auto !important;
+    min-height: auto !important;
+    max-height: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+    position: static !important;
+    display: block !important;
+    background: #FFFFFF !important;
+    color: #1C1C1E !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide all non-printable UI chrome */
   header,
   aside,
+  .no-print,
+  [data-no-print="true"],
   .titlebar-drag-region,
   .formatting-bar,
   .bubble-menu,
   .slash-menu,
   .find-replace-bar,
+  .cursor-col-resize,
   .heading-collapse-gutter,
   .collapsed-indicator-pill,
-  button,
-  [data-no-print="true"] {
+  button {
     display: none !important;
   }
 
@@ -614,15 +636,17 @@ li[data-type="taskItem"][data-checked="true"] > div,
     display: block !important;
   }
 
-  .editor-container {
+  .max-w-\[720px\] {
     max-width: 100% !important;
     padding: 0 !important;
     margin: 0 !important;
   }
 
   .tiptap {
-    padding-bottom: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
     min-height: auto !important;
+    max-width: 100% !important;
   }
 }
 
