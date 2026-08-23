@@ -17,6 +17,7 @@ export const scribeAPI = {
   getNotesPath: () => ipcRenderer.invoke('notes:getPath'),
   setNotesPath: (path: string) => ipcRenderer.invoke('notes:setPath', path),
   selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
+  openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
   onNotesChanged: (callback: (data?: { filePath?: string; eventType?: string }) => void) => {
     const handler = (_: any, data: any) => callback(data);
     ipcRenderer.on('notes:changed', handler);

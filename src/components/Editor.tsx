@@ -123,6 +123,75 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
     editorProps: {
       attributes: {
         class: 'tiptap ProseMirror focus:outline-none max-w-[720px] mx-auto px-6 py-2'
+      },
+      handleClick: (view, pos, event) => {
+        const target = (event.target as HTMLElement).closest('a');
+        if (target && target.getAttribute('href')) {
+          const href = target.getAttribute('href');
+          if (href) {
+            event.preventDefault();
+            window.scribeAPI.openExternal(href);
+            return true;
+          }
+        }
+        return false;
+      },
+      handlePaste: (view, event) => {
+        // Image paste from clipboard (e.g. screenshots)
+        const items = event.clipboardData?.items;
+        if (items) {
+          for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf('image') !== -1) {
+              const file = items[i].getAsFile();
+              if (file) {
+                event.preventDefault();
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                  const base64 = e.target?.result as string;
+                  if (base64) {
+                    view.dispatch(
+                      view.state.tr.replaceSelectionWith(
+                        view.state.schema.nodes.image.create({ src: base64 })
+                      )
+                    );
+                  }
+                };
+                reader.readAsDataURL(file);
+                return true;
+              }
+            }
+          }
+        }
+        return false;
+      },
+      handleDrop: (view, event) => {
+        // Image Drag & Drop from macOS Finder
+        const files = event.dataTransfer?.files;
+        if (files && files.length > 0) {
+          for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            if (file.type.startsWith('image/')) {
+              event.preventDefault();
+              const reader = new FileReader();
+              reader.onload = (e) => {
+                const base64 = e.target?.result as string;
+                if (base64) {
+                  const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
+                  const pos = coords ? coords.pos : view.state.selection.from;
+                  view.dispatch(
+                    view.state.tr.insert(
+                      pos,
+                      view.state.schema.nodes.image.create({ src: base64 })
+                    )
+                  );
+                }
+              };
+              reader.readAsDataURL(file);
+              return true;
+            }
+          }
+        }
+        return false;
       }
     },
     onUpdate: ({ editor, transaction }) => {

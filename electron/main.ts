@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu, nativeTheme } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu, nativeTheme, shell } from 'electron';
 import path from 'path';
 import { 
   getNotesRoot, 
@@ -47,6 +47,21 @@ function createWindow() {
       console.error('Could not set dock icon:', e);
     }
   }
+
+  // Open external web links in user's default browser (Safari, Chrome, etc.)
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('mailto:')) {
+      shell.openExternal(url);
+    }
+    return { action: 'deny' };
+  });
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('mailto:')) {
+      event.preventDefault();
+      shell.openExternal(url);
+    }
+  });
 
   if (process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
@@ -219,4 +234,12 @@ ipcMain.handle('dialog:selectFolder', async () => {
     return selected;
   }
   return null;
+});
+
+ipcMain.handle('shell:openExternal', async (_, url: string) => {
+  if (url && (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('mailto:'))) {
+    await shell.openExternal(url);
+    return true;
+  }
+  return false;
 });

@@ -11,7 +11,8 @@ import {
   Code, 
   Quote, 
   Minus,
-  Sparkles
+  Sparkles,
+  Image as ImageIcon
 } from 'lucide-react';
 
 interface SlashMenuProps {
@@ -82,6 +83,31 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ editor }) => {
       subtitle: 'Insert a 3x3 table',
       icon: <TableIcon size={15} className="text-purple-500" />,
       action: (ed) => ed.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+    },
+    {
+      id: 'image',
+      title: 'Image / Photo',
+      subtitle: 'Upload or insert an image',
+      icon: <ImageIcon size={15} className="text-emerald-600" />,
+      action: (ed) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.onchange = (e) => {
+          const file = (e.target as HTMLInputElement).files?.[0];
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = (re) => {
+              const base64 = re.target?.result as string;
+              if (base64) {
+                ed.chain().focus().setImage({ src: base64 }).run();
+              }
+            };
+            reader.readAsDataURL(file);
+          }
+        };
+        input.click();
+      }
     },
     {
       id: 'quote',
