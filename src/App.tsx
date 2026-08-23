@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { Titlebar } from './components/Titlebar';
 import { Sidebar } from './components/Sidebar';
 import { NoteList } from './components/NoteList';
@@ -19,6 +19,7 @@ export const App: React.FC = () => {
     return false;
   });
   const [showSidebar, setShowSidebar] = useState(true);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Sync with system light/dark theme dynamically
   useEffect(() => {
@@ -47,7 +48,9 @@ export const App: React.FC = () => {
       setTree(data);
 
       if (preserveSelectedId) {
-        const found = data.allNotes.find((n: NoteMeta) => n.id === preserveSelectedId || n.filePath === preserveSelectedId);
+        const found = [...data.allNotes, ...data.trashNotes].find(
+          (n: NoteMeta) => n.id === preserveSelectedId || n.filePath === preserveSelectedId
+        );
         if (found) {
           setSelectedNote(found);
           return;
@@ -58,7 +61,9 @@ export const App: React.FC = () => {
         if (!prev) {
           return data.allNotes.length > 0 ? data.allNotes[0] : null;
         }
-        const match = data.allNotes.find((n: NoteMeta) => n.filePath === prev.filePath);
+        const match = [...data.allNotes, ...data.trashNotes].find(
+          (n: NoteMeta) => n.filePath === prev.filePath
+        );
         return match || (data.allNotes.length > 0 ? data.allNotes[0] : null);
       });
     } catch (err) {
@@ -83,12 +88,15 @@ export const App: React.FC = () => {
   const handleNewNote = useCallback(async () => {
     try {
       const root = tree?.rootPath || '';
-      const folderPath = selectedFolder ? `${root}/${selectedFolder}` : root;
+      const folderPath = selectedFolder && selectedFolder !== '__TRASH__' ? `${root}/${selectedFolder}` : root;
       const newNote = await window.scribeAPI.createNote({
         folderPath,
         title: 'Untitled Note',
         content: '# Untitled Note\n\n'
       });
+      if (selectedFolder === '__TRASH__') {
+        setSelectedFolder('');
+      }
       await loadTree(newNote.filePath);
       setSelectedNote(newNote);
     } catch (err) {
@@ -96,17 +104,48 @@ export const App: React.FC = () => {
     }
   }, [tree, selectedFolder, loadTree]);
 
-  // Delete Note
+  // Delete / Trash Note
   const handleDeleteNote = useCallback(async (note: NoteMeta, e: React.MouseEvent) => {
     e.stopPropagation();
-    const confirmDelete = window.confirm(`Are you sure you want to delete "${note.title}"?`);
-    if (!confirmDelete) return;
+    if (selectedFolder === '__TRASH__') {
+      const confirmDelete = window.confirm(`Permanently delete "${note.title}"? This cannot be undone.`);
+      if (!confirmDelete) return;
+      try {
+        await window.scribeAPI.permanentDeleteNote(note.filePath);
+        await loadTree();
+      } catch (err) {
+        console.error('Failed to permanently delete note:', err);
+      }
+    } else {
+      try {
+        await window.scribeAPI.trashNote(note.filePath);
+        await loadTree();
+      } catch (err) {
+        console.error('Failed to move note to trash:', err);
+      }
+    }
+  }, [selectedFolder, loadTree]);
 
+  // Restore note from trash
+  const handleRestoreNote = useCallback(async (note: NoteMeta, e: React.MouseEvent) => {
+    e.stopPropagation();
     try {
-      await window.scribeAPI.deleteNote(note.filePath);
+      const restoredPath = await window.scribeAPI.restoreNote(note.filePath);
+      await loadTree(restoredPath);
+    } catch (err) {
+      console.error('Failed to restore note:', err);
+    }
+  }, [loadTree]);
+
+  // Empty trash
+  const handleEmptyTrash = useCallback(async () => {
+    const confirmEmpty = window.confirm('Permanently delete all items in Recently Deleted?');
+    if (!confirmEmpty) return;
+    try {
+      await window.scribeAPI.emptyTrash();
       await loadTree();
     } catch (err) {
-      console.error('Failed to delete note:', err);
+      console.error('Failed to empty trash:', err);
     }
   }, [loadTree]);
 
@@ -145,13 +184,21 @@ export const App: React.FC = () => {
     }
   }, [loadTree]);
 
-  // Global Keyboard Shortcuts
+  // Global Keyboard Shortcuts (⌘N, ⌘F, ⌘\)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // ⌘N: New Note
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n') {
         e.preventDefault();
         handleNewNote();
       }
+      // ⌘F: Focus search input
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+      // ⌘\: Fold/Unfold Folders Sidebar
       if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
         e.preventDefault();
         setShowSidebar(prev => !prev);
@@ -162,12 +209,14 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleNewNote]);
 
+  const isTrashView = selectedFolder === '__TRASH__';
+
   // Filter notes based on folder and search query
   const filteredNotes = useMemo(() => {
     if (!tree) return [];
-    let list = tree.allNotes;
+    let list = isTrashView ? tree.trashNotes : tree.allNotes;
 
-    if (selectedFolder) {
+    if (!isTrashView && selectedFolder) {
       list = list.filter(n => n.folder === selectedFolder || n.folder.startsWith(`${selectedFolder}/`));
     }
 
@@ -180,13 +229,13 @@ export const App: React.FC = () => {
     }
 
     return list;
-  }, [tree, selectedFolder, searchQuery]);
+  }, [tree, selectedFolder, isTrashView, searchQuery]);
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-[var(--app-bg)] text-[var(--text-primary)]">
       {/* Native macOS Titlebar */}
       <Titlebar
-        currentFolder={selectedFolder || 'All Notes'}
+        currentFolder={isTrashView ? 'Recently Deleted' : (selectedFolder || 'All Notes')}
         activeNoteTitle={selectedNote?.title || ''}
         noteCount={filteredNotes.length}
         searchQuery={searchQuery}
@@ -199,19 +248,22 @@ export const App: React.FC = () => {
         onToggleTheme={() => setIsDark(!isDark)}
         showSidebar={showSidebar}
         onToggleSidebar={() => setShowSidebar(!showSidebar)}
+        searchInputRef={searchInputRef}
       />
 
       {/* 3-Pane Main Layout */}
-      <main className="flex-1 flex overflow-hidden">
-        {/* Pane 1: Sidebar Folders */}
-        {showSidebar && (
+      <main className="flex-1 flex overflow-hidden relative">
+        {/* Pane 1: Sidebar Folders (Foldable with smooth transition) */}
+        <div className={`transition-all duration-200 ease-in-out shrink-0 overflow-hidden ${
+          showSidebar ? 'w-52 opacity-100' : 'w-0 opacity-0 pointer-events-none'
+        }`}>
           <Sidebar
             tree={tree}
             selectedFolder={selectedFolder}
             onSelectFolder={setSelectedFolder}
             allNotesCount={tree?.allNotes.length || 0}
           />
-        )}
+        </div>
 
         {/* Pane 2: Note List */}
         <NoteList
@@ -219,6 +271,9 @@ export const App: React.FC = () => {
           selectedNoteId={selectedNote?.id || null}
           onSelectNote={setSelectedNote}
           onDeleteNote={handleDeleteNote}
+          isTrash={isTrashView}
+          onRestoreNote={handleRestoreNote}
+          onEmptyTrash={handleEmptyTrash}
         />
 
         {/* Pane 3: WYSIWYG Editor */}

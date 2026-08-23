@@ -54,8 +54,17 @@ function extractTitleFromContent(content: string, fileName: string): string {
   return baseName;
 }
 
+function getTrashDir(): string {
+  const trashPath = path.join(getNotesRoot(), '.trash');
+  if (!fsSync.existsSync(trashPath)) {
+    fsSync.mkdirSync(trashPath, { recursive: true });
+  }
+  return trashPath;
+}
+
 export async function readAllNotesTree(rootDir = getNotesRoot()): Promise<NotesTree> {
   const allNotes: NoteMeta[] = [];
+  const trashNotes: NoteMeta[] = [];
 
   async function scanDir(dir: string, relative = ''): Promise<FolderNode> {
     const dirName = path.basename(dir);
@@ -64,7 +73,7 @@ export async function readAllNotesTree(rootDir = getNotesRoot()): Promise<NotesT
     let noteCount = 0;
 
     for (const entry of entries) {
-      // Ignore hidden files and .obsidian / .git folders
+      // Ignore hidden files and .trash / .obsidian / .git folders
       if (entry.name.startsWith('.')) continue;
 
       const fullPath = path.join(dir, entry.name);
@@ -110,15 +119,53 @@ export async function readAllNotesTree(rootDir = getNotesRoot()): Promise<NotesT
     };
   }
 
+  // Scan main notes
   const rootFolder = await scanDir(rootDir);
+
+  // Scan .trash directory
+  const trashDir = getTrashDir();
+  try {
+    const trashEntries = await fs.readdir(trashDir, { withFileTypes: true });
+    for (const entry of trashEntries) {
+      if (entry.isFile() && entry.name.toLowerCase().endsWith('.md')) {
+        const fullPath = path.join(trashDir, entry.name);
+        try {
+          const stats = await fs.stat(fullPath);
+          const rawContent = await fs.readFile(fullPath, 'utf-8');
+          const parsed = matter(rawContent);
+          const title = extractTitleFromContent(parsed.content, entry.name);
+          const snippet = cleanMarkdownSnippet(parsed.content);
+
+          trashNotes.push({
+            id: fullPath,
+            filePath: fullPath,
+            fileName: entry.name,
+            title,
+            snippet,
+            folder: 'Trash',
+            modifiedAt: stats.mtimeMs,
+            createdAt: stats.birthtimeMs || stats.mtimeMs,
+            frontmatter: parsed.data
+          });
+        } catch (e) {
+          console.error('Error reading trash item:', e);
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Error reading trash directory:', e);
+  }
 
   // Sort notes by modifiedAt desc
   allNotes.sort((a, b) => b.modifiedAt - a.modifiedAt);
+  trashNotes.sort((a, b) => b.modifiedAt - a.modifiedAt);
 
   return {
     rootPath: rootDir,
     folders: [rootFolder],
-    allNotes
+    allNotes,
+    trashNotes,
+    trashCount: trashNotes.length
   };
 }
 
@@ -184,8 +231,31 @@ export async function renameNote(filePath: string, newTitle: string): Promise<{ 
   return { newPath, newFileName };
 }
 
-export async function deleteNote(filePath: string): Promise<void> {
+export async function moveToTrash(filePath: string): Promise<void> {
+  const trashDir = getTrashDir();
+  const fileName = path.basename(filePath);
+  const targetPath = path.join(trashDir, fileName);
+  await fs.rename(filePath, targetPath);
+}
+
+export async function restoreFromTrash(filePath: string): Promise<string> {
+  const fileName = path.basename(filePath);
+  const root = getNotesRoot();
+  const targetPath = path.join(root, fileName);
+  await fs.rename(filePath, targetPath);
+  return targetPath;
+}
+
+export async function permanentDeleteNote(filePath: string): Promise<void> {
   await fs.unlink(filePath);
+}
+
+export async function emptyTrash(): Promise<void> {
+  const trashDir = getTrashDir();
+  const entries = await fs.readdir(trashDir);
+  for (const entry of entries) {
+    await fs.unlink(path.join(trashDir, entry));
+  }
 }
 
 export function startWatching(onChange: () => void) {
@@ -207,3 +277,4 @@ export function startWatching(onChange: () => void) {
     .on('addDir', () => onChange())
     .on('unlinkDir', () => onChange());
 }
+

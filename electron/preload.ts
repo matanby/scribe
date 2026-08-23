@@ -10,6 +10,10 @@ export const scribeAPI = {
   renameNote: (payload: { filePath: string; newTitle: string }) => 
     ipcRenderer.invoke('notes:rename', payload),
   deleteNote: (filePath: string) => ipcRenderer.invoke('notes:delete', filePath),
+  trashNote: (filePath: string) => ipcRenderer.invoke('notes:trash', filePath),
+  restoreNote: (filePath: string) => ipcRenderer.invoke('notes:restore', filePath),
+  permanentDeleteNote: (filePath: string) => ipcRenderer.invoke('notes:permanentDelete', filePath),
+  emptyTrash: () => ipcRenderer.invoke('notes:emptyTrash'),
   getNotesPath: () => ipcRenderer.invoke('notes:getPath'),
   setNotesPath: (path: string) => ipcRenderer.invoke('notes:setPath', path),
   selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),

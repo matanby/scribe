@@ -22,6 +22,8 @@ export interface NotesTree {
   rootPath: string;
   folders: FolderNode[];
   allNotes: NoteMeta[];
+  trashNotes: NoteMeta[];
+  trashCount: number;
 }
 
 export interface SaveNotePayload {
@@ -40,3 +42,8 @@ export interface RenameNotePayload {
   filePath: string;
   newTitle: string;
 }
+
+export interface RestoreNotePayload {
+  filePath: string;
+}
+

@@ -6,7 +6,8 @@ import {
   ChevronRight, 
   ChevronDown, 
   Layers,
-  Sparkles
+  Sparkles,
+  Trash2
 } from 'lucide-react';
 import { FolderNode, NotesTree } from '../types';
 
@@ -102,6 +103,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
           <span className="text-[10.5px] text-[var(--text-secondary)] font-normal opacity-70">
             {allNotesCount}
+          </span>
+        </div>
+
+        {/* Recently Deleted */}
+        <div
+          onClick={() => onSelectFolder('__TRASH__')}
+          className={`flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs cursor-pointer transition-all ${
+            selectedFolder === '__TRASH__'
+              ? 'bg-red-500/10 text-red-500 font-semibold shadow-xs'
+              : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5 opacity-90'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Trash2 size={14} className={selectedFolder === '__TRASH__' ? 'text-red-500' : 'text-[var(--text-secondary)]'} />
+            <span>Recently Deleted</span>
+          </div>
+          <span className="text-[10.5px] text-[var(--text-secondary)] font-normal opacity-70">
+            {tree?.trashCount || 0}
           </span>
         </div>
       </div>

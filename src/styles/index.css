@@ -450,3 +450,29 @@ li[data-type="taskItem"][data-checked="true"] > div,
 .dark .tiptap th {
   background-color: rgba(255, 255, 255, 0.04);
 }
+
+/* Highlights */
+mark,
+.tiptap mark,
+.ProseMirror mark {
+  background-color: #FEF08A;
+  color: inherit;
+  padding: 0.1rem 0.25rem;
+  border-radius: 3px;
+}
+
+.dark mark,
+.dark .tiptap mark,
+.dark .ProseMirror mark {
+  background-color: rgba(234, 179, 8, 0.35);
+  color: #FEF08A;
+}
+
+/* Underline */
+u,
+.tiptap u,
+.ProseMirror u {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+

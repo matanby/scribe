@@ -8,7 +8,10 @@ import {
   saveNoteContent, 
   createNote, 
   renameNote, 
-  deleteNote,
+  moveToTrash,
+  restoreFromTrash,
+  permanentDeleteNote,
+  emptyTrash,
   startWatching
 } from './fileSystem';
 
@@ -168,7 +171,23 @@ ipcMain.handle('notes:rename', async (_, { filePath, newTitle }) => {
 });
 
 ipcMain.handle('notes:delete', async (_, filePath: string) => {
-  return await deleteNote(filePath);
+  return await moveToTrash(filePath);
+});
+
+ipcMain.handle('notes:trash', async (_, filePath: string) => {
+  return await moveToTrash(filePath);
+});
+
+ipcMain.handle('notes:restore', async (_, filePath: string) => {
+  return await restoreFromTrash(filePath);
+});
+
+ipcMain.handle('notes:permanentDelete', async (_, filePath: string) => {
+  return await permanentDeleteNote(filePath);
+});
+
+ipcMain.handle('notes:emptyTrash', async () => {
+  return await emptyTrash();
 });
 
 ipcMain.handle('notes:getPath', () => {

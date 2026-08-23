@@ -22,4 +22,6 @@ export interface NotesTree {
   rootPath: string;
   folders: FolderNode[];
   allNotes: NoteMeta[];
+  trashNotes: NoteMeta[];
+  trashCount: number;
 }

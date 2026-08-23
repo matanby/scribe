@@ -8,10 +8,12 @@ import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
-import Placeholder from '@tiptap/extension-placeholder';
+import Highlight from '@tiptap/extension-highlight';
+import Underline from '@tiptap/extension-underline';
 import { Markdown } from 'tiptap-markdown';
 import { BiDiExtension } from '../extensions/BiDiExtension';
 import { BubbleMenu } from './BubbleMenu';
+import { FormattingBar } from './FormattingBar';
 import { NoteMeta } from '../types';
 import { Calendar, Folder, FileText, AlignRight, CheckCircle2 } from 'lucide-react';
 
@@ -99,9 +101,10 @@ export const Editor: React.FC<EditorProps> = ({
       TableRow,
       TableHeader,
       TableCell,
-      Placeholder.configure({
-        placeholder: 'Start writing note...'
+      Highlight.configure({
+        multicolor: true
       }),
+      Underline,
       Markdown.configure({
         html: false,
         tightLists: true,
@@ -225,6 +228,7 @@ export const Editor: React.FC<EditorProps> = ({
 
   return (
     <div className="flex-1 h-full bg-[var(--editor-bg)] flex flex-col overflow-y-auto relative">
+      <FormattingBar editor={editor} />
       <BubbleMenu editor={editor} />
 
       <div className="max-w-[720px] w-full mx-auto px-6 pt-7 pb-2">

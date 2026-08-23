@@ -27,6 +27,7 @@ interface TitlebarProps {
   showSidebar: boolean;
   onToggleSidebar: () => void;
   onToggleDirection?: () => void;
+  searchInputRef?: React.RefObject<HTMLInputElement>;
 }
 
 export const Titlebar: React.FC<TitlebarProps> = ({
@@ -43,7 +44,8 @@ export const Titlebar: React.FC<TitlebarProps> = ({
   onToggleTheme,
   showSidebar,
   onToggleSidebar,
-  onToggleDirection
+  onToggleDirection,
+  searchInputRef
 }) => {
   return (
     <header className="titlebar-drag-region h-11 border-b border-[var(--border-color)] flex items-center justify-between px-3 select-none bg-[var(--sidebar-bg)] backdrop-blur-2xl shrink-0 z-30">
@@ -74,6 +76,7 @@ export const Titlebar: React.FC<TitlebarProps> = ({
         <div className="relative flex items-center">
           <Search size={13} className="absolute left-2.5 text-[var(--text-secondary)] pointer-events-none opacity-60" />
           <input
+            ref={searchInputRef}
             type="text"
             placeholder={`Search ${noteCount} notes...`}
             value={searchQuery}
