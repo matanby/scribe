@@ -307,7 +307,8 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   });
 
   return (
-    <div className="flex-1 h-full bg-[var(--editor-bg)] flex flex-col overflow-y-auto relative">
+    <div className="flex-1 h-full bg-[var(--editor-bg)] flex flex-col relative overflow-hidden">
+      {/* Top Pinned Formatting & Search/Replace Bars */}
       <FormattingBar editor={editor} />
       <FindReplaceBar 
         editor={editor} 
@@ -315,48 +316,52 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
         showReplaceInitial={showReplaceMode}
         onClose={() => setIsFindOpen(false)} 
       />
+
       <div key="tiptap-floating-menus" className="pointer-events-none">
         <BubbleMenu editor={editor} />
         <SlashMenu editor={editor} />
       </div>
 
-      <div className="max-w-[720px] w-full mx-auto px-6 pt-7 pb-2">
-        {/* Apple Notes Document Metadata Header */}
-        <div className="flex items-center justify-between text-[11px] text-[var(--text-secondary)] mb-4 select-none opacity-75">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1">
-              <Calendar size={12} />
-              <span>{modifiedDate}</span>
-            </div>
-            {note.folder && note.folder !== '/' && (
-              <div className="flex items-center gap-1 font-medium text-[var(--accent-color)]">
-                <Folder size={12} />
-                <span>{note.folder}</span>
+      {/* Scrollable Note Content Container */}
+      <div className="flex-1 overflow-y-auto relative">
+        <div className="max-w-[720px] w-full mx-auto px-6 pt-7 pb-2">
+          {/* Apple Notes Document Metadata Header */}
+          <div className="flex items-center justify-between text-[11px] text-[var(--text-secondary)] mb-4 select-none opacity-75">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1">
+                <Calendar size={12} />
+                <span>{modifiedDate}</span>
               </div>
-            )}
+              {note.folder && note.folder !== '/' && (
+                <div className="flex items-center gap-1 font-medium text-[var(--accent-color)]">
+                  <Folder size={12} />
+                  <span>{note.folder}</span>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-1 opacity-70">
+              <CheckCircle2 size={11} className="text-emerald-500" />
+              <span>Synced</span>
+            </div>
           </div>
-          <div className="flex items-center gap-1 opacity-70">
-            <CheckCircle2 size={11} className="text-emerald-500" />
-            <span>Synced</span>
-          </div>
+
+          {/* Note Title Input */}
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => handleTitleChange(e.target.value)}
+            placeholder="Title"
+            dir="auto"
+            className="w-full text-2xl font-bold bg-transparent text-[var(--text-primary)] placeholder-[var(--text-tertiary)] border-none focus:outline-none focus:ring-0 mb-3 px-0 tracking-tight"
+          />
+
+          <div className="h-[1px] bg-[var(--border-subtle)] mb-5" />
         </div>
 
-        {/* Note Title Input */}
-        <input
-          type="text"
-          value={title}
-          onChange={(e) => handleTitleChange(e.target.value)}
-          placeholder="Title"
-          dir="auto"
-          className="w-full text-2xl font-bold bg-transparent text-[var(--text-primary)] placeholder-[var(--text-tertiary)] border-none focus:outline-none focus:ring-0 mb-3 px-0 tracking-tight"
-        />
-
-        <div className="h-[1px] bg-[var(--border-subtle)] mb-5" />
-      </div>
-
-      {/* TipTap Document Area */}
-      <div className="flex-1 pb-24 cursor-text" onClick={() => editor?.commands.focus()}>
-        <EditorContent editor={editor} />
+        {/* TipTap Document Area */}
+        <div className="flex-1 pb-28 cursor-text" onClick={() => editor?.commands.focus()}>
+          <EditorContent editor={editor} />
+        </div>
       </div>
     </div>
   );

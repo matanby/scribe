@@ -609,3 +609,30 @@ u,
   color: #f87171 !important; /* Coral red */
 }
 
+/* In-Note Search & Replace Match Highlights */
+.search-result-match {
+  background-color: rgba(253, 224, 71, 0.55);
+  color: inherit;
+  border-radius: 2px;
+  scroll-margin-top: 110px;
+  scroll-margin-bottom: 110px;
+}
+
+.dark .search-result-match {
+  background-color: rgba(234, 179, 8, 0.35);
+  color: inherit;
+  border-radius: 2px;
+  scroll-margin-top: 110px;
+  scroll-margin-bottom: 110px;
+}
+
+.search-result-active {
+  background-color: var(--accent-color) !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  border-radius: 3px !important;
+  box-shadow: 0 0 0 2px var(--accent-color) !important;
+  scroll-margin-top: 110px;
+  scroll-margin-bottom: 110px;
+}
+

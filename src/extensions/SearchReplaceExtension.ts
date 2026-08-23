@@ -27,6 +27,15 @@ declare module '@tiptap/core' {
 
 export const searchPluginKey = new PluginKey('searchReplacePlugin');
 
+const scrollToActiveMatch = () => {
+  setTimeout(() => {
+    const activeEl = document.querySelector('.search-result-active');
+    if (activeEl) {
+      activeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, 20);
+};
+
 export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorage>({
   name: 'searchReplace',
 
@@ -49,6 +58,9 @@ export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorag
           this.storage.currentIndex = 0;
           if (dispatch) {
             tr.setMeta(searchPluginKey, { searchTerm });
+            if (searchTerm.trim()) {
+              scrollToActiveMatch();
+            }
           }
           return true;
         },
@@ -67,6 +79,9 @@ export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorag
           this.storage.currentIndex = 0;
           if (dispatch) {
             tr.setMeta(searchPluginKey, { caseSensitive });
+            if (this.storage.searchTerm.trim()) {
+              scrollToActiveMatch();
+            }
           }
           return true;
         },
@@ -82,8 +97,8 @@ export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorag
           if (target && dispatch) {
             if (target.from <= tr.doc.content.size && target.to <= tr.doc.content.size) {
               tr.setSelection(TextSelection.create(tr.doc, target.from, target.to));
-              tr.scrollIntoView();
               tr.setMeta(searchPluginKey, { index: nextIndex });
+              scrollToActiveMatch();
             }
           }
           return true;
@@ -100,8 +115,8 @@ export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorag
           if (target && dispatch) {
             if (target.from <= tr.doc.content.size && target.to <= tr.doc.content.size) {
               tr.setSelection(TextSelection.create(tr.doc, target.from, target.to));
-              tr.scrollIntoView();
               tr.setMeta(searchPluginKey, { index: prevIndex });
+              scrollToActiveMatch();
             }
           }
           return true;
@@ -118,6 +133,7 @@ export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorag
           if (dispatch && current.from < current.to && current.to <= tr.doc.content.size) {
             tr.insertText(replaceTerm, current.from, current.to);
             tr.setMeta(searchPluginKey, { replace: true });
+            scrollToActiveMatch();
           }
           return true;
         },
