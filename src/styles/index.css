@@ -180,7 +180,9 @@
 .tiptap ul,
 .tiptap ol {
   margin-bottom: 0.85rem;
-  padding-inline-start: 1.75rem;
+  padding: 0 !important;
+  padding-inline-start: 1.75rem !important;
+  padding-inline-end: 0 !important;
 }
 
 .tiptap ul {
@@ -200,9 +202,12 @@
   margin-bottom: 0;
 }
 
-/* RTL Lists override for markers */
+/* RTL Lists override for markers and numbering */
+.tiptap ul[dir="rtl"],
 .tiptap ul[data-dir="rtl"],
+.tiptap ol[dir="rtl"],
 .tiptap ol[data-dir="rtl"],
+.tiptap li[dir="rtl"],
 .tiptap li[data-dir="rtl"] {
   direction: rtl !important;
   text-align: right !important;
@@ -244,6 +249,7 @@ li[data-type="taskItem"],
 ul.task-list > li[dir="rtl"],
 ul.task-list > li[data-dir="rtl"],
 li.task-item[dir="rtl"],
+li.task-item[data-dir="rtl"],
 li[data-type="taskItem"][data-dir="rtl"],
 li[data-type="taskItem"][dir="rtl"],
 .ProseMirror li[data-type="taskItem"][data-dir="rtl"],
@@ -252,14 +258,29 @@ li[data-type="taskItem"][dir="rtl"],
   text-align: right !important;
 }
 
+ul.task-list > li[dir="rtl"] > div,
+li.task-item[dir="rtl"] > div,
+li[data-type="taskItem"][dir="rtl"] > div {
+  direction: rtl !important;
+  text-align: right !important;
+}
+
 /* For LTR task items: checkbox on left, text on left */
 ul.task-list > li[dir="ltr"],
 ul.task-list > li[data-dir="ltr"],
 li.task-item[dir="ltr"],
+li.task-item[data-dir="ltr"],
 li[data-type="taskItem"][data-dir="ltr"],
 li[data-type="taskItem"][dir="ltr"],
 .ProseMirror li[data-type="taskItem"][data-dir="ltr"],
 .ProseMirror li[data-type="taskItem"][dir="ltr"] {
+  direction: ltr !important;
+  text-align: left !important;
+}
+
+ul.task-list > li[dir="ltr"] > div,
+li.task-item[dir="ltr"] > div,
+li[data-type="taskItem"][dir="ltr"] > div {
   direction: ltr !important;
   text-align: left !important;
 }

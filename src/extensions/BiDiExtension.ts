@@ -17,7 +17,6 @@ declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     bidi: {
       setTextDirection: (dir: 'rtl' | 'ltr' | 'auto') => ReturnType;
-      toggleTextDirection: () => ReturnType;
     };
   }
 }
@@ -58,7 +57,6 @@ export const BiDiExtension = Extension.create({
   },
 
   onCreate() {
-    // Initial pass to set dir on all initial nodes right on load
     const { state, view } = this.editor;
     const tr = state.tr;
     let modified = false;
@@ -66,7 +64,7 @@ export const BiDiExtension = Extension.create({
     state.doc.descendants((node, pos) => {
       if (
         node.isBlock &&
-        ['paragraph', 'heading', 'listItem', 'taskItem', 'blockquote'].includes(node.type.name)
+        ['paragraph', 'heading', 'listItem', 'taskItem', 'blockquote', 'orderedList', 'bulletList', 'taskList'].includes(node.type.name)
       ) {
         const text = node.textContent;
         if (!text || !text.trim()) return;
@@ -103,7 +101,7 @@ export const BiDiExtension = Extension.create({
           newState.doc.descendants((node, pos) => {
             if (
               node.isBlock &&
-              ['paragraph', 'heading', 'listItem', 'taskItem', 'blockquote'].includes(node.type.name)
+              ['paragraph', 'heading', 'listItem', 'taskItem', 'blockquote', 'orderedList', 'bulletList', 'taskList'].includes(node.type.name)
             ) {
               const text = node.textContent;
               if (!text || !text.trim()) return;
