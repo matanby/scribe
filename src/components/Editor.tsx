@@ -1,6 +1,5 @@
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
-import { EditorState } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
 import TaskList from '@tiptap/extension-task-list';
 import { CustomTaskItem } from '../extensions/CustomTaskItem';
@@ -19,7 +18,7 @@ import { BubbleMenu } from './BubbleMenu';
 import { FormattingBar } from './FormattingBar';
 import { SlashMenu } from './SlashMenu';
 import { NoteMeta } from '../types';
-import { Calendar, Folder, FileText, AlignRight, CheckCircle2 } from 'lucide-react';
+import { Calendar, Folder, FileText, CheckCircle2 } from 'lucide-react';
 
 interface EditorProps {
   note: NoteMeta | null;
@@ -30,46 +29,56 @@ interface EditorProps {
   externalReloadTrigger?: number;
 }
 
-export const Editor: React.FC<EditorProps> = ({
+const cleanMarkdownOutput = (raw: string): string => {
+  let unescaped = raw
+    .replace(/&lt;br&gt;/g, '<br>')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+
+  const lines = unescaped.split('\n');
+  const result: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    result.push(lines[i]);
+    if (i + 2 < lines.length) {
+      const currIsList = /^\s*([-*+]|\d+\.)\s+/.test(lines[i]);
+      const nextIsEmpty = lines[i + 1].trim() === '';
+      const afterIsList = /^\s*([-*+]|\d+\.)\s+/.test(lines[i + 2]);
+      if (currIsList && nextIsEmpty && afterIsList) {
+        i++; // skip loose blank line between list items
+      }
+    }
+  }
+  return result.join('\n');
+};
+
+interface TipTapNoteEditorProps {
+  note: NoteMeta;
+  initialMarkdown: string;
+  initialFrontmatter?: Record<string, any>;
+  onSave: (filePath: string, markdown: string, frontmatter?: Record<string, any>) => Promise<void>;
+  onRename: (filePath: string, newTitle: string) => Promise<void>;
+  setIsSaving: (saving: boolean) => void;
+  setLastSavedText: (text: string) => void;
+}
+
+const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   note,
+  initialMarkdown,
+  initialFrontmatter,
   onSave,
   onRename,
   setIsSaving,
-  setLastSavedText,
-  externalReloadTrigger
+  setLastSavedText
 }) => {
-  const [title, setTitle] = useState('');
-  const [frontmatter, setFrontmatter] = useState<Record<string, any> | undefined>(undefined);
+  const [title, setTitle] = useState(note.title);
+  const [frontmatter, setFrontmatter] = useState(initialFrontmatter);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const titleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const currentNotePathRef = useRef<string | null>(null);
 
-  const isLoadedRef = useRef(false);
-
-  const cleanMarkdownOutput = (raw: string): string => {
-    let unescaped = raw
-      .replace(/&lt;br&gt;/g, '<br>')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&amp;/g, '&');
-
-    const lines = unescaped.split('\n');
-    const result: string[] = [];
-    for (let i = 0; i < lines.length; i++) {
-      result.push(lines[i]);
-      if (i + 2 < lines.length) {
-        const currIsList = /^\s*([-*+]|\d+\.)\s+/.test(lines[i]);
-        const nextIsEmpty = lines[i + 1].trim() === '';
-        const afterIsList = /^\s*([-*+]|\d+\.)\s+/.test(lines[i + 2]);
-        if (currIsList && nextIsEmpty && afterIsList) {
-          i++; // skip loose blank line between list items
-        }
-      }
-    }
-    return result.join('\n');
-  };
-
+  // Initialize TipTap with initialMarkdown as the root document (history depth = 0)
   const editor = useEditor({
+    content: initialMarkdown,
     extensions: [
       StarterKit.configure({
         heading: {
@@ -132,8 +141,8 @@ export const Editor: React.FC<EditorProps> = ({
       }
     },
     onUpdate: ({ editor, transaction }) => {
-      // Only auto-save if document actually changed by user action and note is fully loaded
-      if (!currentNotePathRef.current || !isLoadedRef.current || !transaction.docChanged) return;
+      // Only auto-save if document actually changed by user typing
+      if (!transaction.docChanged) return;
       setIsSaving(true);
 
       if (saveTimeoutRef.current) {
@@ -141,19 +150,18 @@ export const Editor: React.FC<EditorProps> = ({
       }
 
       saveTimeoutRef.current = setTimeout(async () => {
-        if (!currentNotePathRef.current) return;
         const rawMarkdown = (editor.storage as any).markdown.getMarkdown();
         const markdown = cleanMarkdownOutput(rawMarkdown);
 
-        // Safety guard: do NOT save empty content over an existing populated note
-        if (!markdown.trim() && note && (note.snippet || note.title !== 'Untitled Note')) {
-          console.warn('Auto-save skipped: document became unexpectedly empty');
+        // Safety guard: prevent accidental wipeout
+        if (!markdown.trim() && note.snippet && note.title !== 'Untitled Note') {
+          console.warn('Auto-save aborted: document unexpectedly empty');
           setIsSaving(false);
           return;
         }
 
         try {
-          await onSave(currentNotePathRef.current, markdown, frontmatter);
+          await onSave(note.filePath, markdown, frontmatter);
           setIsSaving(false);
           setLastSavedText(`Saved ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
         } catch (err) {
@@ -164,97 +172,34 @@ export const Editor: React.FC<EditorProps> = ({
     }
   });
 
-  // Load note content on selection change with fresh history stack
-  useEffect(() => {
-    if (!note) {
-      setTitle('');
-      setFrontmatter(undefined);
-      currentNotePathRef.current = null;
-      isLoadedRef.current = false;
-      editor?.commands.setContent('');
-      return;
-    }
-
-    currentNotePathRef.current = note.filePath;
-    isLoadedRef.current = false;
-    setTitle(note.title);
-
-    let isMounted = true;
-    window.scribeAPI.readNote(note.filePath).then(({ markdown, frontmatter }) => {
-      if (!isMounted || currentNotePathRef.current !== note.filePath) return;
-      setFrontmatter(frontmatter);
-      if (editor) {
-        try {
-          // Initialize fresh EditorState so Cmd+Z cannot undo past the loaded note content
-          const parser = (editor.storage as any)?.markdown?.parser;
-          if (parser) {
-            const newDoc = parser.parse(markdown);
-            const newState = EditorState.create({
-              schema: editor.schema,
-              doc: newDoc,
-              plugins: editor.state.plugins
-            });
-            editor.view.updateState(newState);
-          } else {
-            (editor.commands as any).setContent(markdown, { emitUpdate: false });
-          }
-        } catch (e) {
-          (editor.commands as any).setContent(markdown, { emitUpdate: false });
-        }
-        setTimeout(() => {
-          if (isMounted) isLoadedRef.current = true;
-        }, 100);
-      }
-    }).catch(err => {
-      console.error('Failed to read note:', err);
-    });
-
-    return () => {
-      isMounted = false;
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-      if (titleTimeoutRef.current) clearTimeout(titleTimeoutRef.current);
-    };
-  }, [note?.filePath, externalReloadTrigger, editor]);
-
   // Handle note Title rename
   const handleTitleChange = (newTitle: string) => {
     setTitle(newTitle);
-    if (!note) return;
 
     if (titleTimeoutRef.current) {
       clearTimeout(titleTimeoutRef.current);
     }
 
     titleTimeoutRef.current = setTimeout(async () => {
-      if (!note || !newTitle.trim() || newTitle === note.title) return;
-      try {
-        await onRename(note.filePath, newTitle.trim());
-      } catch (err) {
-        console.error('Failed to rename note:', err);
+      if (newTitle.trim() && newTitle !== note.title) {
+        setIsSaving(true);
+        try {
+          await onRename(note.filePath, newTitle.trim());
+          setIsSaving(false);
+        } catch (err) {
+          console.error('Failed to rename note:', err);
+          setIsSaving(false);
+        }
       }
-    }, 600);
+    }, 800);
   };
 
-  // Word count & stats
-  const stats = useMemo(() => {
-    if (!editor) return { words: 0, characters: 0 };
-    const text = editor.getText();
-    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
-    const characters = text.length;
-    return { words, characters };
-  }, [editor?.getText()]);
-
-  if (!note) {
-    return (
-      <div className="flex-1 h-full bg-[var(--editor-bg)] flex flex-col items-center justify-center text-center p-8 select-none text-[var(--text-secondary)]">
-        <FileText size={44} className="opacity-15 mb-3" />
-        <h2 className="text-sm font-semibold text-[var(--text-primary)] mb-1">No Note Selected</h2>
-        <p className="text-xs opacity-60 max-w-xs">
-          Select a note from the left sidebar or press ⌘N to create a new note in Google Drive.
-        </p>
-      </div>
-    );
-  }
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      if (titleTimeoutRef.current) clearTimeout(titleTimeoutRef.current);
+    };
+  }, []);
 
   const modifiedDate = new Date(note.modifiedAt).toLocaleDateString([], {
     year: 'numeric',
@@ -285,29 +230,105 @@ export const Editor: React.FC<EditorProps> = ({
               </div>
             )}
           </div>
-
-          <div className="flex items-center gap-2 text-[10px] opacity-60">
-            <span>{stats.words} words</span>
-            <span>•</span>
-            <span>{stats.characters} chars</span>
+          <div className="flex items-center gap-1 opacity-70">
+            <CheckCircle2 size={11} className="text-emerald-500" />
+            <span>Synced</span>
           </div>
         </div>
 
-        {/* Note Title Input (Seamlessly auto-aligns for Hebrew / English) */}
+        {/* Note Title Input */}
         <input
           type="text"
-          dir="auto"
           value={title}
           onChange={(e) => handleTitleChange(e.target.value)}
-          placeholder="Untitled Note"
-          className="editor-title-input w-full text-[2.1rem] leading-tight bg-transparent border-none outline-none text-[var(--text-primary)] placeholder-[var(--text-tertiary)] placeholder:opacity-40 mb-3"
+          placeholder="Title"
+          dir="auto"
+          className="w-full text-2xl font-bold bg-transparent text-[var(--text-primary)] placeholder-[var(--text-tertiary)] border-none focus:outline-none focus:ring-0 mb-3 px-0 tracking-tight"
         />
 
-        <div className="h-[1px] bg-[var(--border-subtle)] mb-3" />
+        <div className="h-[1px] bg-[var(--border-subtle)] mb-5" />
       </div>
 
-      {/* TipTap Rich Text WYSIWYG Editor */}
-      <EditorContent editor={editor} className="flex-1" />
+      {/* TipTap Document Area */}
+      <div className="flex-1 pb-24 cursor-text" onClick={() => editor?.commands.focus()}>
+        <EditorContent editor={editor} />
+      </div>
     </div>
+  );
+};
+
+export const Editor: React.FC<EditorProps> = ({
+  note,
+  onSave,
+  onRename,
+  setIsSaving,
+  setLastSavedText,
+  externalReloadTrigger
+}) => {
+  const [loadedData, setLoadedData] = useState<{
+    filePath: string;
+    markdown: string;
+    frontmatter?: Record<string, any>;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!note) {
+      setLoadedData(null);
+      return;
+    }
+
+    let isMounted = true;
+    window.scribeAPI.readNote(note.filePath).then(({ markdown, frontmatter }) => {
+      if (isMounted) {
+        setLoadedData({
+          filePath: note.filePath,
+          markdown,
+          frontmatter
+        });
+      }
+    }).catch(err => {
+      console.error('Failed to load note content:', err);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [note?.filePath, externalReloadTrigger]);
+
+  if (!note) {
+    return (
+      <div className="flex-1 h-full bg-[var(--editor-bg)] flex flex-col items-center justify-center p-8 text-center text-[var(--text-secondary)] select-none">
+        <FileText size={48} className="opacity-20 mb-3" />
+        <h2 className="text-sm font-semibold text-[var(--text-primary)] opacity-70">
+          No Note Selected
+        </h2>
+        <p className="text-xs opacity-50 mt-1">
+          Select a note from the list or press ⌘N to create a new note
+        </p>
+      </div>
+    );
+  }
+
+  // Show note while loading
+  if (!loadedData || loadedData.filePath !== note.filePath) {
+    return (
+      <div className="flex-1 h-full bg-[var(--editor-bg)] flex flex-col items-center justify-center p-8 text-center text-[var(--text-secondary)] select-none">
+        <div className="text-xs opacity-60">Loading note...</div>
+      </div>
+    );
+  }
+
+  // Mount a dedicated TipTap instance with the note's exact markdown as step 0
+  return (
+    <TipTapNoteEditor
+      key={`${note.filePath}_${externalReloadTrigger || 0}`}
+      note={note}
+      initialMarkdown={loadedData.markdown}
+      initialFrontmatter={loadedData.frontmatter}
+      onSave={onSave}
+      onRename={onRename}
+      setIsSaving={setIsSaving}
+      setLastSavedText={setLastSavedText}
+    />
   );
 };
