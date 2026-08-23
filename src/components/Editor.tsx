@@ -1,6 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
+import { useEditor, EditorContent, ReactNodeViewRenderer } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
+import { createLowlight, common } from 'lowlight';
+import { CodeBlockComponent } from './CodeBlockComponent';
 import TaskList from '@tiptap/extension-task-list';
 import { CustomTaskItem } from '../extensions/CustomTaskItem';
 import { CustomParagraph } from '../extensions/CustomParagraph';
@@ -20,6 +23,8 @@ import { FormattingBar } from './FormattingBar';
 import { SlashMenu } from './SlashMenu';
 import { NoteMeta } from '../types';
 import { Calendar, Folder, FileText, CheckCircle2 } from 'lucide-react';
+
+const lowlight = createLowlight(common);
 
 interface EditorProps {
   note: NoteMeta | null;
@@ -68,6 +73,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
     extensions: [
       StarterKit.configure({
         paragraph: false,
+        codeBlock: false,
         heading: {
           levels: [1, 2, 3]
         },
@@ -81,6 +87,14 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
         }
       }),
       CustomParagraph,
+      CodeBlockLowlight.extend({
+        addNodeView() {
+          return ReactNodeViewRenderer(CodeBlockComponent);
+        }
+      }).configure({
+        lowlight,
+        defaultLanguage: null
+      }),
       TaskList.configure({
         HTMLAttributes: {
           class: 'task-list'

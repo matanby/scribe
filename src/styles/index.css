@@ -522,3 +522,62 @@ u,
   opacity: 0.75 !important;
 }
 
+/* =========================================================
+   Syntax Highlighting (SF Mono / Apple Xcode Palette)
+   ========================================================= */
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-subst {
+  color: #c084fc !important; /* Purple */
+  font-weight: 600;
+}
+
+.hljs-string,
+.hljs-title,
+.hljs-section,
+.hljs-attribute,
+.hljs-literal,
+.hljs-template-tag,
+.hljs-template-variable,
+.hljs-type,
+.hljs-addition {
+  color: #4ade80 !important; /* Green */
+}
+
+.hljs-comment,
+.hljs-quote,
+.hljs-deletion,
+.hljs-meta {
+  color: #71717a !important; /* Muted gray */
+  font-style: italic;
+}
+
+.hljs-number,
+.hljs-regexp,
+.hljs-link {
+  color: #fb923c !important; /* Orange */
+}
+
+.hljs-variable,
+.hljs-symbol,
+.hljs-bullet {
+  color: #f472b6 !important; /* Pink */
+}
+
+.hljs-function,
+.hljs-title.function_,
+.hljs-built_in {
+  color: #38bdf8 !important; /* Cyan / Blue */
+}
+
+.hljs-attr,
+.hljs-property {
+  color: #38bdf8 !important;
+}
+
+.hljs-tag,
+.hljs-name {
+  color: #f87171 !important; /* Coral red */
+}
+

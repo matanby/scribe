@@ -62,6 +62,17 @@ function getTrashDir(): string {
   return trashPath;
 }
 
+function safeParseFrontmatter(raw: string): { content: string; data: Record<string, any> } {
+  try {
+    if (raw.startsWith('---\n') || raw.startsWith('---\r\n')) {
+      return matter(raw);
+    }
+  } catch {
+    // Fallback if YAML parsing fails on horizontal rules
+  }
+  return { content: raw, data: {} };
+}
+
 export async function readAllNotesTree(rootDir = getNotesRoot()): Promise<NotesTree> {
   const allNotes: NoteMeta[] = [];
   const trashNotes: NoteMeta[] = [];
@@ -87,7 +98,7 @@ export async function readAllNotesTree(rootDir = getNotesRoot()): Promise<NotesT
         try {
           const stats = await fs.stat(fullPath);
           const rawContent = await fs.readFile(fullPath, 'utf-8');
-          const parsed = matter(rawContent);
+          const parsed = safeParseFrontmatter(rawContent);
           const title = extractTitleFromContent(parsed.content, entry.name);
           const snippet = cleanMarkdownSnippet(parsed.content);
 
@@ -132,7 +143,7 @@ export async function readAllNotesTree(rootDir = getNotesRoot()): Promise<NotesT
         try {
           const stats = await fs.stat(fullPath);
           const rawContent = await fs.readFile(fullPath, 'utf-8');
-          const parsed = matter(rawContent);
+          const parsed = safeParseFrontmatter(rawContent);
           const title = extractTitleFromContent(parsed.content, entry.name);
           const snippet = cleanMarkdownSnippet(parsed.content);
 
@@ -171,7 +182,7 @@ export async function readAllNotesTree(rootDir = getNotesRoot()): Promise<NotesT
 
 export async function readNoteContent(filePath: string): Promise<{ markdown: string; frontmatter: Record<string, any> }> {
   const raw = await fs.readFile(filePath, 'utf-8');
-  const parsed = matter(raw);
+  const parsed = safeParseFrontmatter(raw);
   return {
     markdown: parsed.content,
     frontmatter: parsed.data
