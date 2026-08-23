@@ -3,6 +3,7 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import TaskList from '@tiptap/extension-task-list';
 import { CustomTaskItem } from '../extensions/CustomTaskItem';
+import { CustomParagraph } from '../extensions/CustomParagraph';
 import Link from '@tiptap/extension-link';
 import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
@@ -66,6 +67,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
     content: initialMarkdown,
     extensions: [
       StarterKit.configure({
+        paragraph: false,
         heading: {
           levels: [1, 2, 3]
         },
@@ -78,6 +80,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
           keepAttributes: false
         }
       }),
+      CustomParagraph,
       TaskList.configure({
         HTMLAttributes: {
           class: 'task-list'
@@ -113,7 +116,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
         }
       }),
       Markdown.configure({
-        html: false,
+        html: true,
         tightLists: true,
         bulletListMarker: '-'
       }),
