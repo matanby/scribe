@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { NoteMeta, SortMode } from '../types';
 import { 
   Trash2, 
@@ -8,7 +8,7 @@ import {
   Pin, 
   ArrowUpDown, 
   Check, 
-  SlidersHorizontal 
+  Calendar
 } from 'lucide-react';
 
 interface NoteListProps {
@@ -48,6 +48,11 @@ function formatDate(timestamp: number): string {
   return date.toLocaleDateString([], { year: '2-digit', month: 'short', day: 'numeric' });
 }
 
+interface NoteGroup {
+  title: string;
+  notes: NoteMeta[];
+}
+
 export const NoteList: React.FC<NoteListProps> = ({
   notes,
   selectedNoteId,
@@ -83,9 +88,77 @@ export const NoteList: React.FC<NoteListProps> = ({
     { id: 'title-desc', label: 'Title (Z to A)' }
   ];
 
-  // Separate pinned and unpinned notes
-  const pinnedNotes = !isTrash ? notes.filter(n => pinnedIds.has(n.filePath) || n.frontmatter?.pinned) : [];
-  const unpinnedNotes = !isTrash ? notes.filter(n => !pinnedIds.has(n.filePath) && !n.frontmatter?.pinned) : notes;
+  // Group notes like Apple Notes
+  const { pinnedNotes, groupedNotes } = useMemo(() => {
+    if (isTrash) {
+      return { pinnedNotes: [], groupedNotes: [{ title: 'Recently Deleted', notes }] };
+    }
+
+    const pinned: NoteMeta[] = [];
+    const unpinned: NoteMeta[] = [];
+
+    notes.forEach(note => {
+      if (pinnedIds.has(note.filePath) || note.frontmatter?.pinned) {
+        pinned.push(note);
+      } else {
+        unpinned.push(note);
+      }
+    });
+
+    // If sorting by title, group alphabetically
+    if (sortMode === 'title-asc' || sortMode === 'title-desc') {
+      return {
+        pinnedNotes: pinned,
+        groupedNotes: [{ title: 'Notes', notes: unpinned }]
+      };
+    }
+
+    // Otherwise group by Apple Notes timeframe relative to modified/created date
+    const now = Date.now();
+    const oneDay = 24 * 60 * 60 * 1000;
+    const sevenDays = 7 * oneDay;
+    const thirtyDays = 30 * oneDay;
+
+    const today: NoteMeta[] = [];
+    const previous7Days: NoteMeta[] = [];
+    const previous30Days: NoteMeta[] = [];
+    const older: Record<string, NoteMeta[]> = {};
+
+    unpinned.forEach(note => {
+      const time = sortMode.includes('created') ? note.createdAt : note.modifiedAt;
+      const diff = now - time;
+
+      const date = new Date(time);
+      const isCurrentDay = new Date().toDateString() === date.toDateString();
+
+      if (isCurrentDay) {
+        today.push(note);
+      } else if (diff < sevenDays) {
+        previous7Days.push(note);
+      } else if (diff < thirtyDays) {
+        previous30Days.push(note);
+      } else {
+        const yearOrMonth = date.toLocaleDateString([], { month: 'long', year: 'numeric' });
+        if (!older[yearOrMonth]) older[yearOrMonth] = [];
+        older[yearOrMonth].push(note);
+      }
+    });
+
+    const groups: NoteGroup[] = [];
+    if (today.length > 0) groups.push({ title: 'Today', notes: today });
+    if (previous7Days.length > 0) groups.push({ title: 'Previous 7 Days', notes: previous7Days });
+    if (previous30Days.length > 0) groups.push({ title: 'Previous 30 Days', notes: previous30Days });
+    
+    Object.keys(older).forEach(key => {
+      groups.push({ title: key, notes: older[key] });
+    });
+
+    if (groups.length === 0 && unpinned.length > 0) {
+      groups.push({ title: 'Notes', notes: unpinned });
+    }
+
+    return { pinnedNotes: pinned, groupedNotes: groups };
+  }, [notes, pinnedIds, sortMode, isTrash]);
 
   const renderNoteCard = (note: NoteMeta) => {
     const isSelected = selectedNoteId === note.id || selectedNoteId === note.filePath;
@@ -96,21 +169,21 @@ export const NoteList: React.FC<NoteListProps> = ({
       <div
         key={note.id}
         onClick={() => onSelectNote(note)}
-        className={`group relative px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-100 ${
+        className={`group relative px-3.5 py-2.5 rounded-xl cursor-pointer transition-all duration-150 ${
           isSelected
-            ? 'bg-[var(--card-active)] shadow-xs'
-            : 'hover:bg-[var(--card-hover)]'
+            ? 'bg-[var(--card-active)] text-[var(--text-primary)] shadow-sm'
+            : 'hover:bg-[var(--card-hover)] text-[var(--text-primary)] opacity-95'
         }`}
       >
         {/* Note Title & Action icons */}
-        <div className="flex items-start justify-between gap-1.5 mb-0.5">
+        <div className="flex items-start justify-between gap-1.5 mb-1">
           <div className="flex items-center gap-1.5 flex-1 min-w-0">
             {isPinned && !isTrash && (
-              <Pin size={11} className="text-[var(--accent-color)] shrink-0 fill-[var(--accent-color)]" />
+              <Pin size={10.5} className="text-[var(--accent-color)] shrink-0 fill-[var(--accent-color)]" />
             )}
             <h3 
               dir="auto"
-              className={`text-[13px] leading-tight truncate flex-1 ${
+              className={`text-[13px] leading-snug truncate flex-1 tracking-tight ${
                 isSelected 
                   ? 'font-bold text-[var(--text-primary)]' 
                   : 'font-semibold text-[var(--text-primary)]'
@@ -129,7 +202,7 @@ export const NoteList: React.FC<NoteListProps> = ({
                   isPinned ? 'text-[var(--accent-color)]' : 'text-[var(--text-secondary)]'
                 }`}
               >
-                <Pin size={11.5} className={isPinned ? 'fill-[var(--accent-color)]' : ''} />
+                <Pin size={11} className={isPinned ? 'fill-[var(--accent-color)]' : ''} />
               </button>
             )}
 
@@ -140,14 +213,14 @@ export const NoteList: React.FC<NoteListProps> = ({
                   title="Restore Note"
                   className="p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 text-emerald-600"
                 >
-                  <RotateCcw size={12} />
+                  <RotateCcw size={11.5} />
                 </button>
                 <button
                   onClick={(e) => onDeleteNote(note, e)}
                   title="Delete Permanently"
                   className="p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 text-red-500"
                 >
-                  <XCircle size={12} />
+                  <XCircle size={11.5} />
                 </button>
               </>
             ) : (
@@ -156,18 +229,18 @@ export const NoteList: React.FC<NoteListProps> = ({
                 title="Move to Trash"
                 className="p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 text-red-500"
               >
-                <Trash2 size={11.5} />
+                <Trash2 size={11} />
               </button>
             )}
           </div>
         </div>
 
         {/* Note Metadata & Snippet */}
-        <div className="flex items-baseline gap-1.5 text-[11.5px] text-[var(--text-secondary)]">
-          <span className="font-medium shrink-0 text-[10.5px] opacity-80">{displayDate}</span>
+        <div className="flex items-baseline gap-2 text-[11.5px] text-[var(--text-secondary)]">
+          <span className="font-semibold shrink-0 text-[10.5px] opacity-75 tracking-tight">{displayDate}</span>
           <p 
             dir="auto"
-            className="truncate opacity-75 text-[11.5px] flex-1"
+            className="truncate opacity-70 text-[11.5px] flex-1 leading-normal"
           >
             {note.snippet || 'No additional text'}
           </p>
@@ -175,8 +248,9 @@ export const NoteList: React.FC<NoteListProps> = ({
 
         {/* Subfolder label if applicable */}
         {note.folder && note.folder !== '/' && note.folder !== 'Trash' && (
-          <div className="text-[9.5px] text-[var(--accent-color)] opacity-80 truncate mt-0.5 font-medium">
-            📁 {note.folder}
+          <div className="text-[9.5px] text-[var(--accent-color)] opacity-85 truncate mt-1 font-medium flex items-center gap-1">
+            <span>📁</span>
+            <span>{note.folder}</span>
           </div>
         )}
       </div>
@@ -184,10 +258,10 @@ export const NoteList: React.FC<NoteListProps> = ({
   };
 
   return (
-    <div className="w-64 h-full bg-[var(--notelist-bg)] border-r border-[var(--border-color)] flex flex-col shrink-0 select-none backdrop-blur-2xl">
+    <div className="w-68 h-full bg-[var(--notelist-bg)] border-r border-[var(--border-color)] flex flex-col shrink-0 select-none backdrop-blur-2xl">
       {/* Header bar: Sort Selector & Trash Info */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--border-subtle)]">
-        <span className="text-[10px] font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
+      <div className="flex items-center justify-between px-3.5 py-2 border-b border-[var(--border-subtle)]">
+        <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">
           {isTrash ? 'Recently Deleted' : `${notes.length} Notes`}
         </span>
 
@@ -195,7 +269,7 @@ export const NoteList: React.FC<NoteListProps> = ({
           onEmptyTrash && notes.length > 0 && (
             <button
               onClick={onEmptyTrash}
-              className="text-[10px] text-red-500 hover:underline font-medium"
+              className="text-[10.5px] text-red-500 hover:underline font-medium"
             >
               Empty Trash
             </button>
@@ -204,15 +278,15 @@ export const NoteList: React.FC<NoteListProps> = ({
           <div className="relative" ref={sortMenuRef}>
             <button
               onClick={() => setShowSortMenu(!showSortMenu)}
-              className="p-1 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+              className="p-1 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors flex items-center gap-1"
               title="Sort Notes"
             >
               <ArrowUpDown size={12} />
             </button>
 
             {showSortMenu && (
-              <div className="absolute right-0 top-full mt-1 w-48 p-1 rounded-xl bg-white dark:bg-[#252528] border border-[var(--border-color)] shadow-2xl z-50 space-y-0.5 text-xs">
-                <div className="px-2.5 py-1 text-[9.5px] font-semibold uppercase tracking-wider text-[var(--text-tertiary)]">
+              <div className="absolute right-0 top-full mt-1.5 w-52 p-1.5 rounded-2xl bg-white/95 dark:bg-[#252528]/95 backdrop-blur-2xl border border-[var(--border-color)] shadow-2xl z-50 space-y-0.5 text-xs animate-in fade-in zoom-in-95 duration-100">
+                <div className="px-2.5 py-1 text-[9.5px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">
                   Sort Notes By
                 </div>
                 {sortOptions.map(opt => (
@@ -222,7 +296,7 @@ export const NoteList: React.FC<NoteListProps> = ({
                       onSortChange(opt.id);
                       setShowSortMenu(false);
                     }}
-                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left text-xs transition-colors ${
+                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-left text-xs transition-colors ${
                       sortMode === opt.id
                         ? 'bg-[var(--accent-light)] text-[var(--accent-color)] font-semibold'
                         : 'hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-primary)]'
@@ -238,8 +312,8 @@ export const NoteList: React.FC<NoteListProps> = ({
         )}
       </div>
 
-      {/* Note Cards List */}
-      <div className="flex-1 overflow-y-auto p-1.5 space-y-1">
+      {/* Note Cards List with Apple Notes Section Headers */}
+      <div className="flex-1 overflow-y-auto px-2 py-1.5 space-y-2">
         {notes.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center p-6 text-center text-[var(--text-secondary)] select-none">
             <FileText size={32} className="opacity-20 mb-2" />
@@ -254,23 +328,30 @@ export const NoteList: React.FC<NoteListProps> = ({
           <>
             {/* Pinned Section */}
             {pinnedNotes.length > 0 && (
-              <div className="space-y-1 mb-2">
-                <div className="px-2 pt-1 text-[9.5px] font-bold text-[var(--accent-color)] uppercase tracking-wider flex items-center gap-1">
-                  <Pin size={10} className="fill-[var(--accent-color)]" />
+              <div className="space-y-1">
+                <div className="px-2.5 pt-1 text-[10px] font-bold text-[var(--accent-color)] uppercase tracking-wider flex items-center gap-1.5">
+                  <Pin size={10.5} className="fill-[var(--accent-color)]" />
                   <span>Pinned</span>
+                  <span className="text-[9px] opacity-60 font-normal">({pinnedNotes.length})</span>
                 </div>
-                {pinnedNotes.map(renderNoteCard)}
+                <div className="space-y-0.5">
+                  {pinnedNotes.map(renderNoteCard)}
+                </div>
               </div>
             )}
 
-            {/* Unpinned / Standard Section */}
-            {pinnedNotes.length > 0 && unpinnedNotes.length > 0 && (
-              <div className="px-2 pt-2 text-[9.5px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider">
-                Notes
+            {/* Timeframe Grouped Sections */}
+            {groupedNotes.map(group => (
+              <div key={group.title} className="space-y-1">
+                <div className="px-2.5 pt-1.5 text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-wider flex items-center justify-between">
+                  <span>{group.title}</span>
+                  <span className="text-[9px] opacity-50 font-normal">{group.notes.length}</span>
+                </div>
+                <div className="space-y-0.5">
+                  {group.notes.map(renderNoteCard)}
+                </div>
               </div>
-            )}
-
-            {unpinnedNotes.map(renderNoteCard)}
+            ))}
           </>
         )}
       </div>

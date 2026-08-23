@@ -10,11 +10,13 @@ import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import Highlight from '@tiptap/extension-highlight';
 import Underline from '@tiptap/extension-underline';
+import Image from '@tiptap/extension-image';
 import { Markdown } from 'tiptap-markdown';
 import { BiDiExtension } from '../extensions/BiDiExtension';
 import { CleanBackspaceExtension } from '../extensions/CleanBackspaceExtension';
 import { BubbleMenu } from './BubbleMenu';
 import { FormattingBar } from './FormattingBar';
+import { SlashMenu } from './SlashMenu';
 import { NoteMeta } from '../types';
 import { Calendar, Folder, FileText, AlignRight, CheckCircle2 } from 'lucide-react';
 
@@ -108,6 +110,13 @@ export const Editor: React.FC<EditorProps> = ({
         multicolor: true
       }),
       Underline,
+      Image.configure({
+        inline: true,
+        allowBase64: true,
+        HTMLAttributes: {
+          class: 'rounded-xl max-w-full my-3 border border-[var(--border-color)] shadow-sm'
+        }
+      }),
       Markdown.configure({
         html: false,
         tightLists: true,
@@ -234,6 +243,7 @@ export const Editor: React.FC<EditorProps> = ({
     <div className="flex-1 h-full bg-[var(--editor-bg)] flex flex-col overflow-y-auto relative">
       <FormattingBar editor={editor} />
       <BubbleMenu editor={editor} />
+      <SlashMenu editor={editor} />
 
       <div className="max-w-[720px] w-full mx-auto px-6 pt-7 pb-2">
         {/* Apple Notes Document Metadata Header */}

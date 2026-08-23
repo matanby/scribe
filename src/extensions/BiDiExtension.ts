@@ -51,6 +51,10 @@ export const BiDiExtension = Extension.create({
               };
             },
             parseHTML: (element) => element.getAttribute('dir') || 'auto'
+          },
+          isManualDir: {
+            default: false,
+            rendered: false
           }
         }
       }
@@ -67,7 +71,8 @@ export const BiDiExtension = Extension.create({
           if (node.isBlock) {
             tr.setNodeMarkup(pos, undefined, {
               ...node.attrs,
-              dir
+              dir,
+              isManualDir: true
             });
           }
         });
@@ -81,11 +86,12 @@ export const BiDiExtension = Extension.create({
 
         state.doc.nodesBetween(from, to, (node, pos) => {
           if (node.isBlock) {
-            const currentDir = node.attrs.dir || 'ltr';
+            const currentDir = node.attrs.dir === 'rtl' ? 'rtl' : 'ltr';
             const newDir = currentDir === 'rtl' ? 'ltr' : 'rtl';
             tr.setNodeMarkup(pos, undefined, {
               ...node.attrs,
-              dir: newDir
+              dir: newDir,
+              isManualDir: true
             });
           }
         });
@@ -121,6 +127,9 @@ export const BiDiExtension = Extension.create({
             ) {
               const text = node.textContent;
               if (!text || !text.trim()) return;
+
+              // If user explicitly set direction manually, preserve user choice
+              if (node.attrs.isManualDir) return;
 
               const detectedDir = getDirection(text);
               const currentDir = node.attrs.dir || 'auto';
