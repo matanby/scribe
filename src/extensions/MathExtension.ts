@@ -94,11 +94,16 @@ function buildMathDecorations(state: any): DecorationSet {
     if (node.isText && node.text) {
       const text = node.text;
 
+      // Ranges already claimed by block math, so the inline pass below doesn't also
+      // match a `$...$` pair *inside* a `$$...$$` formula and render it twice.
+      const blockRanges: Array<[number, number]> = [];
+
       // 1. Block math: $$formula$$
       const blockInlineRegex = /\$\$([\s\S]+?)\$\$/g;
       let match: RegExpExecArray | null;
 
       while ((match = blockInlineRegex.exec(text)) !== null) {
+        blockRanges.push([match.index, match.index + match[0].length]);
         const formula = (match[1] || '').trim();
         const matchFrom = pos + match.index;
         const matchTo = matchFrom + match[0].length;
@@ -132,8 +137,14 @@ function buildMathDecorations(state: any): DecorationSet {
       const inlineRegex = /(?<![\$\\\])\$([^\$\n]+?)(?<!\\)\$/g;
 
       while ((match = inlineRegex.exec(text)) !== null) {
+        const localFrom = match.index;
+        const localTo = localFrom + match[0].length;
+        if (blockRanges.some(([bFrom, bTo]) => localFrom >= bFrom && localTo <= bTo)) {
+          continue;
+        }
+
         const formula = (match[1] || '').trim();
-        const matchFrom = pos + match.index;
+        const matchFrom = pos + localFrom;
         const matchTo = matchFrom + match[0].length;
 
         // Check if cursor/selection intersects or touches the math expression

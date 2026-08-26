@@ -19,6 +19,13 @@ export const scribeAPI = {
   getNotesPath: () => ipcRenderer.invoke('notes:getPath'),
   setNotesPath: (path: string) => ipcRenderer.invoke('notes:setPath', path),
   selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
+  searchNotes: (query: string) => ipcRenderer.invoke('notes:search', query) as Promise<string[]>,
+  confirmDestructive: (payload: { message: string; detail?: string; confirmLabel?: string }) =>
+    ipcRenderer.invoke('dialog:confirm', payload) as Promise<boolean>,
+  showMessage: (payload: { message: string; detail?: string; type?: 'info' | 'error' | 'warning' }) =>
+    ipcRenderer.invoke('dialog:message', payload) as Promise<boolean>,
+  saveAttachment: (payload: { noteFilePath: string; fileName: string; data: Uint8Array }) =>
+    ipcRenderer.invoke('assets:save', payload) as Promise<{ absolutePath: string; assetUrl: string }>,
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
   showInFinder: (filePath: string) => ipcRenderer.invoke('shell:showInFinder', filePath),
   duplicateNote: (filePath: string) => ipcRenderer.invoke('notes:duplicate', filePath),

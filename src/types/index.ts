@@ -5,6 +5,8 @@ export interface NoteMeta {
   title: string;
   snippet: string;
   folder: string;
+  /** Set for folders shown in the Trash view, which can be restored as a unit. */
+  isFolder?: boolean;
   modifiedAt: number;
   createdAt: number;
   frontmatter?: Record<string, any>;

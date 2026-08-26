@@ -60,8 +60,8 @@ const windowWatchers = new Map<number, FSWatcher>();
  * no content to compare, so they fall back to a time-boxed path match.
  */
 const SELF_WRITE_TTL_MS = 8000;
-const selfWrites = new Map<string, { hash: string; until: number }>();
-const selfOps = new Map<string, number>();
+const selfWrites = new Map<string, { hash: string; until: number; originId?: number }>();
+const selfOps = new Map<string, { until: number; originId?: number }>();
 
 function hashContent(content: string): string {
   return crypto.createHash('sha1').update(content, 'utf-8').digest('hex');
@@ -71,17 +71,18 @@ function normalizePath(filePath: string): string {
   return path.resolve(filePath);
 }
 
-function markSelfWrite(filePath: string, content: string) {
+function markSelfWrite(filePath: string, content: string, originId?: number) {
   selfWrites.set(normalizePath(filePath), {
     hash: hashContent(content),
-    until: Date.now() + SELF_WRITE_TTL_MS
+    until: Date.now() + SELF_WRITE_TTL_MS,
+    originId
   });
 }
 
-function markSelfOp(...filePaths: string[]) {
+function markSelfOp(originId: number | undefined, ...filePaths: string[]) {
   const until = Date.now() + SELF_WRITE_TTL_MS;
   for (const p of filePaths) {
-    if (p) selfOps.set(normalizePath(p), until);
+    if (p) selfOps.set(normalizePath(p), { until, originId });
   }
 }
 
@@ -90,30 +91,38 @@ function pruneSelfTracking() {
   for (const [key, entry] of selfWrites) {
     if (entry.until < now) selfWrites.delete(key);
   }
-  for (const [key, until] of selfOps) {
-    if (until < now) selfOps.delete(key);
+  for (const [key, entry] of selfOps) {
+    if (entry.until < now) selfOps.delete(key);
   }
 }
 
 /**
- * Returns true when this watcher event was caused by our own write and carries nothing new.
+ * Returns true when this watcher event was caused by *this* window's own write and
+ * carries nothing new.
+ *
+ * The origin check matters when two windows have the same vault open: a save made in one
+ * window is genuinely an external change from the other window's point of view, and must
+ * still be delivered there. Entries are therefore never consumed by a non-matching
+ * window; they simply expire.
  */
-async function isSelfInflicted(filePath: string, eventType: string): Promise<boolean> {
+async function isSelfInflicted(
+  watcherWindowId: number,
+  filePath: string,
+  eventType: string
+): Promise<boolean> {
   pruneSelfTracking();
   const key = normalizePath(filePath);
   const now = Date.now();
 
   const op = selfOps.get(key);
-  if (op !== undefined && op >= now) {
-    selfOps.delete(key);
+  if (op && op.until >= now && op.originId === watcherWindowId) {
     return true;
   }
 
   const write = selfWrites.get(key);
-  if (!write || write.until < now) return false;
+  if (!write || write.until < now || write.originId !== watcherWindowId) return false;
 
   if (eventType === 'unlink' || eventType === 'unlinkDir') {
-    selfWrites.delete(key);
     return true;
   }
 
@@ -129,6 +138,142 @@ async function isSelfInflicted(filePath: string, eventType: string): Promise<boo
   } catch {
     return false;
   }
+}
+
+export const ASSET_SCHEME = 'scribe-asset';
+export const ASSETS_DIR_NAME = 'assets';
+
+/**
+ * Images are stored as real files in <vault>/assets and referenced from the markdown by
+ * a path relative to the note, which keeps the .md portable and readable in any other
+ * editor. Inside the app those references are swapped for a custom-protocol URL, because
+ * a relative path means nothing to the renderer (and file:// is blocked in dev).
+ */
+export function toAssetUrl(absolutePath: string): string {
+  const encoded = absolutePath.split(path.sep).map(encodeURIComponent).join('/');
+  return `${ASSET_SCHEME}://asset${encoded.startsWith('/') ? '' : '/'}${encoded}`;
+}
+
+export function fromAssetUrl(url: string): string | null {
+  if (!url.startsWith(`${ASSET_SCHEME}://`)) return null;
+  try {
+    const withoutScheme = url.slice(`${ASSET_SCHEME}://`.length);
+    const firstSlash = withoutScheme.indexOf('/');
+    if (firstSlash === -1) return null;
+    return decodeURIComponent(withoutScheme.slice(firstSlash));
+  } catch {
+    return null;
+  }
+}
+
+// Matches markdown images and raw <img src="..."> so both survive the round-trip.
+const IMAGE_REFERENCE = /(!\[[^\]]*\]\()([^)\s]+)((?:\s+"[^"]*")?\))|(<img\b[^>]*?\ssrc=")([^"]+)(")/g;
+
+function rewriteImageReferences(markdown: string, rewrite: (src: string) => string): string {
+  return markdown.replace(IMAGE_REFERENCE, (match, mdOpen, mdSrc, mdClose, imgOpen, imgSrc, imgClose) => {
+    if (mdOpen !== undefined) return `${mdOpen}${rewrite(mdSrc)}${mdClose}`;
+    if (imgOpen !== undefined) return `${imgOpen}${rewrite(imgSrc)}${imgClose}`;
+    return match;
+  });
+}
+
+function isExternalReference(src: string): boolean {
+  return /^(https?:|data:|mailto:)/i.test(src);
+}
+
+/** Disk form (relative path) -> in-app form (asset URL). */
+export function toDisplayMarkdown(markdown: string, noteFilePath: string): string {
+  const noteDir = path.dirname(noteFilePath);
+  return rewriteImageReferences(markdown, src => {
+    if (isExternalReference(src) || src.startsWith(`${ASSET_SCHEME}://`)) return src;
+    const absolute = path.resolve(noteDir, decodeURIComponent(src));
+    return toAssetUrl(absolute);
+  });
+}
+
+/** In-app form (asset URL) -> disk form (path relative to the note). */
+export function toDiskMarkdown(markdown: string, noteFilePath: string): string {
+  const noteDir = path.dirname(noteFilePath);
+  return rewriteImageReferences(markdown, src => {
+    const absolute = fromAssetUrl(src);
+    if (!absolute) return src;
+    const relative = path.relative(noteDir, absolute).split(path.sep).join('/');
+    return relative.split('/').map(encodeURIComponent).join('/');
+  });
+}
+
+/**
+ * Rewrites a note's relative image links after it has been moved, so they keep pointing
+ * at the same files from the note's new location.
+ */
+export async function rebaseImageLinks(
+  noteFilePath: string,
+  previousDir: string,
+  originId?: number
+): Promise<void> {
+  try {
+    const raw = await fs.readFile(noteFilePath, 'utf-8');
+    const newDir = path.dirname(noteFilePath);
+    if (path.resolve(previousDir) === path.resolve(newDir)) return;
+
+    const rewritten = rewriteImageReferences(raw, src => {
+      if (isExternalReference(src) || path.isAbsolute(src)) return src;
+      const absolute = path.resolve(previousDir, decodeURIComponent(src));
+      const relative = path.relative(newDir, absolute).split(path.sep).join('/');
+      return relative.split('/').map(encodeURIComponent).join('/');
+    });
+
+    if (rewritten !== raw) {
+      markSelfWrite(noteFilePath, rewritten, originId);
+      await fs.writeFile(noteFilePath, rewritten, 'utf-8');
+      invalidateDerived(noteFilePath);
+    }
+  } catch (err) {
+    console.error('Failed to rebase image links:', err);
+  }
+}
+
+export function getAssetsDir(rootDir: string): string {
+  const dir = path.join(rootDir, ASSETS_DIR_NAME);
+  if (!fsSync.existsSync(dir)) {
+    fsSync.mkdirSync(dir, { recursive: true });
+  }
+  return dir;
+}
+
+export async function saveAttachment(
+  rootDir: string,
+  noteFilePath: string,
+  fileName: string,
+  data: Uint8Array,
+  originId?: number
+): Promise<{ absolutePath: string; assetUrl: string }> {
+  const assetsDir = getAssetsDir(rootDir);
+  const ext = path.extname(fileName) || '.png';
+  const base = sanitizeFileName(path.basename(fileName, ext)) || 'image';
+  const stamp = new Date().toISOString().slice(0, 10);
+  const target = uniqueTarget(assetsDir, `${stamp}-${base}${ext}`);
+
+  // Binary content, so time+path suppression rather than a text hash.
+  markSelfOp(originId, target);
+  await fs.writeFile(target, Buffer.from(data));
+
+  return { absolutePath: target, assetUrl: toAssetUrl(target) };
+}
+
+export function listKnownRoots(): string[] {
+  const roots = new Set<string>(windowRoots.values());
+  roots.add(loadSavedRoot());
+  return Array.from(roots);
+}
+
+/** The asset protocol must only ever serve files from inside a vault the user opened. */
+export function isInsideAnyRoot(target: string): boolean {
+  const resolved = normalizePath(target);
+  return listKnownRoots().some(root => {
+    const r = normalizePath(root);
+    return resolved === r || resolved.startsWith(r + path.sep);
+  });
 }
 
 const fileLocks = new Map<string, Promise<unknown>>();
@@ -269,6 +414,21 @@ function writeTrashIndex(rootDir: string, index: Record<string, TrashRecord>) {
   }
 }
 
+async function countMarkdownFiles(dir: string): Promise<number> {
+  let count = 0;
+  try {
+    for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+      if (entry.name.startsWith('.')) continue;
+      if (entry.isDirectory()) {
+        count += await countMarkdownFiles(path.join(dir, entry.name));
+      } else if (entry.name.toLowerCase().endsWith('.md')) {
+        count++;
+      }
+    }
+  } catch {}
+  return count;
+}
+
 function sanitizeFileName(name: string): string {
   return name.replace(/[/\\?%*:|"<>]/g, '-').replace(/\s+/g, ' ').trim() || 'Untitled Note';
 }
@@ -348,12 +508,70 @@ async function getDerivedNoteData(
   }
 
   derivedCache.set(key, { ...derived, mtimeMs: stats.mtimeMs, size: stats.size });
+  trimCache(derivedCache);
   return derived;
+}
+
+const MAX_CACHE_ENTRIES = 2000;
+
+/** Keeps the caches from growing without bound over a long session. */
+function trimCache<K, V>(cache: Map<K, V>) {
+  while (cache.size > MAX_CACHE_ENTRIES) {
+    const oldest = cache.keys().next();
+    if (oldest.done) break;
+    cache.delete(oldest.value);
+  }
+}
+
+const bodyCache = new Map<string, { mtimeMs: number; size: number; text: string }>();
+
+/**
+ * Full-text search over note bodies. Previously only the title and the 120-character
+ * snippet were searched, so a word in the middle of a note was unfindable.
+ */
+export async function searchNotes(rootDir: string, query: string): Promise<string[]> {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [];
+
+  const tree = await readAllNotesTree(rootDir);
+  const matches: string[] = [];
+
+  for (const note of [...tree.allNotes, ...tree.trashNotes]) {
+    if (note.title.toLowerCase().includes(needle)) {
+      matches.push(note.filePath);
+      continue;
+    }
+
+    try {
+      const key = normalizePath(note.filePath);
+      const cached = bodyCache.get(key);
+      let text: string;
+
+      if (cached && cached.mtimeMs === note.modifiedAt) {
+        text = cached.text;
+      } else {
+        const stats = await fs.stat(note.filePath);
+        const raw = await fs.readFile(note.filePath, 'utf-8');
+        text = safeParseFrontmatter(raw).content.toLowerCase();
+        bodyCache.set(key, { mtimeMs: stats.mtimeMs, size: stats.size, text });
+        trimCache(bodyCache);
+      }
+
+      if (text.includes(needle)) matches.push(note.filePath);
+    } catch {
+      // Unreadable file; just don't match it.
+    }
+  }
+
+  return matches;
 }
 
 function invalidateDerived(...filePaths: string[]) {
   for (const p of filePaths) {
-    if (p) derivedCache.delete(normalizePath(p));
+    if (p) {
+      derivedCache.delete(normalizePath(p));
+      bodyCache.delete(normalizePath(p));
+    }
   }
 }
 
@@ -378,6 +596,8 @@ export async function readAllNotesTree(rootDir: string): Promise<NotesTree> {
 
     for (const entry of entries) {
       if (entry.name.startsWith('.')) continue;
+      // The attachments folder is app plumbing, not somewhere the user files notes.
+      if (relative === '' && entry.isDirectory() && entry.name === ASSETS_DIR_NAME) continue;
 
       const fullPath = path.join(dir, entry.name);
       const relPath = path.join(relative, entry.name);
@@ -427,9 +647,36 @@ export async function readAllNotesTree(rootDir: string): Promise<NotesTree> {
   try {
     const trashEntries = await fs.readdir(trashDir, { withFileTypes: true });
     for (const entry of trashEntries) {
+      if (entry.name.startsWith('.')) continue;
+
+      const fullPath = path.join(trashDir, entry.name);
+
+      if (entry.isDirectory()) {
+        // Deleted folders live here too. Surfacing them makes them restorable instead of
+        // only recoverable through Finder.
+        try {
+          const stats = await fs.stat(fullPath);
+          const contained = await countMarkdownFiles(fullPath);
+          trashNotes.push({
+            id: fullPath,
+            filePath: fullPath,
+            fileName: entry.name,
+            title: entry.name,
+            snippet: `Folder — ${contained} note${contained === 1 ? '' : 's'}`,
+            folder: 'Trash',
+            isFolder: true,
+            modifiedAt: stats.mtimeMs,
+            createdAt: stats.birthtimeMs || stats.mtimeMs,
+            frontmatter: {}
+          });
+        } catch (e) {
+          console.error('Error reading trashed folder:', e);
+        }
+        continue;
+      }
+
       if (entry.isFile() && entry.name.toLowerCase().endsWith('.md')) {
         try {
-          const fullPath = path.join(trashDir, entry.name);
           const stats = await fs.stat(fullPath);
           const derived = await getDerivedNoteData(fullPath, stats);
 
@@ -470,12 +717,12 @@ export async function readNoteContent(filePath: string): Promise<{ markdown: str
   const raw = await fs.readFile(filePath, 'utf-8');
   const parsed = safeParseFrontmatter(raw);
   return {
-    markdown: parsed.content,
+    markdown: toDisplayMarkdown(parsed.content, filePath),
     frontmatter: parsed.data
   };
 }
 
-export async function saveNoteContent(filePath: string, markdown: string): Promise<void> {
+export async function saveNoteContent(filePath: string, markdown: string, originId?: number): Promise<void> {
   // A save aimed at a path that no longer exists means the note was renamed, moved or
   // deleted while the write was queued. Writing would resurrect it as a duplicate.
   if (!fsSync.existsSync(filePath)) {
@@ -492,8 +739,9 @@ export async function saveNoteContent(filePath: string, markdown: string): Promi
     // Unreadable but present; write the body alone rather than losing the edit.
   }
 
-  const fileContent = block ? `${block}${markdown}` : markdown;
-  markSelfWrite(filePath, fileContent);
+  const body = toDiskMarkdown(markdown, filePath);
+  const fileContent = block ? `${block}${body}` : body;
+  markSelfWrite(filePath, fileContent, originId);
   await fs.writeFile(filePath, fileContent, 'utf-8');
   invalidateDerived(filePath);
 }
@@ -502,7 +750,8 @@ export async function createNote(
   rootDir: string,
   folderPath: string,
   title = 'Untitled Note',
-  initialContent = ''
+  initialContent = '',
+  originId?: number
 ): Promise<NoteMeta> {
   const sanitizedTitle = sanitizeFileName(title);
   const filePath = uniqueTarget(folderPath, `${sanitizedTitle}.md`);
@@ -511,7 +760,7 @@ export async function createNote(
   // The title already lives in the filename; a duplicate H1 would just be noise the
   // user has to delete every time.
   const content = initialContent ?? '';
-  markSelfWrite(filePath, content);
+  markSelfWrite(filePath, content, originId);
   await fs.writeFile(filePath, content, 'utf-8');
   const stats = await fs.stat(filePath);
 
@@ -528,7 +777,7 @@ export async function createNote(
   };
 }
 
-export async function renameNote(rootDir: string, filePath: string, newTitle: string): Promise<NoteMeta> {
+export async function renameNote(rootDir: string, filePath: string, newTitle: string, originId?: number): Promise<NoteMeta> {
   const dir = path.dirname(filePath);
   const ext = path.extname(filePath) || '.md';
   const sanitizedTitle = sanitizeFileName(newTitle);
@@ -536,7 +785,7 @@ export async function renameNote(rootDir: string, filePath: string, newTitle: st
 
   if (path.resolve(filePath) !== path.resolve(newFilePath)) {
     newFilePath = uniqueTarget(dir, `${sanitizedTitle}${ext}`);
-    markSelfOp(filePath, newFilePath);
+    markSelfOp(originId, filePath, newFilePath);
     await fs.rename(filePath, newFilePath);
     invalidateDerived(filePath);
   }
@@ -559,15 +808,19 @@ export async function renameNote(rootDir: string, filePath: string, newTitle: st
   };
 }
 
-export async function moveNote(rootDir: string, filePath: string, targetFolderPath: string): Promise<NoteMeta> {
+export async function moveNote(rootDir: string, filePath: string, targetFolderPath: string, originId?: number): Promise<NoteMeta> {
   const fileName = path.basename(filePath);
   let targetPath = path.join(targetFolderPath, fileName);
 
   if (path.resolve(filePath) !== path.resolve(targetPath)) {
     targetPath = uniqueTarget(targetFolderPath, fileName);
-    markSelfOp(filePath, targetPath);
+    markSelfOp(originId, filePath, targetPath);
     await fs.rename(filePath, targetPath);
     invalidateDerived(filePath);
+
+    // Image links are relative to the note, so moving it to another folder invalidates
+    // them. Re-anchor them against the new location.
+    await rebaseImageLinks(targetPath, path.dirname(filePath), originId);
   }
 
   const raw = await fs.readFile(targetPath, 'utf-8');
@@ -588,11 +841,11 @@ export async function moveNote(rootDir: string, filePath: string, targetFolderPa
   };
 }
 
-export async function moveToTrash(filePath: string, rootDir: string): Promise<void> {
+export async function moveToTrash(filePath: string, rootDir: string, originId?: number): Promise<void> {
   const trashDir = getTrashDir(rootDir);
   const targetPath = uniqueTarget(trashDir, path.basename(filePath));
 
-  markSelfOp(filePath, targetPath);
+  markSelfOp(originId, filePath, targetPath);
   await fs.rename(filePath, targetPath);
   invalidateDerived(filePath);
 
@@ -604,7 +857,7 @@ export async function moveToTrash(filePath: string, rootDir: string): Promise<vo
   writeTrashIndex(rootDir, index);
 }
 
-export async function restoreFromTrash(filePath: string, rootDir: string): Promise<string> {
+export async function restoreFromTrash(filePath: string, rootDir: string, originId?: number): Promise<string> {
   const trashedName = path.basename(filePath);
   const index = readTrashIndex(rootDir);
   const record = index[trashedName];
@@ -625,7 +878,7 @@ export async function restoreFromTrash(filePath: string, rootDir: string): Promi
   const desiredName = record?.originalPath ? path.basename(record.originalPath) : trashedName;
   const targetPath = uniqueTarget(targetDir, desiredName);
 
-  markSelfOp(filePath, targetPath);
+  markSelfOp(originId, filePath, targetPath);
   await fs.rename(filePath, targetPath);
   invalidateDerived(filePath);
 
@@ -637,8 +890,8 @@ export async function restoreFromTrash(filePath: string, rootDir: string): Promi
   return targetPath;
 }
 
-export async function permanentDeleteNote(filePath: string, rootDir?: string): Promise<void> {
-  markSelfOp(filePath);
+export async function permanentDeleteNote(filePath: string, rootDir?: string, originId?: number): Promise<void> {
+  markSelfOp(originId, filePath);
   await fs.rm(filePath, { recursive: true, force: true });
   invalidateDerived(filePath);
 
@@ -652,7 +905,7 @@ export async function permanentDeleteNote(filePath: string, rootDir?: string): P
   }
 }
 
-export async function emptyTrash(rootDir: string): Promise<void> {
+export async function emptyTrash(rootDir: string, originId?: number): Promise<void> {
   const trashDir = getTrashDir(rootDir);
   const indexName = path.basename(getTrashIndexPath(rootDir));
   const entries = await fs.readdir(trashDir);
@@ -660,7 +913,7 @@ export async function emptyTrash(rootDir: string): Promise<void> {
   for (const entry of entries) {
     if (entry === indexName) continue;
     const target = path.join(trashDir, entry);
-    markSelfOp(target);
+    markSelfOp(originId, target);
     // Deleted folders land in the trash too, so this has to handle directories.
     await fs.rm(target, { recursive: true, force: true });
     invalidateDerived(target);
@@ -669,7 +922,7 @@ export async function emptyTrash(rootDir: string): Promise<void> {
   writeTrashIndex(rootDir, {});
 }
 
-export async function duplicateNote(rootDir: string, filePath: string): Promise<NoteMeta> {
+export async function duplicateNote(rootDir: string, filePath: string, originId?: number): Promise<NoteMeta> {
   const dir = path.dirname(filePath);
   const ext = path.extname(filePath) || '.md';
   const baseName = path.basename(filePath, ext);
@@ -678,7 +931,7 @@ export async function duplicateNote(rootDir: string, filePath: string): Promise<
   const newFileName = path.basename(newFilePath);
 
   const raw = await fs.readFile(filePath, 'utf-8');
-  markSelfWrite(newFilePath, raw);
+  markSelfWrite(newFilePath, raw, originId);
   await fs.writeFile(newFilePath, raw, 'utf-8');
 
   const parsed = safeParseFrontmatter(raw);
@@ -697,32 +950,32 @@ export async function duplicateNote(rootDir: string, filePath: string): Promise<
   };
 }
 
-export async function createFolder(parentPath: string, folderName: string): Promise<string> {
+export async function createFolder(parentPath: string, folderName: string, originId?: number): Promise<string> {
   const sanitized = folderName.replace(/[/\\?%*:|"<>]/g, '-').trim() || 'New Folder';
   const target = uniqueTarget(parentPath, sanitized);
-  markSelfOp(target);
+  markSelfOp(originId, target);
   await fs.mkdir(target, { recursive: true });
   return target;
 }
 
-export async function renameFolder(folderPath: string, newName: string): Promise<string> {
+export async function renameFolder(folderPath: string, newName: string, originId?: number): Promise<string> {
   const parent = path.dirname(folderPath);
   const sanitized = newName.replace(/[/\\?%*:|"<>]/g, '-').trim() || 'Folder';
   let target = path.join(parent, sanitized);
   if (path.resolve(folderPath) !== path.resolve(target)) {
     target = uniqueTarget(parent, sanitized);
-    markSelfOp(folderPath, target);
+    markSelfOp(originId, folderPath, target);
     await fs.rename(folderPath, target);
     derivedCache.clear();
   }
   return target;
 }
 
-export async function deleteFolder(folderPath: string, rootDir: string): Promise<void> {
+export async function deleteFolder(folderPath: string, rootDir: string, originId?: number): Promise<void> {
   const trashDir = getTrashDir(rootDir);
   const finalTarget = uniqueTarget(trashDir, path.basename(folderPath));
 
-  markSelfOp(folderPath, finalTarget);
+  markSelfOp(originId, folderPath, finalTarget);
   await fs.rename(folderPath, finalTarget);
   derivedCache.clear();
 
@@ -784,7 +1037,7 @@ export function startWatchingWindow(
   };
 
   const queue = async (filePath: string, eventType: string) => {
-    if (await isSelfInflicted(filePath, eventType)) return;
+    if (await isSelfInflicted(webContentsId, filePath, eventType)) return;
     const structural = eventType !== 'change';
     pending.set(filePath, (pending.get(filePath) || false) || structural);
     if (flushTimer) clearTimeout(flushTimer);

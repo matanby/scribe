@@ -6,6 +6,7 @@ import { Editor } from './components/Editor';
 import { QuickSwitcher } from './components/QuickSwitcher';
 import { AppearanceModal, AppearanceSettings, ACCENT_PALETTES } from './components/AppearanceModal';
 import { NoteMeta, NotesTree, SortMode } from './types';
+import { confirmDestructive, showMessage } from './utils/dialogs';
 
 export const App: React.FC = () => {
   const [tree, setTree] = useState<NotesTree | null>(null);
@@ -409,11 +410,11 @@ export const App: React.FC = () => {
       const res: any = await window.scribeAPI.exportPDF(title);
       if (res && res.success === false && !res.canceled) {
         console.error('PDF export failed:', res.error);
-        window.alert(`Could not export PDF: ${res.error || 'unknown error'}`);
+        void showMessage('Could not export PDF', res.error || 'unknown error', 'error');
       }
     } catch (err: any) {
       console.error('PDF export failed:', err);
-      window.alert(`Could not export PDF: ${err?.message || 'unknown error'}`);
+      void showMessage('Could not export PDF', err?.message || 'unknown error', 'error');
     }
   }, [selectedNote]);
 
@@ -566,7 +567,11 @@ export const App: React.FC = () => {
   const handleDeleteNote = useCallback(async (note: NoteMeta, e: React.MouseEvent) => {
     e.stopPropagation();
     if (selectedFolder === '__TRASH__') {
-      const confirmDelete = window.confirm(`Permanently delete "${note.title}"? This cannot be undone.`);
+      const what = note.isFolder ? `folder "${note.title}" and everything in it` : `"${note.title}"`;
+      const confirmDelete = await confirmDestructive(
+        `Permanently delete ${what}?`,
+        'This cannot be undone.'
+      );
       if (!confirmDelete) return;
       try {
         await window.scribeAPI.permanentDeleteNote(note.filePath);
@@ -597,7 +602,11 @@ export const App: React.FC = () => {
 
   // Empty trash
   const handleEmptyTrash = useCallback(async () => {
-    const confirmEmpty = window.confirm('Permanently delete all items in Recently Deleted?');
+    const confirmEmpty = await confirmDestructive(
+      'Permanently delete all items in Recently Deleted?',
+      'This cannot be undone.',
+      'Empty Trash'
+    );
     if (!confirmEmpty) return;
     try {
       await window.scribeAPI.emptyTrash();
@@ -662,6 +671,34 @@ export const App: React.FC = () => {
     setSearchQuery('');
   };
 
+  // Full-text matches come from the main process, which can read note bodies. The list
+  // still filters on title/snippet immediately so typing stays responsive; body matches
+  // fold in when the search returns.
+  const [bodyMatches, setBodyMatches] = useState<Set<string> | null>(null);
+
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (!query) {
+      setBodyMatches(null);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      window.scribeAPI
+        .searchNotes(query)
+        .then(paths => {
+          if (!cancelled) setBodyMatches(new Set(paths));
+        })
+        .catch(err => console.error('Search failed:', err));
+    }, 200);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchQuery]);
+
   // Filter notes based on selected folder / trash and search query
   const isTrashView = selectedFolder === '__TRASH__';
 
@@ -684,9 +721,10 @@ export const App: React.FC = () => {
 
     if (searchQuery && typeof searchQuery === 'string' && searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      list = list.filter(n => 
-        (n.title || '').toLowerCase().includes(q) || 
-        (n.snippet || '').toLowerCase().includes(q)
+      list = list.filter(n =>
+        (n.title || '').toLowerCase().includes(q) ||
+        (n.snippet || '').toLowerCase().includes(q) ||
+        bodyMatches?.has(n.filePath)
       );
     }
 
@@ -714,7 +752,7 @@ export const App: React.FC = () => {
     });
 
     return list;
-  }, [tree, selectedFolder, isTrashView, searchQuery, sortMode, pinnedIds]);
+  }, [tree, selectedFolder, isTrashView, searchQuery, sortMode, pinnedIds, bodyMatches]);
 
   return (
     <div className={`h-screen w-screen flex flex-col overflow-hidden bg-[var(--app-bg)] text-[var(--text-primary)] ${isDark ? 'dark' : ''} font-${appearance.fontFamily}-mode`}>

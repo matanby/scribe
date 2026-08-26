@@ -6,6 +6,7 @@ import { createLowlight, common } from 'lowlight';
 import { CodeBlockComponent } from './CodeBlockComponent';
 import TaskList from '@tiptap/extension-task-list';
 import taskListPlugin from 'markdown-it-task-lists';
+import markPlugin from 'markdown-it-mark';
 import { CustomTaskItem } from '../extensions/CustomTaskItem';
 import Link from '@tiptap/extension-link';
 import Table from '@tiptap/extension-table';
@@ -31,6 +32,7 @@ import { FindReplaceBar } from './FindReplaceBar';
 import { getTableInfo } from '../utils/tableUtils';
 import { NoteMeta } from '../types';
 import { Calendar, Folder, FileText, AlignLeft, FolderSearch, AlertTriangle } from 'lucide-react';
+import { showMessage } from '../utils/dialogs';
 
 const lowlight = createLowlight(common);
 
@@ -61,6 +63,38 @@ interface TipTapNoteEditorProps {
   searchQuery?: string;
   smartTypography?: boolean;
   autoSortTasks?: boolean;
+}
+
+/**
+ * Writes a pasted or dropped image into the vault's assets folder and links to it.
+ *
+ * Inlining these as base64 data URLs (as this used to) grew the .md file by megabytes per
+ * screenshot and made the note unreadable in any other markdown editor.
+ */
+async function insertImageFile(
+  view: any,
+  file: File,
+  noteFilePath: string,
+  dropPos: number | null
+) {
+  try {
+    const buffer = await file.arrayBuffer();
+    const { assetUrl } = await window.scribeAPI.saveAttachment({
+      noteFilePath,
+      fileName: file.name || 'pasted-image.png',
+      data: new Uint8Array(buffer)
+    });
+
+    const node = view.state.schema.nodes.image.create({ src: assetUrl });
+    const tr =
+      dropPos === null
+        ? view.state.tr.replaceSelectionWith(node)
+        : view.state.tr.insert(dropPos, node);
+    view.dispatch(tr);
+  } catch (err) {
+    console.error('Failed to attach image:', err);
+    void showMessage('Could not attach image', 'The file could not be saved into the notes folder.', 'error');
+  }
 }
 
 /**
@@ -311,10 +345,38 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
       TableRow,
       TableHeader,
       TableCell,
-      Highlight.configure({
+      // Highlight and underline have no native markdown syntax. `==text==` is the de
+      // facto standard for highlight and is understood by Obsidian and others; underline
+      // stays as an <u> tag, which is at least valid markdown-embedded HTML rather than
+      // the serializer's fallback.
+      Highlight.extend({
+        addStorage() {
+          return {
+            ...this.parent?.(),
+            markdown: {
+              serialize: { open: '==', close: '==', mixable: true, expelEnclosingWhitespace: true },
+              parse: {
+                setup(markdownit: any) {
+                  markdownit.use(markPlugin);
+                }
+              }
+            }
+          };
+        }
+      }).configure({
         multicolor: true
       }),
-      Underline,
+      Underline.extend({
+        addStorage() {
+          return {
+            ...this.parent?.(),
+            markdown: {
+              serialize: { open: '<u>', close: '</u>', mixable: true, expelEnclosingWhitespace: true },
+              parse: {}
+            }
+          };
+        }
+      }),
       ...(smartTypography ? [Typography] : []),
       MathExtension,
       Image.configure({
@@ -358,18 +420,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
               const file = items[i].getAsFile();
               if (file) {
                 event.preventDefault();
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                  const base64 = e.target?.result as string;
-                  if (base64) {
-                    view.dispatch(
-                      view.state.tr.replaceSelectionWith(
-                        view.state.schema.nodes.image.create({ src: base64 })
-                      )
-                    );
-                  }
-                };
-                reader.readAsDataURL(file);
+                void insertImageFile(view, file, notePathRef.current, null);
                 return true;
               }
             }
@@ -385,21 +436,8 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
             const file = files[i];
             if (file.type.startsWith('image/')) {
               event.preventDefault();
-              const reader = new FileReader();
-              reader.onload = (e) => {
-                const base64 = e.target?.result as string;
-                if (base64) {
-                  const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
-                  const pos = coords ? coords.pos : view.state.selection.from;
-                  view.dispatch(
-                    view.state.tr.insert(
-                      pos,
-                      view.state.schema.nodes.image.create({ src: base64 })
-                    )
-                  );
-                }
-              };
-              reader.readAsDataURL(file);
+              const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
+              void insertImageFile(view, file, notePathRef.current, coords ? coords.pos : null);
               return true;
             }
           }

@@ -9,7 +9,9 @@
     "build": "tsc && vite build",
     "dist": "tsc && vite build && electron-builder --mac",
     "preview": "vite preview",
-    "test": "tsx electron/fileSystem.test.ts"
+    "test": "npm run test:fs && npm run test:protocol",
+    "test:fs": "tsx electron/fileSystem.test.ts",
+    "test:protocol": "esbuild electron/assetProtocol.test.ts --bundle --platform=node --format=cjs --external:electron --external:chokidar --external:gray-matter --outfile=dist-electron/assetProtocol.test.cjs && electron dist-electron/assetProtocol.test.cjs"
   },
   "dependencies": {
     "@tiptap/extension-bubble-menu": "^2.11.5",
@@ -37,6 +39,7 @@
     "katex": "^0.18.4",
     "lowlight": "^3.3.0",
     "lucide-react": "^1.16.0",
+    "markdown-it-mark": "^4.0.0",
     "markdown-it-task-lists": "^2.1.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -51,6 +54,7 @@
     "autoprefixer": "^10.4.20",
     "electron": "^34.3.0",
     "electron-builder": "^25.1.8",
+    "esbuild": "^0.25.0",
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.23.12",

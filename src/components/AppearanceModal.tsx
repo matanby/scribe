@@ -1,6 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Check, Palette, Type, Sun, Moon, Laptop } from 'lucide-react';
+import { useFocusTrap } from '../utils/useFocusTrap';
 
 export interface AppearanceSettings {
   accentColor: string;
@@ -33,6 +34,9 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
   settings,
   onUpdateSettings
 }) => {
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef, isOpen);
+
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -54,6 +58,9 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 dark:bg-black/60 backdrop-blur-md animate-in fade-in duration-150 p-4"
     >
       <div 
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-md bg-white/95 dark:bg-[#202024]/95 backdrop-blur-2xl border border-[var(--border-color)] shadow-2xl rounded-2xl overflow-hidden flex flex-col select-none animate-in zoom-in-95 duration-100"
       >

@@ -26,6 +26,8 @@ import {
   renameNote,
   restoreFromTrash,
   saveNoteContent,
+  saveAttachment,
+  fromAssetUrl,
   startWatchingWindow,
   withFileLock,
   NotesChangedPayload
@@ -262,15 +264,16 @@ async function testFileLockOrdering() {
 async function testWatcherSelfWriteSuppression() {
   console.log('\nwatcher echo suppression');
   const root = await makeVault();
-  const note = await createNote(root, root, 'Watched', 'initial content');
+  const WINDOW = 1;
+  const note = await createNote(root, root, 'Watched', 'initial content', WINDOW);
 
   const events: NotesChangedPayload[] = [];
-  startWatchingWindow(1, root, payload => events.push(payload));
+  startWatchingWindow(WINDOW, root, payload => events.push(payload));
 
   // chokidar needs a moment to prime its watch on the directory.
   await sleep(600);
 
-  await saveNoteContent(note.filePath, 'edited by the app');
+  await saveNoteContent(note.filePath, 'edited by the app', WINDOW);
   await sleep(1200);
   eq('our own save produces no external-change event', events.length, 0);
 
@@ -294,7 +297,89 @@ async function testWatcherSelfWriteSuppression() {
   check('burst of writes is coalesced', events.length - before <= 2, `got ${events.length - before} events`);
 
   const { removeWindowTracking } = await import('./fileSystem');
-  removeWindowTracking(1);
+  removeWindowTracking(WINDOW);
+  await fs.rm(root, { recursive: true, force: true });
+}
+
+async function testTwoWindowsStaySynced() {
+  console.log('\ntwo windows on one vault');
+  const root = await makeVault();
+  const WINDOW_A = 11;
+  const WINDOW_B = 22;
+  const note = await createNote(root, root, 'Shared', 'initial', WINDOW_A);
+
+  const eventsA: NotesChangedPayload[] = [];
+  const eventsB: NotesChangedPayload[] = [];
+  startWatchingWindow(WINDOW_A, root, p => eventsA.push(p));
+  startWatchingWindow(WINDOW_B, root, p => eventsB.push(p));
+  await sleep(600);
+
+  // A save made in window A is A's own echo, but a genuine external change for window B.
+  await saveNoteContent(note.filePath, 'typed in window A', WINDOW_A);
+  await sleep(1500);
+
+  eq('window A ignores its own save', eventsA.length, 0);
+  check('window B is told about it', eventsB.length > 0);
+  check(
+    'window B receives the right path',
+    eventsB.some(e => e.changedPaths.some(p => path.resolve(p) === path.resolve(note.filePath)))
+  );
+
+  const { removeWindowTracking } = await import('./fileSystem');
+  removeWindowTracking(WINDOW_A);
+  removeWindowTracking(WINDOW_B);
+  await fs.rm(root, { recursive: true, force: true });
+}
+
+async function testImageAttachments() {
+  console.log('\nimage attachments');
+  const root = await makeVault();
+  const folder = await createFolder(root, 'Sub');
+  const note = await createNote(root, folder, 'WithImage', '');
+
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const { absolutePath, assetUrl } = await saveAttachment(root, note.filePath, 'Screen Shot.png', png);
+
+  check('attachment written into assets/', absolutePath.startsWith(path.join(root, 'assets') + path.sep));
+  check('attachment is a real file', fsSync.existsSync(absolutePath));
+  eq('bytes round-trip', (await fs.readFile(absolutePath)).length, png.length);
+
+  // The editor works in asset-URL form; disk must hold a relative path.
+  await saveNoteContent(note.filePath, `text\n\n![shot](${assetUrl})\n`);
+  const onDisk = await fs.readFile(note.filePath, 'utf-8');
+  check('no base64 in the note', !onDisk.includes('base64'));
+  check('no absolute path in the note', !onDisk.includes(root));
+  check('relative link written', /!\[shot\]\(\.\.\/assets\/[^)]+\)/.test(onDisk));
+
+  const reread = await readNoteContent(note.filePath);
+  check('reading restores the asset url', reread.markdown.includes('scribe-asset://'));
+  eq(
+    'asset url resolves back to the same file',
+    fromAssetUrl(reread.markdown.match(/\((scribe-asset:\/\/[^)]+)\)/)![1]),
+    absolutePath
+  );
+
+  // Moving the note to another folder must keep the image resolvable.
+  const moved = await moveNote(root, note.filePath, root);
+  const movedDisk = await fs.readFile(moved.filePath, 'utf-8');
+  check('link rebased after move', /!\[shot\]\(assets\/[^)]+\)/.test(movedDisk));
+
+  const movedRead = await readNoteContent(moved.filePath);
+  eq(
+    'moved note still points at the same image',
+    fromAssetUrl(movedRead.markdown.match(/\((scribe-asset:\/\/[^)]+)\)/)![1]),
+    absolutePath
+  );
+
+  // External and data URLs must be left alone.
+  await saveNoteContent(moved.filePath, '![a](https://example.com/x.png)\n![b](data:image/png;base64,AAAA)\n');
+  const untouched = await fs.readFile(moved.filePath, 'utf-8');
+  check('http image untouched', untouched.includes('https://example.com/x.png'));
+  check('legacy base64 image untouched', untouched.includes('data:image/png;base64,AAAA'));
+
+  const tree = await readAllNotesTree(root);
+  check('assets folder hidden from the sidebar', !tree.folders[0].children.some(c => c.name === 'assets'));
+
   await fs.rm(root, { recursive: true, force: true });
 }
 
@@ -304,10 +389,12 @@ async function main() {
   await testTrashCollisions();
   await testEmptyTrashWithFolders();
   await testFolderMetadata();
+  await testImageAttachments();
   await testTitleAndCollisionHandling();
   await testPathContainment();
   await testFileLockOrdering();
   await testWatcherSelfWriteSuppression();
+  await testTwoWindowsStaySynced();
 
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed === 0 ? 0 : 1);

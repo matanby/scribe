@@ -14,6 +14,7 @@ import {
   ChevronDown 
 } from 'lucide-react';
 import { getTableInfo, moveRow, moveColumn, clearTable, TableInfo } from '../utils/tableUtils';
+import { confirmDestructive } from '../utils/dialogs';
 
 interface TableControlsProps {
   editor: Editor | null;
@@ -164,8 +165,8 @@ export const TableControls: React.FC<TableControlsProps> = ({ editor }) => {
     setTimeout(updatePosition, 20);
   };
 
-  const handleDeleteTable = () => {
-    if (!window.confirm('Delete this table and all of its contents?')) return;
+  const handleDeleteTable = async () => {
+    if (!(await confirmDestructive('Delete this table?', 'All of its contents will be removed.'))) return;
     editor.chain().focus().deleteTable().run();
     setIsVisible(false);
   };
@@ -175,8 +176,8 @@ export const TableControls: React.FC<TableControlsProps> = ({ editor }) => {
     setTimeout(updatePosition, 20);
   };
 
-  const handleClearTable = () => {
-    if (!window.confirm('Clear every cell in this table?')) return;
+  const handleClearTable = async () => {
+    if (!(await confirmDestructive('Clear every cell in this table?', 'The table structure is kept.', 'Clear'))) return;
     clearTable(editor);
   };
 

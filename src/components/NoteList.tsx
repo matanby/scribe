@@ -10,6 +10,7 @@ import {
   Check, 
   Calendar,
   FolderSearch,
+  Folder,
   Copy
 } from 'lucide-react';
 
@@ -245,6 +246,9 @@ export const NoteList: React.FC<NoteListProps> = ({
           <div className="flex items-center gap-1.5 flex-1 min-w-0">
             {isPinned && !isTrash && (
               <Pin size={10.5} className="text-[var(--accent-color)] shrink-0 fill-[var(--accent-color)]" />
+            )}
+            {note.isFolder && (
+              <Folder size={11} className="text-[var(--text-secondary)] shrink-0" />
             )}
             <h3 
               dir="auto"

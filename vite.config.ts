@@ -34,5 +34,19 @@ export default defineConfig({
       }
     ]),
     renderer()
-  ]
+  ],
+  build: {
+    rollupOptions: {
+      output: {
+        // Split the heavy, rarely-changing libraries out of the app chunk so a code
+        // change doesn't invalidate a megabyte of vendor code.
+        manualChunks: {
+          editor: ['@tiptap/react', '@tiptap/core', '@tiptap/starter-kit'],
+          syntax: ['lowlight'],
+          math: ['katex']
+        }
+      }
+    },
+    chunkSizeWarningLimit: 700
+  }
 })

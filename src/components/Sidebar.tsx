@@ -13,6 +13,7 @@ import {
 import { FolderNode, NotesTree } from '../types';
 
 import { FolderDialog, FolderDialogState } from './FolderDialog';
+import { confirmDestructive } from '../utils/dialogs';
 
 interface SidebarProps {
   tree: NotesTree | null;
@@ -107,7 +108,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
             title: `Rename "${folderName}"`
           });
         } else if (res.action === 'deleteFolder') {
-          const confirmDelete = window.confirm(`Move folder "${folderName}" and its contents to Trash?`);
+          const confirmDelete = await confirmDestructive(
+            `Move folder "${folderName}" to Trash?`,
+            'Its notes go to Recently Deleted and can be restored.',
+            'Move to Trash'
+          );
           if (confirmDelete) {
             onDeleteFolder?.(folderPath);
           }

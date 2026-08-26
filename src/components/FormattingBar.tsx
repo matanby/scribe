@@ -30,6 +30,7 @@ import {
   Minus,
   Sigma
 } from 'lucide-react';
+import { confirmDestructive, showMessage } from '../utils/dialogs';
 
 interface FormattingBarProps {
   editor: Editor | null;
@@ -376,8 +377,9 @@ export const FormattingBar: React.FC<FormattingBarProps> = ({ editor }) => {
               <div className="h-[1px] bg-[var(--border-subtle)] my-1" />
               <button
                 onClick={() => {
-                  if (!window.confirm('Delete this table and all of its contents?')) return;
-                  editor.chain().focus().deleteTable().run();
+                  void confirmDestructive('Delete this table?', 'All of its contents will be removed.').then(ok => {
+                    if (ok) editor.chain().focus().deleteTable().run();
+                  });
                   setShowTableMenu(false);
                 }}
                 className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left hover:bg-red-50 dark:hover:bg-red-950/40 text-red-600 font-medium"
@@ -460,7 +462,7 @@ export const FormattingBar: React.FC<FormattingBarProps> = ({ editor }) => {
                     URL.revokeObjectURL(url);
                   } catch (err: any) {
                     console.error('Failed to export markdown:', err);
-                    window.alert(`Could not export markdown: ${err?.message || 'unknown error'}`);
+                    void showMessage('Could not export markdown', err?.message || 'unknown error', 'error');
                   }
                   setShowExportMenu(false);
                 }}
