@@ -66,9 +66,16 @@ export const CodeBlockComponent: React.FC<NodeViewProps> = ({
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    navigator.clipboard.writeText(node.textContent);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    navigator.clipboard
+      .writeText(node.textContent)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch((err) => {
+        // Don't claim success when the clipboard write was rejected.
+        console.error('Failed to copy code block:', err);
+      });
   };
 
   const handleSelectLanguage = (lang: string, e: React.MouseEvent) => {

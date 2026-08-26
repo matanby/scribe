@@ -196,7 +196,7 @@ export const BubbleMenu: React.FC<BubbleMenuProps> = ({ editor }) => {
             ? 'bg-[var(--accent-color)] text-white shadow-xs'
             : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
         }`}
-        title="Insert Link (⌘K)"
+        title="Insert Link"
       >
         <LinkIcon size={13.5} />
       </button>

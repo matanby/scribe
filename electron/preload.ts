@@ -3,7 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 export const scribeAPI = {
   listNotesTree: () => ipcRenderer.invoke('notes:listTree'),
   readNote: (filePath: string) => ipcRenderer.invoke('notes:read', filePath),
-  saveNote: (payload: { filePath: string; markdown: string; frontmatter?: Record<string, any> }) => 
+  saveNote: (payload: { filePath: string; markdown: string }) =>
     ipcRenderer.invoke('notes:save', payload),
   createNote: (payload: { folderPath?: string; title?: string; content?: string }) => 
     ipcRenderer.invoke('notes:create', payload),
@@ -32,8 +32,9 @@ export const scribeAPI = {
     ipcRenderer.invoke('contextMenu:folder', payload),
   exportPDF: (defaultTitle: string) => ipcRenderer.invoke('notes:exportPDF', defaultTitle),
   printNote: () => ipcRenderer.invoke('notes:print'),
-  onNotesChanged: (callback: (data?: { filePath?: string; eventType?: string }) => void) => {
-    const handler = (_: any, data: any) => callback(data);
+  onNotesChanged: (callback: (data: { changedPaths: string[]; structural: boolean }) => void) => {
+    const handler = (_: any, data: any) =>
+      callback({ changedPaths: data?.changedPaths ?? [], structural: !!data?.structural });
     ipcRenderer.on('notes:changed', handler);
     return () => {
       ipcRenderer.removeListener('notes:changed', handler);

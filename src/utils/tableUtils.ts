@@ -1,5 +1,43 @@
 import { Editor } from '@tiptap/react';
 import { Node as ProseMirrorNode } from 'prosemirror-model';
+import { Selection, Transaction } from '@tiptap/pm/state';
+
+/**
+ * Rebuilding a table wholesale leaves the selection mapped to an arbitrary spot, which
+ * felt like the cursor jumping out of the table. Put it back into the cell the user was
+ * working in (following the row/column they just moved).
+ */
+function placeCursorInCell(
+  tr: Transaction,
+  tablePos: number,
+  table: ProseMirrorNode,
+  rowIndex: number,
+  colIndex: number
+) {
+  try {
+    if (table.childCount === 0) return;
+    const safeRow = Math.max(0, Math.min(rowIndex, table.childCount - 1));
+
+    let rowPos = tablePos + 1;
+    for (let r = 0; r < safeRow; r++) {
+      rowPos += table.child(r).nodeSize;
+    }
+
+    const row = table.child(safeRow);
+    if (row.childCount === 0) return;
+    const safeCol = Math.max(0, Math.min(colIndex, row.childCount - 1));
+
+    let cellPos = rowPos + 1;
+    for (let c = 0; c < safeCol; c++) {
+      cellPos += row.child(c).nodeSize;
+    }
+
+    const target = Math.min(cellPos + 1, tr.doc.content.size);
+    tr.setSelection(Selection.near(tr.doc.resolve(target), 1));
+  } catch {
+    // Leave the mapped selection alone if the geometry doesn't work out.
+  }
+}
 
 export interface TableInfo {
   inTable: boolean;
@@ -124,6 +162,7 @@ export function moveRow(editor: Editor, fromIndex: number, toIndex: number): boo
 
   const newTable = tableNode.type.create(tableNode.attrs, rows);
   const tr = state.tr.replaceWith(tablePos, tablePos + tableNode.nodeSize, newTable);
+  placeCursorInCell(tr, tablePos, newTable, toIndex, 0);
   view.dispatch(tr);
   return true;
 }
@@ -173,6 +212,7 @@ export function moveColumn(editor: Editor, fromIndex: number, toIndex: number): 
 
   const newTable = tableNode.type.create(tableNode.attrs, newRows);
   const tr = state.tr.replaceWith(tablePos, tablePos + tableNode.nodeSize, newTable);
+  placeCursorInCell(tr, tablePos, newTable, 0, toIndex);
   view.dispatch(tr);
   return true;
 }
@@ -210,6 +250,7 @@ export function clearTable(editor: Editor): boolean {
 
   const newTable = tableNode.type.create(tableNode.attrs, newRows);
   const tr = state.tr.replaceWith(tablePos, tablePos + tableNode.nodeSize, newTable);
+  placeCursorInCell(tr, tablePos, newTable, 0, 0);
   view.dispatch(tr);
   return true;
 }

@@ -56,36 +56,32 @@ export const BiDiExtension = Extension.create({
     ];
   },
 
-  onCreate() {
-    const { state, view } = this.editor;
-    const tr = state.tr;
-    let modified = false;
+  addCommands() {
+    return {
+      setTextDirection:
+        (dir: 'rtl' | 'ltr' | 'auto') =>
+        ({ state, tr, dispatch }: any) => {
+          const { from, to } = state.selection;
+          let modified = false;
 
-    state.doc.descendants((node, pos) => {
-      if (
-        node.isBlock &&
-        ['paragraph', 'heading', 'listItem', 'taskItem', 'blockquote', 'orderedList', 'bulletList', 'taskList'].includes(node.type.name)
-      ) {
-        const text = node.textContent;
-        if (!text || !text.trim()) return;
-
-        const detectedDir = getDirection(text);
-        if (detectedDir !== 'auto' && node.attrs.dir !== detectedDir) {
-          tr.setNodeMarkup(pos, undefined, {
-            ...node.attrs,
-            dir: detectedDir
+          state.doc.nodesBetween(from, to, (node: any, pos: number) => {
+            if (node.isBlock && node.type.spec.attrs?.dir) {
+              tr.setNodeMarkup(pos, undefined, { ...node.attrs, dir });
+              modified = true;
+            }
           });
-          modified = true;
-        }
-      }
-    });
 
-    if (modified) {
-      tr.setMeta('addToHistory', false);
-      tr.setMeta('preventUpdate', true);
-      view.dispatch(tr);
-    }
+          if (modified && dispatch) dispatch(tr);
+          return modified;
+        }
+    };
   },
+
+  // The previous onCreate pass walked the whole document on open to stamp `dir` on every
+  // block. It was safe (its transaction set `preventUpdate`, which TipTap honours, so it
+  // never triggered a save) but redundant: `dir` defaults to "auto", which the browser
+  // already resolves per block from the first strong character. The plugin below refines
+  // it as the user types, so the extra pass bought nothing.
 
   addProseMirrorPlugins() {
     return [
@@ -119,7 +115,13 @@ export const BiDiExtension = Extension.create({
             }
           });
 
-          return modified ? tr : undefined;
+          if (!modified) return undefined;
+
+          // Direction is derived presentation, not user intent: it must not create its
+          // own undo step, and the autosave layer keys off this meta to ignore it.
+          tr.setMeta('addToHistory', false);
+          tr.setMeta('bidiAutoDetect', true);
+          return tr;
         }
       })
     ];

@@ -210,7 +210,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Quick Switcher (⌘P) — type to search notes..."
+            placeholder="Quick Switcher (⌘⇧O) — type to search notes..."
             className="w-full bg-transparent text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] outline-none font-medium"
           />
           <span className="text-[10px] font-mono text-[var(--text-tertiary)] border border-[var(--border-color)] px-1.5 py-0.5 rounded-md shrink-0">

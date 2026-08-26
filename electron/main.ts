@@ -20,7 +20,10 @@ import {
   restoreFromTrash,
   permanentDeleteNote,
   emptyTrash,
-  startWatchingWindow
+  startWatchingWindow,
+  assertInsideRoot,
+  withFileLock,
+  NotesChangedPayload
 } from './fileSystem';
 
 process.env.DIST = path.join(__dirname, '../dist');
@@ -214,15 +217,19 @@ export function createWindow(targetFolderPath?: string): BrowserWindow {
   }
 
   // Watch for external file changes in this window's workspace folder
-  startWatchingWindow(webContentsId, rootPath, (data) => {
+  attachWatcher(win, webContentsId, rootPath);
+
+  return win;
+}
+
+function attachWatcher(win: BrowserWindow, webContentsId: number, rootPath: string) {
+  startWatchingWindow(webContentsId, rootPath, (data: NotesChangedPayload) => {
     if (!win.isDestroyed()) {
       try {
         win.webContents.send('notes:changed', data);
       } catch {}
     }
   });
-
-  return win;
 }
 
 function sendToFocusedWindow(channel: string, focusedWin?: BrowserWindow) {
@@ -261,7 +268,7 @@ function setupMenu() {
         },
         {
           label: 'Quick Switcher...',
-          accelerator: 'CmdOrCtrl+P',
+          accelerator: 'CmdOrCtrl+Shift+O',
           click: (_item, focusedWin) => sendToFocusedWindow('menu:quickSwitcher', focusedWin as BrowserWindow)
         },
         { type: 'separator' as const },
@@ -301,7 +308,7 @@ function setupMenu() {
         },
         {
           label: 'Print...',
-          accelerator: 'CmdOrCtrl+Shift+P',
+          accelerator: 'CmdOrCtrl+P',
           click: (_item, focusedWin) => sendToFocusedWindow('menu:printNote', focusedWin as BrowserWindow)
         },
         { type: 'separator' as const },
@@ -419,26 +426,36 @@ ipcMain.handle('notes:listTree', async (event) => {
   return await readAllNotesTree(root);
 });
 
-ipcMain.handle('notes:read', async (_, filePath: string) => {
-  return await readNoteContent(filePath);
+ipcMain.handle('notes:read', async (event, filePath: string) => {
+  const root = getWindowRoot(event.sender.id);
+  assertInsideRoot(root, filePath);
+  return await withFileLock(filePath, () => readNoteContent(filePath));
 });
 
-ipcMain.handle('notes:save', async (_, { filePath, markdown, frontmatter }) => {
-  return await saveNoteContent(filePath, markdown, frontmatter);
+ipcMain.handle('notes:save', async (event, { filePath, markdown }) => {
+  const root = getWindowRoot(event.sender.id);
+  assertInsideRoot(root, filePath);
+  return await withFileLock(filePath, () => saveNoteContent(filePath, markdown));
 });
 
 ipcMain.handle('notes:create', async (event, { folderPath, title, content }) => {
   const root = getWindowRoot(event.sender.id);
   const targetFolder = folderPath || root;
-  return await createNote(targetFolder, title, content);
+  assertInsideRoot(root, targetFolder);
+  return await createNote(root, targetFolder, title, content);
 });
 
-ipcMain.handle('notes:rename', async (_, { filePath, newTitle }) => {
-  return await renameNote(filePath, newTitle);
+ipcMain.handle('notes:rename', async (event, { filePath, newTitle }) => {
+  const root = getWindowRoot(event.sender.id);
+  assertInsideRoot(root, filePath);
+  return await renameNote(root, filePath, newTitle);
 });
 
-ipcMain.handle('notes:move', async (_, { filePath, targetFolderPath }) => {
-  return await moveNote(filePath, targetFolderPath);
+ipcMain.handle('notes:move', async (event, { filePath, targetFolderPath }) => {
+  const root = getWindowRoot(event.sender.id);
+  assertInsideRoot(root, filePath);
+  assertInsideRoot(root, targetFolderPath);
+  return await moveNote(root, filePath, targetFolderPath);
 });
 
 ipcMain.handle('notes:exportPDF', async (event, defaultTitle: string) => {
@@ -481,21 +498,26 @@ ipcMain.handle('notes:print', (event) => {
 
 ipcMain.handle('notes:delete', async (event, filePath: string) => {
   const root = getWindowRoot(event.sender.id);
+  assertInsideRoot(root, filePath);
   return await moveToTrash(filePath, root);
 });
 
 ipcMain.handle('notes:trash', async (event, filePath: string) => {
   const root = getWindowRoot(event.sender.id);
+  assertInsideRoot(root, filePath);
   return await moveToTrash(filePath, root);
 });
 
 ipcMain.handle('notes:restore', async (event, filePath: string) => {
   const root = getWindowRoot(event.sender.id);
+  assertInsideRoot(root, filePath);
   return await restoreFromTrash(filePath, root);
 });
 
-ipcMain.handle('notes:permanentDelete', async (_, filePath: string) => {
-  return await permanentDeleteNote(filePath);
+ipcMain.handle('notes:permanentDelete', async (event, filePath: string) => {
+  const root = getWindowRoot(event.sender.id);
+  assertInsideRoot(root, filePath);
+  return await permanentDeleteNote(filePath, root);
 });
 
 ipcMain.handle('notes:emptyTrash', async (event) => {
@@ -512,13 +534,8 @@ ipcMain.handle('notes:setPath', (event, newPath: string) => {
   try {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win && !win.isDestroyed()) {
-      startWatchingWindow(event.sender.id, newPath, (data) => {
-        if (!win.isDestroyed()) {
-          try {
-            win.webContents.send('notes:changed', data);
-          } catch {}
-        }
-      });
+      attachWatcher(win, event.sender.id, newPath);
+      win.webContents.send('notes:rootChanged', getWindowRoot(event.sender.id));
     }
   } catch {}
   return getWindowRoot(event.sender.id);
@@ -535,13 +552,7 @@ ipcMain.handle('dialog:selectFolder', async (event) => {
       const selected = res.filePaths[0];
       setWindowRoot(event.sender.id, selected);
       if (win && !win.isDestroyed()) {
-        startWatchingWindow(event.sender.id, selected, (data) => {
-          if (!win.isDestroyed()) {
-            try {
-              win.webContents.send('notes:changed', data);
-            } catch {}
-          }
-        });
+        attachWatcher(win, event.sender.id, selected);
       }
       return selected;
     }
@@ -565,20 +576,30 @@ ipcMain.handle('shell:showInFinder', async (_, filePath: string) => {
   return false;
 });
 
-ipcMain.handle('notes:duplicate', async (_, filePath: string) => {
-  return await duplicateNote(filePath);
+ipcMain.handle('notes:duplicate', async (event, filePath: string) => {
+  const root = getWindowRoot(event.sender.id);
+  assertInsideRoot(root, filePath);
+  return await duplicateNote(root, filePath);
 });
 
-ipcMain.handle('folders:create', async (_, { parentPath, name }: { parentPath: string; name: string }) => {
+ipcMain.handle('folders:create', async (event, { parentPath, name }: { parentPath: string; name: string }) => {
+  const root = getWindowRoot(event.sender.id);
+  assertInsideRoot(root, parentPath);
   return await createFolder(parentPath, name);
 });
 
-ipcMain.handle('folders:rename', async (_, { folderPath, newName }: { folderPath: string; newName: string }) => {
+ipcMain.handle('folders:rename', async (event, { folderPath, newName }: { folderPath: string; newName: string }) => {
+  const root = getWindowRoot(event.sender.id);
+  assertInsideRoot(root, folderPath);
   return await renameFolder(folderPath, newName);
 });
 
 ipcMain.handle('folders:delete', async (event, folderPath: string) => {
   const root = getWindowRoot(event.sender.id);
+  assertInsideRoot(root, folderPath);
+  if (path.resolve(folderPath) === path.resolve(root)) {
+    throw new Error('Refusing to delete the notes root folder');
+  }
   return await deleteFolder(folderPath, root);
 });
 

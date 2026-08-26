@@ -54,7 +54,14 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
       if (showReplaceInitial) {
         setShowReplace(true);
       }
-      setTimeout(() => {
+
+      // Re-apply the existing term so reopening the bar restores its highlights instead
+      // of showing a populated field with nothing matched.
+      if (currentSearch && editor && !editor.isDestroyed) {
+        editor.commands.setSearchTerm(currentSearch);
+      }
+
+      const focusTimer = setTimeout(() => {
         if (showReplaceInitial && currentSearch) {
           replaceInputRef.current?.focus();
           replaceInputRef.current?.select();
@@ -63,12 +70,13 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
           inputRef.current?.select();
         }
       }, 40);
-    } else {
-      if (editor && !editor.isDestroyed) {
-        editor.commands.clearSearch();
-      }
+      return () => clearTimeout(focusTimer);
     }
-  }, [isOpen, showReplaceInitial, findTrigger]);
+
+    if (editor && !editor.isDestroyed) {
+      editor.commands.clearSearch();
+    }
+  }, [isOpen, showReplaceInitial, findTrigger, editor]);
 
   const handleSearchChange = (val: string) => {
     setSearchTerm(val);
@@ -214,6 +222,10 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
                 e.preventDefault();
                 handleReplace();
               } else if (e.key === 'Escape') {
+                // Without this the key also reaches the app-level handler and closes
+                // unrelated overlays.
+                e.preventDefault();
+                e.stopPropagation();
                 onClose();
               }
             }}

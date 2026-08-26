@@ -14,7 +14,7 @@ export const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
   const [lastSavedText, setLastSavedText] = useState('');
-  const [externalReloadTrigger, setExternalReloadTrigger] = useState<number>(0);
+  const [externalChangeToken, setExternalChangeToken] = useState<number>(0);
   const [isDark, setIsDark] = useState<boolean>(() => {
     if (typeof window !== 'undefined' && window.matchMedia) {
       return window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -76,18 +76,28 @@ export const App: React.FC = () => {
     root.style.setProperty('--card-active', hexToRgba(accent, isDark ? 0.22 : 0.14));
     root.style.setProperty('--selection-bg', hexToRgba(accent, isDark ? 0.35 : 0.25));
 
-    // Theme Mode
-    let darkActive = false;
-    if (appearance.themeMode === 'dark') {
-      darkActive = true;
-    } else if (appearance.themeMode === 'light') {
-      darkActive = false;
-    } else {
-      darkActive = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    }
-    setIsDark(darkActive);
-    root.classList.toggle('dark', darkActive);
+    root.classList.toggle('dark', isDark);
   }, [appearance, isDark]);
+
+  // Resolve the active theme from the setting, and keep following the OS while the
+  // setting is "system". This is kept separate from the CSS-variable effect above so that
+  // the effect which writes isDark is not also the effect that depends on it.
+  useEffect(() => {
+    if (appearance.themeMode === 'dark') {
+      setIsDark(true);
+      return;
+    }
+    if (appearance.themeMode === 'light') {
+      setIsDark(false);
+      return;
+    }
+
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const sync = () => setIsDark(media.matches);
+    sync();
+    media.addEventListener('change', sync);
+    return () => media.removeEventListener('change', sync);
+  }, [appearance.themeMode]);
 
   // Resizable Panes State (Saved in LocalStorage)
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
@@ -116,22 +126,19 @@ export const App: React.FC = () => {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const selectedNoteRef = useRef<NoteMeta | null>(selectedNote);
   selectedNoteRef.current = selectedNote;
-  const isSavingRef = useRef<boolean>(isSaving);
-  isSavingRef.current = isSaving;
-  const lastLocalSaveTimeRef = useRef<number>(0);
 
   const isDraggingSidebar = useRef(false);
   const isDraggingNoteList = useRef(false);
   const [isResizing, setIsResizing] = useState(false);
 
   // Smooth Theme Toggle Handler
+  const isDarkRef = useRef(isDark);
+  isDarkRef.current = isDark;
+
   const handleToggleTheme = useCallback(() => {
     const applyThemeChange = () => {
-      setIsDark(prev => {
-        const next = !prev;
-        handleUpdateAppearance({ themeMode: next ? 'dark' : 'light' });
-        return next;
-      });
+      // Toggling picks an explicit mode; the effect above then derives isDark from it.
+      handleUpdateAppearance({ themeMode: isDarkRef.current ? 'light' : 'dark' });
     };
 
     if (typeof document !== 'undefined' && 'startViewTransition' in document) {
@@ -227,69 +234,88 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Navigation History Stack
-  const [history, setHistory] = useState<string[]>([]);
-  const [historyIndex, setHistoryIndex] = useState<number>(-1);
-  const isNavigatingHistory = useRef(false);
+  // Navigation history. Entries and cursor live in one piece of state so the two can
+  // never disagree, and so nothing has to update state from inside a state updater.
+  const [history, setHistory] = useState<{ entries: string[]; index: number }>({
+    entries: [],
+    index: -1
+  });
 
   const selectNoteWithHistory = useCallback((note: NoteMeta | null) => {
     setSelectedNote(note);
     if (!note) return;
-    if (isNavigatingHistory.current) {
-      isNavigatingHistory.current = false;
-      return;
-    }
     setHistory(prev => {
-      const current = prev[historyIndex];
-      if (current === note.filePath) return prev;
-      const nextHistory = [...prev.slice(0, historyIndex + 1), note.filePath];
-      setHistoryIndex(nextHistory.length - 1);
-      return nextHistory;
+      if (prev.entries[prev.index] === note.filePath) return prev;
+      const entries = [...prev.entries.slice(0, prev.index + 1), note.filePath];
+      return { entries, index: entries.length - 1 };
     });
-  }, [historyIndex]);
+  }, []);
 
-  const canGoBack = historyIndex > 0;
-  const canGoForward = historyIndex < history.length - 1;
+  const canGoBack = history.index > 0;
+  const canGoForward = history.index < history.entries.length - 1;
+
+  const findNoteByPath = useCallback(
+    (filePath: string) =>
+      [...(tree?.allNotes || []), ...(tree?.trashNotes || [])].find(n => n.filePath === filePath),
+    [tree]
+  );
+
+  // Navigating history moves the cursor without appending, so it must bypass
+  // selectNoteWithHistory rather than rely on a flag that the next click would consume.
+  const goToHistoryIndex = useCallback((nextIndex: number) => {
+    if (nextIndex < 0 || nextIndex >= history.entries.length) return;
+    const target = findNoteByPath(history.entries[nextIndex]);
+    if (!target) return;
+    setSelectedNote(target);
+    setHistory(prev => ({ ...prev, index: nextIndex }));
+  }, [history.entries, findNoteByPath]);
 
   const handleGoBack = useCallback(() => {
-    if (historyIndex > 0) {
-      const targetPath = history[historyIndex - 1];
-      setHistoryIndex(historyIndex - 1);
-      isNavigatingHistory.current = true;
-      const found = tree?.allNotes.find(n => n.filePath === targetPath);
-      if (found) {
-        setSelectedNote(found);
-      }
-    }
-  }, [historyIndex, history, tree]);
+    goToHistoryIndex(history.index - 1);
+  }, [goToHistoryIndex, history.index]);
 
   const handleGoForward = useCallback(() => {
-    if (historyIndex < history.length - 1) {
-      const targetPath = history[historyIndex + 1];
-      setHistoryIndex(historyIndex + 1);
-      isNavigatingHistory.current = true;
-      const found = tree?.allNotes.find(n => n.filePath === targetPath);
-      if (found) {
-        setSelectedNote(found);
-      }
-    }
-  }, [historyIndex, history, tree]);
+    goToHistoryIndex(history.index + 1);
+  }, [goToHistoryIndex, history.index]);
 
   const handleGoBackRef = useRef(handleGoBack);
   handleGoBackRef.current = handleGoBack;
   const handleGoForwardRef = useRef(handleGoForward);
   handleGoForwardRef.current = handleGoForward;
 
+  /**
+   * A note's identity is its path, so anything that moves a note has to carry its
+   * client-side state (pins, history entries) across to the new path.
+   */
+  const remapNotePath = useCallback((oldPath: string, newPath: string) => {
+    if (oldPath === newPath) return;
+
+    setPinnedIds(prev => {
+      if (!prev.has(oldPath)) return prev;
+      const next = new Set(prev);
+      next.delete(oldPath);
+      next.add(newPath);
+      localStorage.setItem('scribe_pinned_notes', JSON.stringify(Array.from(next)));
+      return next;
+    });
+
+    setHistory(prev => {
+      if (!prev.entries.includes(oldPath)) return prev;
+      return { ...prev, entries: prev.entries.map(p => (p === oldPath ? newPath : p)) };
+    });
+  }, []);
+
   // Move note to another folder
   const handleMoveNote = useCallback(async (filePath: string, targetFolderPath: string) => {
     try {
       const movedNote = await window.scribeAPI.moveNote({ filePath, targetFolderPath });
+      remapNotePath(filePath, movedNote.filePath);
       await loadTree(movedNote.filePath);
       selectNoteWithHistory(movedNote);
     } catch (err) {
       console.error('Failed to move note:', err);
     }
-  }, [loadTree, selectNoteWithHistory]);
+  }, [loadTree, selectNoteWithHistory, remapNotePath]);
 
   // Duplicate Note
   const handleDuplicateNote = useCallback(async (noteToDuplicate?: NoteMeta | null) => {
@@ -378,13 +404,24 @@ export const App: React.FC = () => {
   // Export PDF & Print
   const handleExportPDF = useCallback(async () => {
     const title = selectedNote?.title || 'Note';
-    if (window.scribeAPI.exportPDF) {
-      await window.scribeAPI.exportPDF(title);
+    if (!window.scribeAPI.exportPDF) return;
+    try {
+      const res: any = await window.scribeAPI.exportPDF(title);
+      if (res && res.success === false && !res.canceled) {
+        console.error('PDF export failed:', res.error);
+        window.alert(`Could not export PDF: ${res.error || 'unknown error'}`);
+      }
+    } catch (err: any) {
+      console.error('PDF export failed:', err);
+      window.alert(`Could not export PDF: ${err?.message || 'unknown error'}`);
     }
   }, [selectedNote]);
 
   const handlePrint = useCallback(() => {
-    window.print();
+    // Goes through the main process so printing uses Electron's native dialog.
+    void window.scribeAPI.printNote?.().catch((err: any) => {
+      console.error('Failed to print note:', err);
+    });
   }, []);
 
   const handleExportPDFRef = useRef(handleExportPDF);
@@ -414,7 +451,7 @@ export const App: React.FC = () => {
       const newNote = await window.scribeAPI.createNote({
         folderPath,
         title: 'Untitled Note',
-        content: '# Untitled Note\n\n'
+        content: ''
       });
       if (selectedFolder === '__TRASH__') {
         setSelectedFolder('');
@@ -434,7 +471,7 @@ export const App: React.FC = () => {
       const newNote = await window.scribeAPI.createNote({
         folderPath,
         title: 'Untitled Note',
-        content: '# Untitled Note\n\n'
+        content: ''
       });
       await loadTree(newNote.filePath);
       selectNoteWithHistory(newNote);
@@ -446,21 +483,14 @@ export const App: React.FC = () => {
   useEffect(() => {
     loadTree();
 
-    // Listen for external file modifications
+    // The main process already filtered out echoes of our own writes, so anything that
+    // arrives here is a genuine change made by another application.
     const unsubscribe = window.scribeAPI.onNotesChanged(async (data) => {
-      await loadTree();
-
-      const now = Date.now();
-      // Only reload active note if modification came from an external app (>1500ms after last local save)
-      if (
-        data?.filePath && 
-        selectedNoteRef.current && 
-        selectedNoteRef.current.filePath === data.filePath && 
-        !isSavingRef.current &&
-        now - lastLocalSaveTimeRef.current > 1500
-      ) {
-        setExternalReloadTrigger(now);
+      const activePath = selectedNoteRef.current?.filePath;
+      if (activePath && data.changedPaths.includes(activePath)) {
+        setExternalChangeToken(Date.now());
       }
+      await loadTree();
     });
 
     const unsubscribeRoot = window.scribeAPI.onRootChanged?.(() => {
@@ -501,39 +531,10 @@ export const App: React.FC = () => {
       handlePrintRef.current();
     });
 
-    // Keyboard Shortcuts: ⌘N -> New Note, ⌘D -> Duplicate Note, ⌘⇧R -> Reveal in Finder, ⌘P -> Quick Switcher, ⌘\ -> Toggle Sidebar, ⌘[ / ⌘] -> History, ⌘⇧P -> Print
+    // Everything with a menu accelerator is handled by the application menu, which fires
+    // before the renderer and never fights text inputs. Only shortcuts without a menu
+    // entry are bound here.
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'n' && !e.shiftKey && !e.altKey) {
-        e.preventDefault();
-        e.stopPropagation();
-        handleNewNoteRef.current();
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'd' && !e.shiftKey && !e.altKey) {
-        e.preventDefault();
-        e.stopPropagation();
-        handleDuplicateNoteRef.current();
-      }
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'r') {
-        e.preventDefault();
-        e.stopPropagation();
-        handleRevealInFinderRef.current();
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'p' && !e.shiftKey && !e.altKey) {
-        e.preventDefault();
-        setIsQuickSwitcherOpen(prev => !prev);
-      }
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'p') {
-        e.preventDefault();
-        handlePrintRef.current();
-      }
-      if ((e.metaKey || e.ctrlKey) && (e.key === '[' || e.code === 'BracketLeft')) {
-        e.preventDefault();
-        handleGoBackRef.current();
-      }
-      if ((e.metaKey || e.ctrlKey) && (e.key === ']' || e.code === 'BracketRight')) {
-        e.preventDefault();
-        handleGoForwardRef.current();
-      }
       if ((e.metaKey || e.ctrlKey) && (e.key === '\\' || e.code === 'Backslash')) {
         e.preventDefault();
         setShowSidebar(prev => !prev);
@@ -544,7 +545,7 @@ export const App: React.FC = () => {
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('keydown', handleKeyDown);
 
     return () => {
       unsubscribe();
@@ -557,7 +558,7 @@ export const App: React.FC = () => {
       unsubscribeGoForward?.();
       unsubscribeExportPDF?.();
       unsubscribePrintNote?.();
-      window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('keydown', handleKeyDown);
     };
   }, [loadTree]);
 
@@ -607,9 +608,8 @@ export const App: React.FC = () => {
   }, [loadTree]);
 
   // Save Note Content
-  const handleSaveNote = useCallback(async (filePath: string, markdown: string, frontmatter?: Record<string, any>) => {
-    lastLocalSaveTimeRef.current = Date.now();
-    await window.scribeAPI.saveNote({ filePath, markdown, frontmatter });
+  const handleSaveNote = useCallback(async (filePath: string, markdown: string) => {
+    await window.scribeAPI.saveNote({ filePath, markdown });
     setTree(prev => {
       if (!prev) return prev;
       return {
@@ -629,14 +629,11 @@ export const App: React.FC = () => {
 
   // Rename Note
   const handleRenameNote = useCallback(async (filePath: string, newTitle: string) => {
-    try {
-      const updated = await window.scribeAPI.renameNote({ filePath, newTitle });
-      await loadTree(updated.filePath);
-      setSelectedNote(updated);
-    } catch (err) {
-      console.error('Failed to rename note:', err);
-    }
-  }, [loadTree]);
+    const updated = await window.scribeAPI.renameNote({ filePath, newTitle });
+    remapNotePath(filePath, updated.filePath);
+    await loadTree(updated.filePath);
+    setSelectedNote(updated);
+  }, [loadTree, remapNotePath]);
 
   // Toggle Pinned
   const handleTogglePin = useCallback((noteId: string, e: React.MouseEvent) => {
@@ -826,7 +823,7 @@ export const App: React.FC = () => {
             onSelectFolder={setSelectedFolder}
             setIsSaving={setIsSaving}
             setLastSavedText={setLastSavedText}
-            externalReloadTrigger={externalReloadTrigger}
+            externalChangeToken={externalChangeToken}
             searchQuery={searchQuery}
             smartTypography={appearance.smartTypography !== false}
             autoSortTasks={appearance.autoSortTasks !== false}
@@ -834,7 +831,7 @@ export const App: React.FC = () => {
         </div>
       </main>
 
-      {/* Quick Switcher Modal (⌘O / ⌘P / ⌘K) */}
+      {/* Quick Switcher Modal (⌘⇧O) */}
       <QuickSwitcher
         isOpen={isQuickSwitcherOpen}
         onClose={() => setIsQuickSwitcherOpen(false)}

@@ -166,7 +166,7 @@ export const Titlebar: React.FC<TitlebarProps> = ({
         {onPrint && (
           <button
             onClick={onPrint}
-            title="Print Note (⌘⇧P)"
+            title="Print Note (⌘P)"
             className="p-1.5 rounded-md hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
           >
             <Printer size={15} />

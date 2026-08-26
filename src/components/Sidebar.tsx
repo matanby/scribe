@@ -70,10 +70,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
     e.stopPropagation();
 
     if (window.scribeAPI.showFolderContextMenu) {
-      const res: any = await window.scribeAPI.showFolderContextMenu({
-        folderPath,
-        isRoot
-      });
+      let res: any = null;
+      try {
+        res = await window.scribeAPI.showFolderContextMenu({
+          folderPath,
+          isRoot
+        });
+      } catch (err) {
+        console.error('Failed to open folder context menu:', err);
+        return;
+      }
 
       if (res?.action) {
         if (res.action === 'newNote') {
@@ -124,6 +130,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const handleDragLeave = (targetId: string, e: React.DragEvent) => {
+    // Moving onto a child element fires dragleave on the parent; ignore those so the
+    // drop highlight doesn't flicker while the cursor is still inside the target.
+    const next = e.relatedTarget as Node | null;
+    if (next && e.currentTarget.contains(next)) return;
     if (dragOverTarget === targetId) {
       setDragOverTarget(null);
     }
@@ -301,11 +311,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        {tree?.folders.map(rootNode => 
+        {tree?.folders.map(rootNode =>
           rootNode.children.length > 0 ? (
             rootNode.children.map(child => renderFolderNode(child, 0))
           ) : (
-            <div key="empty" className="px-2.5 py-2 text-[11px] text-[var(--text-secondary)] italic opacity-60">
+            <div
+              key={`empty-${rootNode.path}`}
+              className="px-2.5 py-2 text-[11px] text-[var(--text-secondary)] italic opacity-60"
+            >
               No subfolders
             </div>
           )

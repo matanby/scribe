@@ -165,6 +165,7 @@ export const TableControls: React.FC<TableControlsProps> = ({ editor }) => {
   };
 
   const handleDeleteTable = () => {
+    if (!window.confirm('Delete this table and all of its contents?')) return;
     editor.chain().focus().deleteTable().run();
     setIsVisible(false);
   };
@@ -175,6 +176,7 @@ export const TableControls: React.FC<TableControlsProps> = ({ editor }) => {
   };
 
   const handleClearTable = () => {
+    if (!window.confirm('Clear every cell in this table?')) return;
     clearTable(editor);
   };
 

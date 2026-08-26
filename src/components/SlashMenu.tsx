@@ -261,7 +261,9 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ editor }) => {
   };
 
   useEffect(() => {
-    if (!isOpen) return;
+    // With no matches the menu is not rendered, so it must not keep swallowing arrow
+    // keys either — and the modulo below would produce NaN against an empty list.
+    if (!isOpen || filtered.length === 0) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'ArrowDown') {

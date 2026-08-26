@@ -9,12 +9,16 @@ export interface CollapsibleHeadingsOptions {
 export const CollapsibleHeadingsKey = new PluginKey('collapsibleHeadings');
 
 interface CollapsiblePluginState {
-  collapsedMap: Record<string, boolean>; // heading anchor key -> boolean
+  // Collapsed headings are tracked by document position, remapped through every
+  // transaction. Keying by position *text* (as this once did) meant that typing anywhere
+  // above a collapsed heading changed its key and silently expanded the section.
+  collapsed: number[];
 }
 
-function getHeadingKey(doc: any, pos: number, node: any): string {
-  const text = (node?.textContent || '').trim().slice(0, 40);
-  return `${node?.attrs?.level || 1}_${text}_${pos}`;
+function nextCollapsed(collapsed: number[], pos: number): number[] {
+  return collapsed.includes(pos)
+    ? collapsed.filter(p => p !== pos)
+    : [...collapsed, pos];
 }
 
 export const CollapsibleHeadingsExtension = Extension.create<CollapsibleHeadingsOptions>({
@@ -32,44 +36,46 @@ export const CollapsibleHeadingsExtension = Extension.create<CollapsibleHeadings
         key: CollapsibleHeadingsKey,
         state: {
           init() {
-            return { collapsedMap: {} };
+            return { collapsed: [] };
           },
           apply(tr, prevState) {
-            const meta = tr.getMeta(CollapsibleHeadingsKey);
-            if (meta && typeof meta === 'object' && meta.toggleKey) {
-              const current = !!prevState.collapsedMap[meta.toggleKey];
-              return {
-                collapsedMap: {
-                  ...prevState.collapsedMap,
-                  [meta.toggleKey]: !current
-                }
-              };
-            }
+            let collapsed = prevState.collapsed;
+
             if (tr.docChanged) {
-              return prevState;
+              // Follow the headings as the document shifts around them, and drop any
+              // whose heading was deleted.
+              collapsed = collapsed
+                .map(pos => {
+                  const mapped = tr.mapping.mapResult(pos, 1);
+                  return mapped.deleted ? -1 : mapped.pos;
+                })
+                .filter(pos => pos >= 0 && tr.doc.nodeAt(pos)?.type.name === 'heading');
             }
-            return prevState;
+
+            const meta = tr.getMeta(CollapsibleHeadingsKey);
+            if (meta && typeof meta === 'object' && typeof meta.togglePos === 'number') {
+              collapsed = nextCollapsed(collapsed, meta.togglePos);
+            }
+
+            return collapsed === prevState.collapsed ? prevState : { collapsed };
           }
         },
         props: {
           decorations(state) {
             const pluginState = CollapsibleHeadingsKey.getState(state);
-            const collapsedMap = pluginState?.collapsedMap || {};
+            const collapsed: number[] = pluginState?.collapsed || [];
             const decorations: Decoration[] = [];
             const doc = state.doc;
 
             // Find all headings
-            const headings: Array<{ pos: number; end: number; level: number; key: string; isCollapsed: boolean }> = [];
+            const headings: Array<{ pos: number; end: number; level: number; isCollapsed: boolean }> = [];
             doc.descendants((node, pos) => {
               if (node.type.name === 'heading') {
-                const level = node.attrs.level || 1;
-                const key = getHeadingKey(doc, pos, node);
                 headings.push({
                   pos,
                   end: pos + node.nodeSize,
-                  level,
-                  key,
-                  isCollapsed: !!collapsedMap[key]
+                  level: node.attrs.level || 1,
+                  isCollapsed: collapsed.includes(pos)
                 });
               }
             });
@@ -95,7 +101,7 @@ export const CollapsibleHeadingsExtension = Extension.create<CollapsibleHeadings
                   span.addEventListener('mousedown', (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    const tr = view.state.tr.setMeta(CollapsibleHeadingsKey, { toggleKey: heading.key });
+                    const tr = view.state.tr.setMeta(CollapsibleHeadingsKey, { togglePos: heading.pos });
                     view.dispatch(tr);
                   });
 
@@ -118,7 +124,7 @@ export const CollapsibleHeadingsExtension = Extension.create<CollapsibleHeadings
                     badge.addEventListener('mousedown', (e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      const tr = view.state.tr.setMeta(CollapsibleHeadingsKey, { toggleKey: heading.key });
+                      const tr = view.state.tr.setMeta(CollapsibleHeadingsKey, { togglePos: heading.pos });
                       view.dispatch(tr);
                     });
                     return badge;

@@ -98,12 +98,18 @@ export const NoteList: React.FC<NoteListProps> = ({
 
     if (window.scribeAPI.showNoteContextMenu) {
       const isPinned = pinnedIds.has(note.filePath) || !!note.frontmatter?.pinned;
-      const res: any = await window.scribeAPI.showNoteContextMenu({
-        note,
-        isPinned,
-        isTrash: !!isTrash,
-        folders
-      });
+      let res: any = null;
+      try {
+        res = await window.scribeAPI.showNoteContextMenu({
+          note,
+          isPinned,
+          isTrash: !!isTrash,
+          folders
+        });
+      } catch (err) {
+        console.error('Failed to open note context menu:', err);
+        return;
+      }
 
       if (res?.action) {
         if (res.action === 'togglePin') {

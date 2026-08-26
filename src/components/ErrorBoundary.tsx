@@ -7,15 +7,17 @@ interface Props {
 interface State {
   hasError: boolean;
   error: Error | null;
+  resetKey: number;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
-    error: null
+    error: null,
+    resetKey: 0
   };
 
-  public static getDerivedStateFromError(error: Error): State {
+  public static getDerivedStateFromError(error: Error): Pick<State, 'hasError' | 'error'> {
     return { hasError: true, error };
   }
 
@@ -32,7 +34,15 @@ export class ErrorBoundary extends Component<Props, State> {
             {this.state.error?.message || 'An unexpected error occurred.'}
           </p>
           <button
-            onClick={() => this.setState({ hasError: false, error: null })}
+            onClick={() =>
+              // Bumping the key remounts the subtree. Clearing the flag alone re-rendered
+              // the same failed instance, which just threw again immediately.
+              this.setState(prev => ({
+                hasError: false,
+                error: null,
+                resetKey: prev.resetKey + 1
+              }))
+            }
             className="px-3 py-1.5 rounded-lg bg-[var(--accent-color)] text-white text-xs font-medium hover:opacity-90 transition-opacity"
           >
             Try again
@@ -41,6 +51,6 @@ export class ErrorBoundary extends Component<Props, State> {
       );
     }
 
-    return this.props.children;
+    return <React.Fragment key={this.state.resetKey}>{this.props.children}</React.Fragment>;
   }
 }

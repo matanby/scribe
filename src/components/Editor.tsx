@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useEditor, EditorContent, ReactNodeViewRenderer } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
@@ -30,18 +30,20 @@ import { SlashMenu } from './SlashMenu';
 import { FindReplaceBar } from './FindReplaceBar';
 import { getTableInfo } from '../utils/tableUtils';
 import { NoteMeta } from '../types';
-import { Calendar, Folder, FileText, CheckCircle2, Clock, AlignLeft, FolderSearch } from 'lucide-react';
+import { Calendar, Folder, FileText, AlignLeft, FolderSearch, AlertTriangle } from 'lucide-react';
 
 const lowlight = createLowlight(common);
 
+const AUTOSAVE_DEBOUNCE_MS = 400;
+
 interface EditorProps {
   note: NoteMeta | null;
-  onSave: (filePath: string, markdown: string, frontmatter?: Record<string, any>) => Promise<void>;
+  onSave: (filePath: string, markdown: string) => Promise<void>;
   onRename: (filePath: string, newTitle: string) => Promise<void>;
   onSelectFolder?: (folderPath: string) => void;
   setIsSaving: (saving: boolean) => void;
   setLastSavedText: (text: string) => void;
-  externalReloadTrigger?: number;
+  externalChangeToken?: number;
   searchQuery?: string;
   smartTypography?: boolean;
   autoSortTasks?: boolean;
@@ -50,37 +52,134 @@ interface EditorProps {
 interface TipTapNoteEditorProps {
   note: NoteMeta;
   initialMarkdown: string;
-  initialFrontmatter?: Record<string, any>;
-  onSave: (filePath: string, markdown: string, frontmatter?: Record<string, any>) => Promise<void>;
+  onSave: (filePath: string, markdown: string) => Promise<void>;
   onRename: (filePath: string, newTitle: string) => Promise<void>;
   onSelectFolder?: (folderPath: string) => void;
   setIsSaving: (saving: boolean) => void;
   setLastSavedText: (text: string) => void;
+  externalChangeToken?: number;
   searchQuery?: string;
   smartTypography?: boolean;
   autoSortTasks?: boolean;
 }
 
+/**
+ * Replaces the document with content from disk while doing as little damage as possible
+ * to what the user is looking at. `emitUpdate: false` is important: without it this would
+ * be indistinguishable from a user edit and would immediately be saved back.
+ */
+function applyExternalContent(editor: any, markdown: string) {
+  const previousSelection = editor.state.selection;
+  const scroller = editor.view.dom.closest('.overflow-y-auto') as HTMLElement | null;
+  const scrollTop = scroller?.scrollTop ?? 0;
+
+  // `false` maps to preventUpdate, so this does not look like a user edit and will not
+  // schedule a save of content we just read.
+  editor.commands.setContent(markdown, false);
+
+  const maxPos = Math.max(0, editor.state.doc.content.size - 1);
+  try {
+    editor.commands.setTextSelection({
+      from: Math.min(previousSelection.from, maxPos),
+      to: Math.min(previousSelection.to, maxPos)
+    });
+  } catch {
+    // Document shape changed too much to map the old selection; leave the default.
+  }
+
+  if (scroller) scroller.scrollTop = scrollTop;
+}
+
 const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   note,
   initialMarkdown,
-  initialFrontmatter,
   onSave,
   onRename,
   onSelectFolder,
   setIsSaving,
   setLastSavedText,
+  externalChangeToken,
   searchQuery,
   smartTypography = true,
   autoSortTasks = true
 }) => {
   const [title, setTitle] = useState(note.title);
-  const [frontmatter, setFrontmatter] = useState(initialFrontmatter);
   const [isFindOpen, setIsFindOpen] = useState(false);
   const [showReplaceMode, setShowReplaceMode] = useState(false);
   const [findTrigger, setFindTrigger] = useState(0);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [conflictMarkdown, setConflictMarkdown] = useState<string | null>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const titleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Everything the debounced save needs is read through refs. TipTap builds its options
+  // object once, so reading props directly inside onUpdate would pin first-render values.
+  const editorRef = useRef<any>(null);
+  const isDirtyRef = useRef(false);
+  // What we believe is currently on disk. Serializing the editor and comparing that
+  // instead would report a difference for every cosmetic normalisation the markdown
+  // round-trip performs, and would pop a conflict prompt on notes nobody touched.
+  const lastSyncedMarkdownRef = useRef(initialMarkdown);
+  const notePathRef = useRef(note.filePath);
+  notePathRef.current = note.filePath;
+  const onSaveRef = useRef(onSave);
+  onSaveRef.current = onSave;
+  const setIsSavingRef = useRef(setIsSaving);
+  setIsSavingRef.current = setIsSaving;
+  const setLastSavedTextRef = useRef(setLastSavedText);
+  setLastSavedTextRef.current = setLastSavedText;
+
+  const performSave = useCallback(async () => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+
+    const editor = editorRef.current;
+    if (!editor || editor.isDestroyed || !isDirtyRef.current) {
+      setIsSavingRef.current(false);
+      return;
+    }
+
+    const markdown = editor.storage.markdown.getMarkdown();
+
+    // Serializing to an empty string while the document still holds content means the
+    // markdown pipeline misfired. Writing that would wipe the note.
+    if (!markdown.trim() && !editor.isEmpty) {
+      console.warn('Auto-save skipped: serializer produced empty output for a non-empty document');
+      setIsSavingRef.current(false);
+      return;
+    }
+
+    isDirtyRef.current = false;
+    try {
+      await onSaveRef.current(notePathRef.current, markdown);
+      lastSyncedMarkdownRef.current = markdown;
+      setSaveError(null);
+      setIsSavingRef.current(false);
+      setLastSavedTextRef.current(
+        `Saved ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+      );
+    } catch (err: any) {
+      // Keep the buffer dirty so the next attempt retries instead of silently dropping it.
+      isDirtyRef.current = true;
+      setIsSavingRef.current(false);
+      setSaveError(err?.message || 'Failed to save note');
+      console.error('Error auto-saving:', err);
+    }
+  }, []);
+
+  const performSaveRef = useRef(performSave);
+  performSaveRef.current = performSave;
+
+  const scheduleSave = useCallback(() => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => {
+      void performSaveRef.current();
+    }, AUTOSAVE_DEBOUNCE_MS);
+  }, []);
+
+  const scheduleSaveRef = useRef(scheduleSave);
+  scheduleSaveRef.current = scheduleSave;
 
   const openFind = (replace: boolean) => {
     setShowReplaceMode(replace);
@@ -88,15 +187,9 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
     setFindTrigger(prev => prev + 1);
   };
 
-  // Keyboard shortcut listeners for Find (⌘F) and Find/Replace (⌘⇧F)
+  // Find is driven purely by the application menu. A parallel window keydown listener
+  // would swallow ⌘F everywhere, including inside text inputs, for no added behaviour.
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
-        e.preventDefault();
-        openFind(e.shiftKey || e.altKey);
-      }
-    };
-
     const unsubscribeMenuFind = window.scribeAPI.onMenuEvent?.('menu:find', () => {
       openFind(false);
     });
@@ -105,9 +198,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
       openFind(true);
     });
 
-    window.addEventListener('keydown', handleKeyDown);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
       unsubscribeMenuFind?.();
       unsubscribeMenuFindReplace?.();
     };
@@ -316,64 +407,122 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
         return false;
       }
     },
-    onUpdate: ({ editor, transaction }) => {
-      // Only auto-save if document actually changed by user typing
+    onCreate: ({ editor }) => {
+      editorRef.current = editor;
+    },
+    onUpdate: ({ transaction }) => {
       if (!transaction.docChanged) return;
-      setIsSaving(true);
+      // Direction bookkeeping is presentational and must not mark the note dirty.
+      if (transaction.getMeta('bidiAutoDetect')) return;
 
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-
-      saveTimeoutRef.current = setTimeout(async () => {
-        const markdown = (editor.storage as any).markdown.getMarkdown();
-
-        // Safety guard: prevent accidental wipeout
-        if (!markdown.trim() && note.snippet && note.title !== 'Untitled Note') {
-          console.warn('Auto-save aborted: document unexpectedly empty');
-          setIsSaving(false);
-          return;
-        }
-
-        try {
-          await onSave(note.filePath, markdown, frontmatter);
-          setIsSaving(false);
-          setLastSavedText(`Saved ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
-        } catch (err) {
-          console.error('Error auto-saving:', err);
-          setIsSaving(false);
-        }
-      }, 400);
+      isDirtyRef.current = true;
+      setIsSavingRef.current(true);
+      scheduleSaveRef.current();
     }
   });
 
-  // Handle note Title rename
-  const handleTitleChange = (newTitle: string) => {
-    setTitle(newTitle);
+  editorRef.current = editor;
 
-    if (titleTimeoutRef.current) {
-      clearTimeout(titleTimeoutRef.current);
+  /**
+   * Renaming rewrites the file on disk, which changes the note's identity. Doing that on
+   * a keystroke debounce fought the user's cursor and could race an in-flight content
+   * save into recreating the old file. It now happens once, on blur or Enter, and only
+   * after the pending body save has landed on the old path.
+   */
+  const commitTitle = useCallback(async () => {
+    const next = title.trim();
+    if (!next || next === note.title) {
+      setTitle(note.title);
+      return;
     }
 
-    titleTimeoutRef.current = setTimeout(async () => {
-      if (newTitle.trim() && newTitle !== note.title) {
-        setIsSaving(true);
-        try {
-          await onRename(note.filePath, newTitle.trim());
-          setIsSaving(false);
-        } catch (err) {
-          console.error('Failed to rename note:', err);
-          setIsSaving(false);
-        }
-      }
-    }, 800);
-  };
+    await performSaveRef.current();
+    setIsSavingRef.current(true);
+    try {
+      await onRename(note.filePath, next);
+    } catch (err) {
+      console.error('Failed to rename note:', err);
+      setTitle(note.title);
+    } finally {
+      setIsSavingRef.current(false);
+    }
+  }, [title, note.title, note.filePath, onRename]);
 
+  // Flush on unmount so switching notes, closing the window, or toggling a setting that
+  // rebuilds the editor never discards the last few hundred milliseconds of typing.
   useEffect(() => {
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-      if (titleTimeoutRef.current) clearTimeout(titleTimeoutRef.current);
+      void performSaveRef.current();
     };
+  }, []);
+
+  useEffect(() => {
+    const flushNow = () => {
+      void performSaveRef.current();
+    };
+
+    const unsubscribeSave = window.scribeAPI.onMenuEvent?.('menu:saveNote', flushNow);
+    window.addEventListener('beforeunload', flushNow);
+    window.addEventListener('blur', flushNow);
+
+    return () => {
+      unsubscribeSave?.();
+      window.removeEventListener('beforeunload', flushNow);
+      window.removeEventListener('blur', flushNow);
+    };
+  }, []);
+
+  /**
+   * External change handling.
+   *
+   * A clean buffer is updated in place, which keeps scroll position, cursor and undo
+   * history intact instead of tearing the editor down. A dirty buffer is never
+   * overwritten silently: the user is asked which version wins.
+   */
+  useEffect(() => {
+    if (!externalChangeToken) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const data = await window.scribeAPI.readNote(notePathRef.current);
+        if (cancelled) return;
+
+        const editor = editorRef.current;
+        if (!editor || editor.isDestroyed) return;
+        if (data.markdown === lastSyncedMarkdownRef.current) return;
+
+        if (isDirtyRef.current) {
+          setConflictMarkdown(data.markdown);
+        } else {
+          applyExternalContent(editor, data.markdown);
+          lastSyncedMarkdownRef.current = data.markdown;
+        }
+      } catch (err) {
+        console.error('Failed to reload externally changed note:', err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [externalChangeToken]);
+
+  const acceptExternalVersion = useCallback(() => {
+    const editor = editorRef.current;
+    if (editor && !editor.isDestroyed && conflictMarkdown !== null) {
+      applyExternalContent(editor, conflictMarkdown);
+      lastSyncedMarkdownRef.current = conflictMarkdown;
+      isDirtyRef.current = false;
+    }
+    setConflictMarkdown(null);
+  }, [conflictMarkdown]);
+
+  const keepLocalVersion = useCallback(() => {
+    setConflictMarkdown(null);
+    isDirtyRef.current = true;
+    void performSaveRef.current();
   }, []);
 
   // Sync in-document search highlight when global search query is active
@@ -419,6 +568,40 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
 
       <BubbleMenu editor={editor} />
       <SlashMenu editor={editor} />
+
+      {conflictMarkdown !== null && (
+        <div className="no-print flex items-center gap-3 px-4 py-2 text-[12px] bg-amber-500/15 border-b border-amber-500/40 text-[var(--text-primary)]">
+          <AlertTriangle size={14} className="shrink-0 text-amber-600 dark:text-amber-400" />
+          <span className="flex-1">
+            This note was changed outside Scribe, and you have unsaved edits here.
+          </span>
+          <button
+            onClick={acceptExternalVersion}
+            className="px-2 py-1 rounded font-medium hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+          >
+            Use version on disk
+          </button>
+          <button
+            onClick={keepLocalVersion}
+            className="px-2 py-1 rounded font-medium bg-[var(--accent-color)] text-white hover:opacity-90 transition-opacity"
+          >
+            Keep my edits
+          </button>
+        </div>
+      )}
+
+      {saveError && (
+        <div className="no-print flex items-center gap-3 px-4 py-2 text-[12px] bg-red-500/15 border-b border-red-500/40 text-[var(--text-primary)]">
+          <AlertTriangle size={14} className="shrink-0 text-red-600 dark:text-red-400" />
+          <span className="flex-1">Could not save this note: {saveError}</span>
+          <button
+            onClick={() => void performSaveRef.current()}
+            className="px-2 py-1 rounded font-medium hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Scrollable Note Content Container */}
       <div className="flex-1 overflow-y-auto relative">
@@ -468,7 +651,18 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
           <input
             type="text"
             value={title}
-            onChange={(e) => handleTitleChange(e.target.value)}
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={() => void commitTitle()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                e.currentTarget.blur();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                setTitle(note.title);
+                e.currentTarget.blur();
+              }
+            }}
             placeholder="Title"
             dir="auto"
             className="w-full text-2xl font-bold bg-transparent text-[var(--text-primary)] placeholder-[var(--text-tertiary)] border-none focus:outline-none focus:ring-0 mb-3 px-0 tracking-tight"
@@ -493,7 +687,7 @@ export const Editor: React.FC<EditorProps> = ({
   onSelectFolder,
   setIsSaving,
   setLastSavedText,
-  externalReloadTrigger,
+  externalChangeToken,
   searchQuery,
   smartTypography = true,
   autoSortTasks = true
@@ -501,8 +695,12 @@ export const Editor: React.FC<EditorProps> = ({
   const [loadedData, setLoadedData] = useState<{
     filePath: string;
     markdown: string;
-    frontmatter?: Record<string, any>;
+    variant: string;
   } | null>(null);
+
+  // TipTap fixes its extension list at construction, so a typography change needs a
+  // rebuild. It is part of the identity of the loaded buffer for that reason.
+  const variant = `typography:${smartTypography}`;
 
   useEffect(() => {
     if (!note?.filePath) {
@@ -511,13 +709,13 @@ export const Editor: React.FC<EditorProps> = ({
     }
 
     let isMounted = true;
-    window.scribeAPI.readNote(note.filePath).then(data => {
+    const targetPath = note.filePath;
+
+    // The outgoing editor flushes any pending save during unmount. Reads and writes for
+    // a given file are serialized in the main process, so this read observes that flush.
+    window.scribeAPI.readNote(targetPath).then(data => {
       if (isMounted) {
-        setLoadedData({
-          filePath: note.filePath,
-          markdown: data.markdown,
-          frontmatter: data.frontmatter
-        });
+        setLoadedData({ filePath: targetPath, markdown: data.markdown, variant });
       }
     }).catch(err => {
       console.error('Failed to load note content:', err);
@@ -526,7 +724,7 @@ export const Editor: React.FC<EditorProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [note?.filePath, externalReloadTrigger]);
+  }, [note?.filePath, variant]);
 
   if (!note) {
     return (
@@ -543,7 +741,7 @@ export const Editor: React.FC<EditorProps> = ({
   }
 
   // Show note while loading
-  if (!loadedData || loadedData.filePath !== note.filePath) {
+  if (!loadedData || loadedData.filePath !== note.filePath || loadedData.variant !== variant) {
     return (
       <div className="flex-1 h-full bg-[var(--editor-bg)] flex flex-col items-center justify-center p-8 text-center text-[var(--text-secondary)] select-none">
         <div className="text-xs opacity-60">Loading note...</div>
@@ -551,18 +749,20 @@ export const Editor: React.FC<EditorProps> = ({
     );
   }
 
-  // Mount a dedicated TipTap instance with the note's exact markdown as step 0
+  // Mount a dedicated TipTap instance with the note's exact markdown as step 0.
+  // The key deliberately excludes the external-change token: external edits are applied
+  // in place so the user keeps their cursor, scroll position and undo history.
   return (
     <TipTapNoteEditor
-      key={`${note.filePath}_${externalReloadTrigger || 0}`}
+      key={`${note.filePath}_${variant}`}
       note={note}
       initialMarkdown={loadedData.markdown}
-      initialFrontmatter={loadedData.frontmatter}
       onSave={onSave}
       onRename={onRename}
       onSelectFolder={onSelectFolder}
       setIsSaving={setIsSaving}
       setLastSavedText={setLastSavedText}
+      externalChangeToken={externalChangeToken}
       searchQuery={searchQuery}
       smartTypography={smartTypography}
       autoSortTasks={autoSortTasks}
