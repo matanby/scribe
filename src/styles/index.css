@@ -253,10 +253,23 @@ textarea:focus {
 .tiptap ul[data-dir="rtl"],
 .tiptap ol[dir="rtl"],
 .tiptap ol[data-dir="rtl"],
+.tiptap ul[dir="rtl"] > li,
+.tiptap ul[data-dir="rtl"] > li,
+.tiptap ol[dir="rtl"] > li,
+.tiptap ol[data-dir="rtl"] > li,
 .tiptap li[dir="rtl"],
 .tiptap li[data-dir="rtl"] {
   direction: rtl !important;
   text-align: right !important;
+}
+
+/* LTR Lists override for markers and numbering */
+.tiptap ul[dir="ltr"] > li,
+.tiptap ul[data-dir="ltr"] > li,
+.tiptap ol[dir="ltr"] > li,
+.tiptap ol[data-dir="ltr"] > li {
+  direction: ltr !important;
+  text-align: left !important;
 }
 
 /* =========================================================

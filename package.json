@@ -2,16 +2,23 @@
   "name": "scribe",
   "version": "1.0.0",
   "description": "Apple Notes style WYSIWYG Markdown Editor with Native Hebrew/English RTL",
+  "author": "Matan Ben-Yosef",
+  "homepage": "https://github.com/matanby/scribe",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/matanby/scribe.git"
+  },
   "main": "dist-electron/main.js",
   "scripts": {
     "start": "electron .",
     "dev": "vite",
     "build": "tsc && vite build",
-    "dist": "tsc && vite build && electron-builder --mac",
+    "dist": "tsc && vite build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --publish never",
     "preview": "vite preview",
-    "test": "npm run test:fs && npm run test:protocol",
+    "test": "npm run test:fs && npm run test:protocol && npm run test:bidi",
     "test:fs": "tsx electron/fileSystem.test.ts",
-    "test:protocol": "esbuild electron/assetProtocol.test.ts --bundle --platform=node --format=cjs --external:electron --external:chokidar --external:gray-matter --outfile=dist-electron/assetProtocol.test.cjs && electron dist-electron/assetProtocol.test.cjs"
+    "test:protocol": "esbuild electron/assetProtocol.test.ts --bundle --platform=node --format=cjs --external:electron --external:chokidar --external:gray-matter --outfile=dist-electron/assetProtocol.test.cjs && electron dist-electron/assetProtocol.test.cjs",
+    "test:bidi": "tsx electron/bidi.test.ts"
   },
   "dependencies": {
     "@tiptap/extension-bubble-menu": "^2.11.5",
@@ -66,17 +73,37 @@
   "build": {
     "appId": "com.scribe.notes",
     "productName": "Scribe",
-    "mac": {
-      "category": "public.app-category.productivity",
-      "icon": "public/icon.icns",
-      "target": [
-        "dir"
-      ]
+    "afterPack": "./electron/afterPack.cjs",
+    "directories": {
+      "output": "release"
     },
     "files": [
       "dist/**/*",
       "dist-electron/**/*",
       "public/**/*"
-    ]
+    ],
+    "asarUnpack": [
+      "**/node_modules/chokidar/**",
+      "**/node_modules/fsevents/**"
+    ],
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "public/icon.icns",
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "entitlements": "electron/entitlements.mac.plist",
+      "entitlementsInherit": "electron/entitlements.mac.plist",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64", "x64"]
+        }
+      ]
+    },
+    "dmg": {
+      "sign": false
+    }
   }
 }
