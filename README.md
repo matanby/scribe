@@ -2,6 +2,36 @@
 
 > **Scribe** is a native macOS WYSIWYG notes application designed with the aesthetic polish of **Apple Notes & Craft**, the bidirectional typing fluidity required for **flawless Hebrew & English writing**, and direct local integration with **standard Markdown (`.md`) files stored in Google Drive**.
 
+## Install (macOS)
+
+Builds are **ad-hoc signed** (no Apple Developer Program, not notarized). Gatekeeper will warn on first open; that is expected.
+
+**From a DMG**
+
+1. Open `Scribe-*-arm64.dmg` (Apple Silicon) or `Scribe-*-x64.dmg` (Intel).
+2. Drag **Scribe** into Applications.
+3. Right-click **Scribe** → **Open** → **Open**. If macOS still blocks it: System Settings → Privacy & Security → **Open Anyway**, or run `xattr -cr /Applications/Scribe.app`.
+
+**Homebrew (personal tap, not official Homebrew Cask)**
+
+```bash
+brew tap matanby/scribe https://github.com/matanby/scribe
+brew install --cask --no-quarantine scribe
+```
+
+`--no-quarantine` is required so Gatekeeper does not quarantine the unsigned download.
+
+**Build locally**
+
+```bash
+npm ci
+npm run dist
+```
+
+DMGs land in `release/`. Publishing: tag `v1.0.0` (matching `package.json`) and push; GitHub Actions attaches the DMGs to the release. Bump `version` in `package.json` and `Casks/scribe.rb` together.
+
+Official `brew install --cask` on Homebrew’s own tap is not possible without a paid, notarized Developer ID build.
+
 ---
 
 ## 1. Executive Summary & Vision
