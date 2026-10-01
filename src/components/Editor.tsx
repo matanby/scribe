@@ -31,7 +31,7 @@ import { SlashMenu } from './SlashMenu';
 import { FindReplaceBar } from './FindReplaceBar';
 import { getTableInfo } from '../utils/tableUtils';
 import { NoteMeta } from '../types';
-import { Calendar, Folder, FileText, AlignLeft, FolderSearch, AlertTriangle } from 'lucide-react';
+import { Folder, FileText, AlertTriangle } from 'lucide-react';
 import { showMessage } from '../utils/dialogs';
 
 const lowlight = createLowlight(common);
@@ -397,7 +397,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
     ],
     editorProps: {
       attributes: {
-        class: 'tiptap ProseMirror focus:outline-none max-w-[720px] mx-auto px-6 py-2'
+        class: 'tiptap ProseMirror focus:outline-none w-full max-w-[900px] mx-auto px-8 py-2'
       },
       handleClick: (view, pos, event) => {
         const target = (event.target as HTMLElement).closest('a');
@@ -643,7 +643,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
 
       {/* Scrollable Note Content Container */}
       <div className="flex-1 overflow-y-auto relative">
-        <div className="max-w-[720px] w-full mx-auto px-6 pt-7 pb-2">
+        <div className="w-full max-w-[900px] mx-auto px-8 pt-7 pb-2 print:max-w-full print:p-0 print:m-0">
           {/* Apple Notes Floating Breadcrumbs & Metadata Header */}
           <div className="no-print flex items-center justify-between text-[11px] text-[var(--text-secondary)] mb-4 select-none">
             {/* Breadcrumb Navigation */}
@@ -656,33 +656,11 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
                 <Folder size={12} />
                 <span>{note.folder && note.folder !== '/' ? note.folder : 'All Notes'}</span>
               </button>
-              <span className="opacity-30">/</span>
-              <span className="truncate opacity-75 max-w-[240px]" dir="auto">
-                {title || 'Untitled Note'}
-              </span>
             </div>
 
-            {/* Document Stats, Last Modified & Reveal in Finder */}
-            <div className="flex items-center gap-2.5 opacity-75 shrink-0">
-              <button
-                onClick={() => window.scribeAPI.showInFinder?.(note.filePath)}
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-black/5 dark:hover:bg-white/10 hover:text-[var(--text-primary)] transition-colors text-[10.5px]"
-                title="Reveal Note in macOS Finder (⌘⇧R)"
-              >
-                <FolderSearch size={11} />
-                <span>Finder</span>
-              </button>
-              <span className="opacity-40">•</span>
-              <div className="flex items-center gap-1">
-                <AlignLeft size={11} />
-                <span>{wordCount} {wordCount === 1 ? 'word' : 'words'}</span>
-              </div>
-              <span className="opacity-40">•</span>
-              <div className="flex items-center gap-1">
-                <Calendar size={11} />
-                <span>{modifiedDate}</span>
-              </div>
-            </div>
+            <span className="shrink-0 ml-3" title={`Last modified: ${modifiedDate}`}>
+              {wordCount} {wordCount === 1 ? 'word' : 'words'}
+            </span>
           </div>
 
           {/* Note Title Input */}
@@ -706,7 +684,6 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
             className="w-full text-2xl font-bold bg-transparent text-[var(--text-primary)] placeholder-[var(--text-tertiary)] border-none focus:outline-none focus:ring-0 mb-3 px-0 tracking-tight"
           />
 
-          <div className="h-[1px] bg-[var(--border-subtle)] mb-5 no-print" />
         </div>
 
         {/* TipTap Document Area */}

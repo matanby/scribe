@@ -6,9 +6,7 @@ import {
   Layers,
   Trash2,
   ChevronRight, 
-  ChevronDown, 
-  Sliders,
-  FolderInput
+  Sliders
 } from 'lucide-react';
 import { FolderNode, NotesTree } from '../types';
 
@@ -174,12 +172,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           onDragLeave={(e) => handleDragLeave(node.path, e)}
           onDrop={(e) => handleDrop(node.path, false, e)}
           style={{ paddingLeft: `${Math.max(10, depth * 12 + 10)}px` }}
-          className={`folder-item group flex items-center justify-between pr-2.5 py-1 rounded-md text-xs cursor-pointer transition-all ${
+          className={`folder-item group flex items-center justify-between pr-2.5 py-1.5 rounded-md text-[13px] cursor-pointer transition-colors ${
             isDragOver
-              ? 'ring-2 ring-[var(--accent-color)] bg-[var(--card-active)] scale-[1.02] shadow-sm font-semibold'
+              ? 'ring-2 ring-[var(--accent-color)] bg-[var(--card-active)]'
               : isSelected
-              ? 'bg-[var(--card-active)] text-[var(--text-primary)] font-semibold shadow-xs'
-              : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5 opacity-90'
+              ? 'bg-[var(--sidebar-selected)] text-[var(--text-primary)]'
+              : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5'
           }`}
         >
           <div className="flex items-center gap-2 min-w-0">
@@ -206,7 +204,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span className="truncate">{node.name}</span>
           </div>
 
-          <span className="text-[10px] text-[var(--text-secondary)] font-normal px-1 rounded-full opacity-60">
+          <span className="text-[11px] text-[var(--text-secondary)] font-normal px-1">
             {node.noteCount}
           </span>
         </div>
@@ -230,7 +228,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <aside className="w-full h-full bg-[var(--sidebar-bg)] border-r border-[var(--border-color)] flex flex-col p-2 shrink-0 overflow-y-auto select-none backdrop-blur-2xl">
       {/* Smart Views */}
       <div className="space-y-0.5 mb-3">
-        <div className="text-[9.5px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider px-2.5 py-1">
+        <div className="text-[11px] font-semibold text-[var(--text-secondary)] px-2.5 py-1">
           Views
         </div>
         <div
@@ -238,19 +236,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
           onDragOver={(e) => handleDragOver('__ALL_NOTES__', e)}
           onDragLeave={(e) => handleDragLeave('__ALL_NOTES__', e)}
           onDrop={(e) => handleDrop(tree?.rootPath || '', false, e)}
-          className={`flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs cursor-pointer transition-all ${
+          className={`flex items-center justify-between px-2.5 py-1.5 rounded-md text-[13px] cursor-pointer transition-colors ${
             dragOverTarget === '__ALL_NOTES__'
-              ? 'ring-2 ring-[var(--accent-color)] bg-[var(--card-active)] scale-[1.02] shadow-sm font-semibold'
+              ? 'ring-2 ring-[var(--accent-color)] bg-[var(--card-active)]'
               : selectedFolder === ''
-              ? 'bg-[var(--card-active)] text-[var(--text-primary)] font-semibold shadow-xs'
-              : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5 opacity-90'
+              ? 'bg-[var(--sidebar-selected)] text-[var(--text-primary)]'
+              : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5'
           }`}
         >
           <div className="flex items-center gap-2">
             <Layers size={14} className="text-[var(--accent-color)]" />
             <span>All Notes</span>
           </div>
-          <span className="text-[10.5px] text-[var(--text-secondary)] font-normal opacity-70">
+          <span className="text-[11px] text-[var(--text-secondary)] font-normal">
             {allNotesCount}
           </span>
         </div>
@@ -261,19 +259,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
           onDragOver={(e) => handleDragOver('__TRASH__', e)}
           onDragLeave={(e) => handleDragLeave('__TRASH__', e)}
           onDrop={(e) => handleDrop('', true, e)}
-          className={`flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs cursor-pointer transition-all ${
+          className={`flex items-center justify-between px-2.5 py-1.5 rounded-md text-[13px] cursor-pointer transition-colors ${
             dragOverTarget === '__TRASH__'
-              ? 'ring-2 ring-red-500 bg-red-500/20 scale-[1.02] shadow-sm font-semibold text-red-500'
+              ? 'ring-2 ring-red-500 bg-red-500/20 text-red-500'
               : selectedFolder === '__TRASH__'
-              ? 'bg-red-500/10 text-red-500 font-semibold shadow-xs'
-              : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5 opacity-90'
+              ? 'bg-[var(--sidebar-selected)] text-[var(--text-primary)]'
+              : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5'
           }`}
         >
           <div className="flex items-center gap-2">
-            <Trash2 size={14} className={selectedFolder === '__TRASH__' ? 'text-red-500' : 'text-[var(--text-secondary)]'} />
+            <Trash2 size={14} className="text-[var(--text-secondary)]" />
             <span>Recently Deleted</span>
           </div>
-          <span className="text-[10.5px] text-[var(--text-secondary)] font-normal opacity-70">
+          <span className="text-[11px] text-[var(--text-secondary)] font-normal">
             {tree?.trashCount || 0}
           </span>
         </div>
@@ -285,7 +283,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           onContextMenu={(e) => tree?.rootPath && handleFolderContextMenu(tree.rootPath, rootFolderName, true, e)}
           className="flex items-center justify-between px-2.5 py-1"
         >
-          <span className="text-[9.5px] font-semibold text-[var(--text-tertiary)] uppercase tracking-wider truncate">
+          <span className="text-[11px] font-semibold text-[var(--text-secondary)] truncate">
             {rootFolderName}
           </span>
           <div className="flex items-center gap-0.5">
@@ -305,13 +303,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
               title="New Folder..."
             >
               <FolderPlus size={12} />
-            </button>
-            <button
-              onClick={onOpenFolderDialog}
-              className="p-1 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-              title="Open another folder..."
-            >
-              <FolderInput size={12} />
             </button>
           </div>
         </div>

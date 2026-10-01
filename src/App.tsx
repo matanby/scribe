@@ -23,6 +23,12 @@ export const App: React.FC = () => {
     return false;
   });
   const [showSidebar, setShowSidebar] = useState(true);
+  const [compactNotes, setCompactNotes] = useState(() => localStorage.getItem('scribe_compact_notes') === 'true');
+  const handleToggleCompactNotes = () => {
+    const next = !compactNotes;
+    setCompactNotes(next);
+    localStorage.setItem('scribe_compact_notes', String(next));
+  };
   const [isQuickSwitcherOpen, setIsQuickSwitcherOpen] = useState(false);
   const [isAppearanceOpen, setIsAppearanceOpen] = useState(false);
 
@@ -759,8 +765,6 @@ export const App: React.FC = () => {
       {/* Native macOS Titlebar */}
       <Titlebar
         currentFolder={isTrashView ? 'Recently Deleted' : (selectedFolder || 'All Notes')}
-        activeNoteTitle={selectedNote?.title || ''}
-        noteCount={filteredNotes.length}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         onNewNote={handleNewNote}
@@ -826,6 +830,8 @@ export const App: React.FC = () => {
           className="h-full shrink-0 overflow-hidden no-print"
         >
           <NoteList
+            compact={compactNotes}
+            onToggleCompact={handleToggleCompactNotes}
             notes={filteredNotes}
             selectedNoteId={selectedNote?.id || null}
             onSelectNote={selectNoteWithHistory}

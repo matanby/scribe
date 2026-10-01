@@ -8,13 +8,13 @@ import {
   Pin, 
   ArrowUpDown, 
   Check, 
-  Calendar,
-  FolderSearch,
-  Folder,
-  Copy
+  List,
+  Folder
 } from 'lucide-react';
 
 interface NoteListProps {
+  compact: boolean;
+  onToggleCompact: () => void;
   notes: NoteMeta[];
   selectedNoteId: string | null;
   onSelectNote: (note: NoteMeta) => void;
@@ -62,6 +62,8 @@ interface NoteGroup {
 }
 
 export const NoteList: React.FC<NoteListProps> = ({
+  compact,
+  onToggleCompact,
   notes,
   selectedNoteId,
   onSelectNote,
@@ -88,8 +90,15 @@ export const NoteList: React.FC<NoteListProps> = ({
         setShowSortMenu(false);
       }
     };
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowSortMenu(false);
+    };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
   }, []);
 
   const handleContextMenu = async (note: NoteMeta, e: React.MouseEvent) => {
@@ -235,14 +244,15 @@ export const NoteList: React.FC<NoteListProps> = ({
           e.dataTransfer.setData('application/json', JSON.stringify({ filePath: note.filePath, title: note.title }));
           e.dataTransfer.effectAllowed = 'move';
         }}
-        className={`group relative px-3.5 py-2.5 rounded-xl cursor-pointer transition-all duration-150 active:scale-[0.99] select-none ${
+        title={compact ? `${note.title || 'Untitled Note'}${note.folder ? ` · ${note.folder}` : ''} · ${displayDate}` : undefined}
+        className={`group relative px-3.5 rounded-md ${compact ? 'py-2' : 'py-2.5'} cursor-pointer transition-colors duration-150 select-none ${
           isSelected
-            ? 'bg-[var(--card-active)] text-[var(--text-primary)] shadow-sm'
-            : 'hover:bg-[var(--card-hover)] text-[var(--text-primary)] opacity-95'
+            ? 'bg-[var(--card-active)] text-[var(--text-primary)]'
+            : 'hover:bg-[var(--card-hover)] text-[var(--text-primary)]'
         }`}
       >
         {/* Note Title & Action icons */}
-        <div className="flex items-start justify-between gap-1.5 mb-1">
+        <div className={`flex items-start justify-between gap-1.5 ${compact ? '' : 'mb-1'}`}>
           <div className="flex items-center gap-1.5 flex-1 min-w-0">
             {isPinned && !isTrash && (
               <Pin size={10.5} className="text-[var(--accent-color)] shrink-0 fill-[var(--accent-color)]" />
@@ -252,17 +262,13 @@ export const NoteList: React.FC<NoteListProps> = ({
             )}
             <h3 
               dir="auto"
-              className={`text-[13px] leading-snug truncate flex-1 tracking-tight ${
-                isSelected 
-                  ? 'font-bold text-[var(--text-primary)]' 
-                  : 'font-semibold text-[var(--text-primary)]'
-              }`}
+              className="text-left text-[13px] leading-snug truncate flex-1 font-semibold text-[var(--text-primary)]"
             >
               {note.title || 'Untitled Note'}
             </h3>
           </div>
           
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity shrink-0">
             {!isTrash && (
               <button
                 onClick={(e) => onTogglePin(note.filePath, e)}
@@ -305,21 +311,22 @@ export const NoteList: React.FC<NoteListProps> = ({
         </div>
 
         {/* Note Metadata & Snippet */}
-        <div className="flex items-baseline gap-2 text-[11.5px] text-[var(--text-secondary)]">
-          <span className="font-semibold shrink-0 text-[10.5px] opacity-75 tracking-tight">{displayDate}</span>
-          <p 
-            dir="auto"
-            className="truncate opacity-70 text-[11.5px] flex-1 leading-normal"
-          >
-            {note.snippet || 'No additional text'}
-          </p>
-        </div>
+        {!compact && (
+          <div className="flex items-baseline gap-2 text-[11.5px] text-[var(--text-secondary)]">
+            <span className="shrink-0 text-[11px]">{displayDate}</span>
+            {note.snippet && (
+              <p dir="auto" className="text-left truncate text-[11.5px] flex-1 leading-normal">
+                {note.snippet}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Subfolder label if applicable */}
-        {note.folder && note.folder !== '/' && note.folder !== 'Trash' && (
-          <div className="text-[9.5px] text-[var(--accent-color)] opacity-85 truncate mt-1 font-medium flex items-center gap-1">
-            <span>📁</span>
-            <span>{note.folder}</span>
+        {!compact && note.folder && note.folder !== '/' && note.folder !== 'Trash' && (
+          <div className="text-[11px] text-[var(--text-secondary)] mt-1 flex items-center gap-1 min-w-0">
+            <Folder size={11} className="shrink-0" />
+            <span className="truncate" dir="auto">{note.folder}</span>
           </div>
         )}
       </div>
@@ -330,55 +337,68 @@ export const NoteList: React.FC<NoteListProps> = ({
     <div className="w-full h-full bg-[var(--notelist-bg)] border-r border-[var(--border-color)] flex flex-col shrink-0 select-none backdrop-blur-2xl">
       {/* Header bar: Sort Selector & Trash Info */}
       <div className="flex items-center justify-between px-3.5 py-2 border-b border-[var(--border-subtle)]">
-        <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase tracking-wider">
+        <span className="text-xs font-medium text-[var(--text-secondary)]">
           {isTrash ? 'Recently Deleted' : `${notes.length} Notes`}
         </span>
 
-        {isTrash ? (
-          onEmptyTrash && notes.length > 0 && (
-            <button
-              onClick={onEmptyTrash}
-              className="text-[10.5px] text-red-500 hover:underline font-medium"
-            >
-              Empty Trash
-            </button>
-          )
-        ) : (
-          <div className="relative" ref={sortMenuRef}>
-            <button
-              onClick={() => setShowSortMenu(!showSortMenu)}
-              className="p-1 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors flex items-center gap-1"
-              title="Sort Notes"
-            >
-              <ArrowUpDown size={12} />
-            </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onToggleCompact}
+            aria-label="Compact view"
+            aria-pressed={compact}
+            title={compact ? 'Show note previews' : 'Compact view: hide note previews'}
+            className={`p-1 rounded-md transition-colors ${compact ? 'bg-[var(--accent-light)] text-[var(--accent-color)]' : 'text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/10'}`}
+          >
+            <List size={13} />
+          </button>
+          {isTrash ? (
+            onEmptyTrash && notes.length > 0 && (
+              <button
+                onClick={onEmptyTrash}
+                className="text-[10.5px] text-red-500 hover:underline font-medium"
+              >
+                Empty Trash
+              </button>
+            )
+          ) : (
+            <div className="relative" ref={sortMenuRef}>
+              <button
+                onClick={() => setShowSortMenu(!showSortMenu)}
+                className="p-1 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors flex items-center gap-1"
+                title="Sort Notes"
+                aria-label="Sort notes"
+                aria-expanded={showSortMenu}
+              >
+                <ArrowUpDown size={12} />
+              </button>
 
-            {showSortMenu && (
-              <div className="absolute right-0 top-full mt-1.5 w-52 p-1.5 rounded-2xl bg-white/95 dark:bg-[#252528]/95 backdrop-blur-2xl border border-[var(--border-color)] shadow-2xl z-50 space-y-0.5 text-xs animate-in fade-in zoom-in-95 duration-100">
-                <div className="px-2.5 py-1 text-[9.5px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">
-                  Sort Notes By
+              {showSortMenu && (
+                <div className="absolute right-0 top-full mt-1.5 w-52 p-1.5 rounded-2xl bg-white/95 dark:bg-[#252528]/95 backdrop-blur-2xl border border-[var(--border-color)] shadow-2xl z-50 space-y-0.5 text-xs animate-in fade-in zoom-in-95 duration-100">
+                  <div className="px-2.5 py-1 text-[9.5px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">
+                    Sort Notes By
+                  </div>
+                  {sortOptions.map(opt => (
+                    <button
+                      key={opt.id}
+                      onClick={() => {
+                        onSortChange(opt.id);
+                        setShowSortMenu(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-left text-xs transition-colors ${
+                        sortMode === opt.id
+                          ? 'bg-[var(--accent-light)] text-[var(--accent-color)] font-semibold'
+                          : 'hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-primary)]'
+                      }`}
+                    >
+                      <span>{opt.label}</span>
+                      {sortMode === opt.id && <Check size={12} />}
+                    </button>
+                  ))}
                 </div>
-                {sortOptions.map(opt => (
-                  <button
-                    key={opt.id}
-                    onClick={() => {
-                      onSortChange(opt.id);
-                      setShowSortMenu(false);
-                    }}
-                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-left text-xs transition-colors ${
-                      sortMode === opt.id
-                        ? 'bg-[var(--accent-light)] text-[var(--accent-color)] font-semibold'
-                        : 'hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-primary)]'
-                    }`}
-                  >
-                    <span>{opt.label}</span>
-                    {sortMode === opt.id && <Check size={12} />}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Note Cards List with Apple Notes Section Headers */}
@@ -398,10 +418,9 @@ export const NoteList: React.FC<NoteListProps> = ({
             {/* Pinned Section */}
             {pinnedNotes.length > 0 && (
               <div className="space-y-1">
-                <div className="px-2.5 pt-1 text-[10px] font-bold text-[var(--accent-color)] uppercase tracking-wider flex items-center gap-1.5">
+                <div className="px-2.5 pt-1 text-xs font-semibold text-[var(--text-secondary)] flex items-center gap-1.5">
                   <Pin size={10.5} className="fill-[var(--accent-color)]" />
                   <span>Pinned</span>
-                  <span className="text-[9px] opacity-60 font-normal">({pinnedNotes.length})</span>
                 </div>
                 <div className="space-y-0.5">
                   {pinnedNotes.map(renderNoteCard)}
@@ -412,9 +431,8 @@ export const NoteList: React.FC<NoteListProps> = ({
             {/* Timeframe Grouped Sections */}
             {groupedNotes.map(group => (
               <div key={group.title} className="space-y-1">
-                <div className="px-2.5 pt-1.5 text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-wider flex items-center justify-between">
+                <div className="px-2.5 pt-1.5 text-xs font-semibold text-[var(--text-secondary)] flex items-center justify-between">
                   <span>{group.title}</span>
-                  <span className="text-[9px] opacity-50 font-normal">{group.notes.length}</span>
                 </div>
                 <div className="space-y-0.5">
                   {group.notes.map(renderNoteCard)}
