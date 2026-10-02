@@ -27,6 +27,7 @@ import {
   assertInsideRoot,
   withFileLock,
   saveAttachment,
+  rewriteImageReferences,
   searchNotes,
   fromAssetUrl,
   isInsideAnyRoot,
@@ -131,7 +132,7 @@ function saveWindowState(state: WindowState) {
   }
 }
 
-export function createWindow(targetFolderPath?: string, openSettings = false): BrowserWindow {
+export function createWindow(targetFolderPath?: string, openSettings = false, openShortcuts = false): BrowserWindow {
   const windowState = loadWindowState();
   const cascadeOffset = (allWindows.size * 25) % 150;
 
@@ -227,9 +228,9 @@ export function createWindow(targetFolderPath?: string, openSettings = false): B
   });
 
   if (process.env.VITE_DEV_SERVER_URL) {
-    win.loadURL(`${process.env.VITE_DEV_SERVER_URL}${openSettings ? '?settings=1' : ''}`);
+    win.loadURL(`${process.env.VITE_DEV_SERVER_URL}${openSettings ? '?settings=1' : openShortcuts ? '?shortcuts=1' : ''}`);
   } else {
-    win.loadFile(path.join(process.env.DIST || path.join(__dirname, '../dist'), 'index.html'), { query: openSettings ? { settings: '1' } : {} });
+    win.loadFile(path.join(process.env.DIST || path.join(__dirname, '../dist'), 'index.html'), { query: openSettings ? { settings: '1' } : openShortcuts ? { shortcuts: '1' } : {} });
   }
 
   // Watch for external file changes in this window's workspace folder
@@ -402,7 +403,9 @@ function setupMenu() {
           label: 'Toggle Checklist',
           accelerator: 'CmdOrCtrl+Shift+C',
           click: (_item, focusedWin) => sendToFocusedWindow('format:task', focusedWin as BrowserWindow)
-        }
+        },
+        { label: 'Check / Uncheck Current Task', accelerator: 'CmdOrCtrl+Shift+U', click: (_item, focusedWin) => sendToFocusedWindow('format:checkTask', focusedWin as BrowserWindow) },
+        { label: 'Move Completed Tasks to Bottom', click: (_item, focusedWin) => sendToFocusedWindow('format:sortTasks', focusedWin as BrowserWindow) }
       ]
     },
     {
@@ -429,7 +432,12 @@ function setupMenu() {
           { role: 'close' as const }
         ])
       ]
-    }
+    },
+    { label: 'Help', role: 'help', submenu: [{ label: 'Keyboard Shortcuts', click: (_item, focusedWin) => {
+      const win = focusedWin && allWindows.has(focusedWin as BrowserWindow) ? focusedWin as BrowserWindow : Array.from(allWindows)[0];
+      if (win) { win.show(); win.focus(); sendToFocusedWindow('menu:shortcuts', win); }
+      else createWindow(undefined, false, true);
+    } }] }
   ];
 
   const menu = Menu.buildFromTemplate(template);
@@ -655,6 +663,61 @@ ipcMain.handle('assets:save', async (event, { noteFilePath, fileName, data }) =>
   const root = getWindowRoot(event.sender.id);
   assertInsideRoot(root, noteFilePath);
   return await saveAttachment(root, noteFilePath, fileName, new Uint8Array(data), event.sender.id);
+});
+
+ipcMain.handle('notes:exportDocument', async (event, payload: { filePath: string; content: string; format: 'md' | 'html' }) => {
+  const root = getWindowRoot(event.sender.id);
+  assertInsideRoot(root, payload.filePath);
+  if (payload.format !== 'md' && payload.format !== 'html') throw new Error('Unsupported export format.');
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) throw new Error('The note window is no longer available.');
+  const result = await dialog.showSaveDialog(win, {
+    defaultPath: `${path.basename(payload.filePath, '.md')}.${payload.format}`,
+    filters: [{ name: payload.format === 'md' ? 'Markdown' : 'HTML', extensions: [payload.format] }]
+  });
+  if (result.canceled || !result.filePath) return false;
+  const destination = result.filePath;
+  let assetFolder = '';
+  let temporary = '';
+  const copied = new Map<string, string>();
+  const filesToCopy: { source: string; target: string }[] = [];
+  try {
+    const content = rewriteImageReferences(payload.content, url => {
+      const source = fromAssetUrl(url);
+      if (!source) return url;
+      assertInsideRoot(root, source);
+      const actual = fsSync.realpathSync(source);
+      assertInsideRoot(fsSync.realpathSync(root), actual);
+      if (copied.has(actual)) return copied.get(actual)!;
+      if (!assetFolder) assetFolder = fsSync.mkdtempSync(path.join(path.dirname(destination), `${path.basename(destination, path.extname(destination))}-assets-`));
+      const target = path.join(assetFolder, `${copied.size + 1}-${path.basename(actual)}`);
+      filesToCopy.push({ source: actual, target });
+      const relative = path.relative(path.dirname(destination), target).split(path.sep).map(encodeURIComponent).join('/');
+      copied.set(actual, relative);
+      return relative;
+    });
+    temporary = path.join(path.dirname(destination), `.scribe-export-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    for (const file of filesToCopy) await fsSync.promises.copyFile(file.source, file.target);
+    await fsSync.promises.writeFile(temporary, content, 'utf8');
+    await fsSync.promises.rename(temporary, destination);
+    return true;
+  } catch (error) {
+    if (temporary && fsSync.existsSync(temporary)) fsSync.unlinkSync(temporary);
+    if (assetFolder) fsSync.rmSync(assetFolder, { recursive: true, force: true });
+    throw error;
+  }
+});
+
+ipcMain.handle('assets:open', async (event, url: string) => {
+  const target = fromAssetUrl(url);
+  if (!target) throw new Error('Invalid attachment.');
+  const root = getWindowRoot(event.sender.id);
+  assertInsideRoot(root, target);
+  const actual = fsSync.realpathSync(target);
+  const actualRoot = fsSync.realpathSync(root);
+  assertInsideRoot(actualRoot, actual);
+  const error = await shell.openPath(actual);
+  if (error) throw new Error(error);
 });
 
 ipcMain.handle('shell:openExternal', async (_, url: string) => {
@@ -890,12 +953,27 @@ function openCapture() {
   if (captureWindow && !captureWindow.isDestroyed()) { captureWindow.show(); captureWindow.focus(); return; }
   const focused = BrowserWindow.getFocusedWindow();
   captureRoot = focused && allWindows.has(focused) ? getWindowRoot(focused.webContents.id) : loadSavedRoot();
-  const win = new BrowserWindow({ width: 520, height: 410, minWidth: 380, minHeight: 300,
+  const boundsFile = path.join(app.getPath('userData'), 'scribe-capture-bounds.json');
+  let placement: Partial<Electron.Rectangle> = {};
+  try {
+    const saved = JSON.parse(fsSync.readFileSync(boundsFile, 'utf8'));
+    if (['x', 'y', 'width', 'height'].every(key => Number.isFinite(saved[key]))) {
+      const area = screen.getDisplayMatching(saved).workArea;
+      const width = Math.min(area.width, Math.max(380, saved.width));
+      const height = Math.min(area.height, Math.max(300, saved.height));
+      placement = { width, height, x: Math.max(area.x, Math.min(saved.x, area.x + area.width - width)), y: Math.max(area.y, Math.min(saved.y, area.y + area.height - height)) };
+    }
+  } catch { /* First launch uses the default placement. */ }
+  const win = new BrowserWindow({ width: 520, height: 410, ...placement, minWidth: 380, minHeight: 300,
     title: 'Quick Capture', titleBarStyle: 'hiddenInset', backgroundColor: '#fafafa',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false } });
   captureWindow = win;
   setWindowRoot(win.webContents.id, captureRoot);
   const captureId = win.webContents.id;
+  win.on('close', () => {
+    try { fsSync.writeFileSync(boundsFile, JSON.stringify(win.getNormalBounds())); }
+    catch (error) { console.error('Could not remember Quick Capture placement:', error); }
+  });
   win.on('closed', () => { removeWindowTracking(captureId); captureWindow = null; });
   if (process.env.VITE_DEV_SERVER_URL) win.loadURL(`${process.env.VITE_DEV_SERVER_URL}?capture=1`);
   else win.loadFile(path.join(process.env.DIST!, 'index.html'), { query: { capture: '1' } });

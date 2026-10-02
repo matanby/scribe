@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 export const QuickCapture: React.FC = () => {
+  const contentRef = useRef<HTMLTextAreaElement>(null);
   const [title, setTitle] = useState(() => localStorage.getItem('scribe_capture_title') || '');
   const [content, setContent] = useState(() => localStorage.getItem('scribe_capture_content') || '');
   const [folder, setFolder] = useState('');
@@ -34,8 +35,9 @@ export const QuickCapture: React.FC = () => {
     <header style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} className="h-14 shrink-0 flex items-center justify-center text-sm font-medium">Quick Capture</header>
     <div className="flex flex-col flex-1 min-h-0 px-6 pb-4 gap-3">
       <input autoFocus aria-label="Note title" dir="auto" placeholder="Title (optional)" value={title} disabled={saving}
+        onKeyDown={event => { if (event.key === 'Enter' && !event.nativeEvent.isComposing && !event.metaKey && !event.ctrlKey) { event.preventDefault(); contentRef.current?.focus(); } }}
         onChange={event => setTitle(event.target.value)} className="text-xl font-semibold bg-transparent outline-none" />
-      <textarea aria-label="Note content" dir="auto" placeholder="Write something…" value={content} disabled={saving}
+      <textarea ref={contentRef} aria-label="Note content" dir="auto" placeholder="Write something…" value={content} disabled={saving}
         onChange={event => setContent(event.target.value)} className="flex-1 resize-none bg-transparent outline-none text-sm leading-relaxed" />
       {!shortcutAvailable && <p className="text-xs text-[var(--text-secondary)]">{shortcutLabel || 'This shortcut'} is unavailable. Open Quick Capture from Scribe’s File menu.</p>}
       {error && <p role="alert" className="text-xs text-red-500">{error}</p>}

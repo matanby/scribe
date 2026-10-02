@@ -42,6 +42,7 @@ export const scribeAPI = {
     ipcRenderer.invoke('dialog:message', payload) as Promise<boolean>,
   saveAttachment: (payload: { noteFilePath: string; fileName: string; data: Uint8Array }) =>
     ipcRenderer.invoke('assets:save', payload) as Promise<{ absolutePath: string; assetUrl: string }>,
+  openAttachment: (url: string) => ipcRenderer.invoke('assets:open', url) as Promise<void>,
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
   showInFinder: (filePath: string) => ipcRenderer.invoke('shell:showInFinder', filePath),
   duplicateNote: (filePath: string) => ipcRenderer.invoke('notes:duplicate', filePath),
@@ -53,6 +54,7 @@ export const scribeAPI = {
     ipcRenderer.invoke('contextMenu:note', payload),
   showFolderContextMenu: (payload: { folderPath: string; isRoot: boolean }) =>
     ipcRenderer.invoke('contextMenu:folder', payload),
+  exportDocument: (payload: { filePath: string; content: string; format: 'md' | 'html' }) => ipcRenderer.invoke('notes:exportDocument', payload) as Promise<boolean>,
   exportPDF: (defaultTitle: string) => ipcRenderer.invoke('notes:exportPDF', defaultTitle),
   printNote: () => ipcRenderer.invoke('notes:print'),
   onNotesChanged: (callback: (data: { changedPaths: string[]; structural: boolean }) => void) => {

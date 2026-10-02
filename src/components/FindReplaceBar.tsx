@@ -23,6 +23,13 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
   findTrigger,
   onClose
 }) => {
+  const [, refresh] = useState(0);
+  useEffect(() => {
+    if (!editor || !isOpen) return;
+    const update = () => refresh(value => value + 1);
+    editor.on('transaction', update);
+    return () => { editor.off('transaction', update); };
+  }, [editor, isOpen]);
   const [searchTerm, setSearchTerm] = useState('');
   const [replaceTerm, setReplaceTerm] = useState('');
   const [showReplace, setShowReplace] = useState(showReplaceInitial);
@@ -51,9 +58,7 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
         }
       }
 
-      if (showReplaceInitial) {
-        setShowReplace(true);
-      }
+      setShowReplace(showReplaceInitial);
 
       // Re-apply the existing term so reopening the bar restores its highlights instead
       // of showing a populated field with nothing matched.
@@ -120,6 +125,7 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
     if (e.key === 'Escape') {
       e.preventDefault();
       onClose();
+      editor?.commands.focus(undefined, { scrollIntoView: false });
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (e.shiftKey) {
@@ -157,8 +163,8 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
             value={searchTerm}
             onChange={(e) => handleSearchChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Find in note (⌘F)..."
-            className="w-44 px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-transparent focus:border-[var(--accent-color)] focus:bg-transparent text-[var(--text-primary)] placeholder-[var(--text-tertiary)] outline-none text-xs"
+            aria-label="Find in note" placeholder="Find in note (⌘F)…"
+            className="w-52 pl-2 pr-14 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-transparent focus:border-[var(--accent-color)] focus:bg-transparent text-[var(--text-primary)] placeholder-[var(--text-tertiary)] outline-none text-xs"
           />
           {searchTerm && (
             <span className="absolute right-2 text-[10px] text-[var(--text-secondary)] pointer-events-none">
@@ -227,10 +233,11 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
                 e.preventDefault();
                 e.stopPropagation();
                 onClose();
+      editor?.commands.focus(undefined, { scrollIntoView: false });
               }
             }}
             placeholder="Replace with..."
-            className="w-44 px-2 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-transparent focus:border-[var(--accent-color)] focus:bg-transparent text-[var(--text-primary)] placeholder-[var(--text-tertiary)] outline-none text-xs"
+            className="w-52 pl-2 pr-14 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-transparent focus:border-[var(--accent-color)] focus:bg-transparent text-[var(--text-primary)] placeholder-[var(--text-tertiary)] outline-none text-xs"
           />
 
           <button

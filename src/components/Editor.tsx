@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback, lazy, Suspense } from 'react';
 import { useEditor, EditorContent, ReactNodeViewRenderer } from '@tiptap/react';
+import { TextSelection } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { createLowlight, common } from 'lowlight';
@@ -15,7 +16,8 @@ import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import Highlight from '@tiptap/extension-highlight';
 import Underline from '@tiptap/extension-underline';
-import Image from '@tiptap/extension-image';
+import { ResizableImage } from '../extensions/ResizableImage';
+import { Attachment } from '../extensions/Attachment';
 import Typography from '@tiptap/extension-typography';
 import { Markdown } from 'tiptap-markdown';
 import { BiDiExtension } from '../extensions/BiDiExtension';
@@ -46,7 +48,7 @@ const AUTOSAVE_DEBOUNCE_MS = 400;
 interface EditorProps {
   note: NoteMeta | null;
   onSave: (filePath: string, markdown: string) => Promise<void>;
-  onRename: (filePath: string, newTitle: string) => Promise<void>;
+  onRename: (filePath: string, newTitle: string, focusBody?: boolean) => Promise<void>;
   onSelectFolder?: (folderPath: string) => void;
   setIsSaving: (saving: boolean) => void;
   setLastSavedText: (text: string) => void;
@@ -62,7 +64,7 @@ interface TipTapNoteEditorProps {
   note: NoteMeta;
   initialMarkdown: string;
   onSave: (filePath: string, markdown: string) => Promise<void>;
-  onRename: (filePath: string, newTitle: string) => Promise<void>;
+  onRename: (filePath: string, newTitle: string, focusBody?: boolean) => Promise<void>;
   onSelectFolder?: (folderPath: string) => void;
   setIsSaving: (saving: boolean) => void;
   setLastSavedText: (text: string) => void;
@@ -80,30 +82,34 @@ interface TipTapNoteEditorProps {
  * Inlining these as base64 data URLs (as this used to) grew the .md file by megabytes per
  * screenshot and made the note unreadable in any other markdown editor.
  */
-async function insertImageFile(
-  view: any,
-  file: File,
-  noteFilePath: string,
-  dropPos: number | null
-) {
+async function insertFiles(view: any, files: File[], noteFilePath: string, dropPos: number | null, editor: any) {
+  const bookmark = view.state.selection.getBookmark();
+  let position = dropPos;
+  const map = ({ transaction }: any) => {
+    if (position !== null) position = transaction.mapping.map(position);
+  };
+  // Mapping belongs to this editor instance, so edits during a large-file write stay safe.
+  let mappedBookmark = bookmark;
+  const track = ({ transaction }: any) => { map({ transaction }); mappedBookmark = mappedBookmark.map(transaction.mapping); };
+  editor?.on('transaction', track);
   try {
-    const buffer = await file.arrayBuffer();
-    const { assetUrl } = await window.scribeAPI.saveAttachment({
-      noteFilePath,
-      fileName: file.name || 'pasted-image.png',
-      data: new Uint8Array(buffer)
-    });
-
-    const node = view.state.schema.nodes.image.create({ src: assetUrl });
-    const tr =
-      dropPos === null
-        ? view.state.tr.replaceSelectionWith(node)
-        : view.state.tr.insert(dropPos, node);
-    view.dispatch(tr);
-  } catch (err) {
-    console.error('Failed to attach image:', err);
-    void showMessage('Could not attach image', 'The file could not be saved into the notes folder.', 'error');
-  }
+    for (const file of files) {
+      const buffer = await file.arrayBuffer();
+      const { assetUrl } = await window.scribeAPI.saveAttachment({ noteFilePath, fileName: file.name || 'pasted-image.png', data: new Uint8Array(buffer) });
+      if (view.isDestroyed) return;
+      const node = file.type.startsWith('image/')
+        ? view.state.schema.nodes.image.create({ src: assetUrl, alt: file.name })
+        : view.state.schema.nodes.attachment.create({ href: assetUrl, name: file.name || 'Attachment', size: file.size });
+      const tr = view.state.tr;
+      if (position === null) tr.setSelection(mappedBookmark.resolve(tr.doc)).replaceSelectionWith(node);
+      else tr.setSelection(TextSelection.near(tr.doc.resolve(Math.min(position, tr.doc.content.size)))).replaceSelectionWith(node);
+      view.dispatch(tr);
+      position = tr.selection.to;
+    }
+  } catch (error: any) {
+    console.error('Failed to attach files:', error);
+    void showMessage('Could not attach file', error.message || 'The file could not be saved into the notes folder.', 'error');
+  } finally { editor?.off('transaction', track); }
 }
 
 /**
@@ -149,6 +155,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   onFocusRequestHandled
 }) => {
   const [title, setTitle] = useState(note.title);
+  const attachmentInput = useRef<HTMLInputElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -245,6 +252,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   scheduleSaveRef.current = scheduleSave;
 
   const openFind = (replace: boolean) => {
+    if (document.querySelector('[aria-modal="true"]')) return;
     setShowReplaceMode(replace);
     setIsFindOpen(true);
     setFindTrigger(prev => prev + 1);
@@ -408,7 +416,8 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
       }),
       ...(smartTypography ? [Typography] : []),
       MathExtension,
-      Image.configure({
+      Attachment,
+      ResizableImage.configure({
         inline: true,
         allowBase64: true,
         HTMLAttributes: {
@@ -434,44 +443,28 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
           const href = target.getAttribute('href');
           if (href) {
             event.preventDefault();
-            window.scribeAPI.openExternal(href);
+            if (href.startsWith('scribe-asset:')) {
+              window.scribeAPI.openAttachment(href).catch(error => void showMessage('Could not open attachment', error.message, 'error'));
+            } else window.scribeAPI.openExternal(href);
             return true;
           }
         }
         return false;
       },
       handlePaste: (view, event) => {
-        // Image paste from clipboard (e.g. screenshots)
-        const items = event.clipboardData?.items;
-        if (items) {
-          for (let i = 0; i < items.length; i++) {
-            if (items[i].type.indexOf('image') !== -1) {
-              const file = items[i].getAsFile();
-              if (file) {
-                event.preventDefault();
-                void insertImageFile(view, file, notePathRef.current, null);
-                return true;
-              }
-            }
-          }
-        }
-        return false;
+        const files = Array.from(event.clipboardData?.files || []);
+        if (!files.length) return false;
+        event.preventDefault();
+        void insertFiles(view, files, notePathRef.current, null, editorRef.current);
+        return true;
       },
       handleDrop: (view, event) => {
-        // Image Drag & Drop from macOS Finder
-        const files = event.dataTransfer?.files;
-        if (files && files.length > 0) {
-          for (let i = 0; i < files.length; i++) {
-            const file = files[i];
-            if (file.type.startsWith('image/')) {
-              event.preventDefault();
-              const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
-              void insertImageFile(view, file, notePathRef.current, coords ? coords.pos : null);
-              return true;
-            }
-          }
-        }
-        return false;
+        const files = Array.from(event.dataTransfer?.files || []);
+        if (!files.length) return false;
+        event.preventDefault();
+        const coords = view.posAtCoords({ left: event.clientX, top: event.clientY });
+        void insertFiles(view, files, notePathRef.current, coords?.pos ?? null, editorRef.current);
+        return true;
       }
     },
     onCreate: ({ editor }) => {
@@ -491,29 +484,66 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   editorRef.current = editor;
 
   useEffect(() => {
+    if (!editor) return;
+    const actions: Record<string, () => void> = {
+      'format:bold': () => { editor.chain().focus().toggleBold().run(); },
+      'format:italic': () => { editor.chain().focus().toggleItalic().run(); },
+      'format:task': () => { editor.chain().focus().toggleTaskList().run(); },
+      'format:checkTask': () => { editor.chain().focus().toggleCurrentTask().run(); },
+      'format:sortTasks': () => { editor.chain().focus().sortCompletedTasks().run(); }
+    };
+    const subscriptions = Object.entries(actions).map(([name, run]) => window.scribeAPI.onMenuEvent(name, () => {
+      if (!document.querySelector('[aria-modal="true"]') && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') run();
+    }));
+    return () => subscriptions.forEach(unsubscribe => unsubscribe());
+  }, [editor]);
+
+  useEffect(() => {
     if (!editor || editor.isDestroyed) return;
     const position = initialPosition.current;
     if (position) {
       const max = Math.max(1, editor.state.doc.content.size - 1);
       editor.commands.setTextSelection({ from: Math.max(1, Math.min(position.from, max)), to: Math.max(1, Math.min(position.to, max)) });
     }
+    const scroller = scrollerRef.current;
+    let interacted = false;
+    const markInteraction = () => { interacted = true; };
+    const restoreScroll = () => {
+      if (scroller && position && !searchQuery?.trim() && !focusRequest && !interacted) scroller.scrollTop = position.scroll;
+    };
     const frame = requestAnimationFrame(() => {
-      if (scrollerRef.current && position && !searchQuery?.trim() && !focusRequest) scrollerRef.current.scrollTop = position.scroll;
+      restoreScroll();
       positionRestored.current = true;
     });
-    const scroller = scrollerRef.current;
+    // Late-loading images can increase document height after the initial render.
+    scroller?.addEventListener('load', restoreScroll, true);
+    scroller?.addEventListener('wheel', markInteraction, { passive: true });
+    scroller?.addEventListener('pointerdown', markInteraction);
+    scroller?.addEventListener('keydown', markInteraction);
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const persist = () => {
       if (!positionRestored.current || editor.isDestroyed) return;
       const { from, to } = editor.state.selection;
       savePosition(note.filePath, { from, to, scroll: scroller?.scrollTop || 0 });
     };
-    editor.on('selectionUpdate', persist);
-    const onScroll = persist;
-    scroller?.addEventListener('scroll', onScroll);
+    const schedule = () => {
+      clearTimeout(timer);
+      timer = setTimeout(persist, 180);
+    };
+    editor.on('selectionUpdate', schedule);
+    scroller?.addEventListener('scroll', schedule);
     window.addEventListener('beforeunload', persist);
+    window.addEventListener('blur', persist);
     return () => {
-      persist(); cancelAnimationFrame(frame);
-      editor.off('selectionUpdate', persist); scroller?.removeEventListener('scroll', onScroll); window.removeEventListener('beforeunload', persist);
+      clearTimeout(timer); persist(); cancelAnimationFrame(frame);
+      editor.off('selectionUpdate', schedule);
+      scroller?.removeEventListener('scroll', schedule);
+      scroller?.removeEventListener('load', restoreScroll, true);
+      scroller?.removeEventListener('wheel', markInteraction);
+      scroller?.removeEventListener('pointerdown', markInteraction);
+      scroller?.removeEventListener('keydown', markInteraction);
+      window.removeEventListener('beforeunload', persist);
+      window.removeEventListener('blur', persist);
     };
   }, [editor, note.filePath]);
 
@@ -538,21 +568,27 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
    * save into recreating the old file. It now happens once, on blur or Enter, and only
    * after the pending body save has landed on the old path.
    */
-  const commitTitle = useCallback(async () => {
+  const titleCommitRef = useRef(false);
+  const commitTitle = useCallback(async (focusBody = false) => {
+    if (titleCommitRef.current) return;
     const next = title.trim();
     if (!next || next === note.title) {
       setTitle(note.title);
+      if (focusBody) editorRef.current?.commands.focus();
       return;
     }
 
+    titleCommitRef.current = true;
     await performSaveRef.current();
+    if (isDirtyRef.current) { titleCommitRef.current = false; return; }
     setIsSavingRef.current(true);
     try {
-      await onRename(note.filePath, next);
+      await onRename(note.filePath, next, focusBody);
     } catch (err) {
       console.error('Failed to rename note:', err);
       setTitle(note.title);
     } finally {
+      titleCommitRef.current = false;
       setIsSavingRef.current(false);
     }
   }, [title, note.title, note.filePath, onRename]);
@@ -658,7 +694,12 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   return (
     <div className="flex-1 h-full bg-[var(--editor-bg)] flex flex-col relative overflow-hidden">
       {/* Top Pinned Formatting & Search/Replace Bars */}
-      <FormattingBar editor={editor} />
+      <FormattingBar editor={editor} noteFilePath={note.filePath} onAttach={() => attachmentInput.current?.click()} />
+      <input ref={attachmentInput} type="file" multiple className="hidden" aria-label="Attach images or files" onChange={event => {
+        const files = Array.from(event.target.files || []);
+        event.target.value = '';
+        if (editor && files.length) void insertFiles(editor.view, files, notePathRef.current, null, editor);
+      }} />
       <TableControls editor={editor} />
       <FindReplaceBar 
         editor={editor} 
@@ -732,9 +773,9 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
             onChange={(e) => setTitle(e.target.value)}
             onBlur={() => void commitTitle()}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') {
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
                 e.preventDefault();
-                e.currentTarget.blur();
+                void commitTitle(true);
               } else if (e.key === 'Escape') {
                 e.preventDefault();
                 setTitle(note.title);

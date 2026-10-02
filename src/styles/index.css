@@ -982,3 +982,19 @@ u,
 .history-preview img { max-width: 100%; height: auto; border-radius: 6px; }
 .history-preview .tiptap table { width: 100%; }
 .history-preview .tiptap input[type="checkbox"] { pointer-events: none; }
+
+/* Attachments occupy document space only when a note contains them. */
+.tiptap a.note-attachment {
+  display: block; width: fit-content; max-width: 100%; padding: 12px 16px;
+  margin: 12px 0; border: 1px solid var(--border-color); border-radius: 10px;
+  background: var(--card-hover); color: var(--text-primary); text-decoration: none;
+  overflow-wrap: anywhere; cursor: pointer; font-size: .9em;
+}
+.tiptap a.note-attachment::before { content: '↗'; margin-inline-end: 10px; color: var(--text-secondary); }
+.note-image { display: inline-block; position: relative; max-width: 100%; margin: 10px 0; vertical-align: middle; line-height: 0; }
+.note-image img { display: block; max-width: 100%; height: auto; border-radius: 10px; margin: 0 !important; }
+.note-image.is-selected { outline: 2px solid var(--accent-color); border-radius: 10px; }
+.image-controls { position: absolute; top: 8px; left: 8px; display: flex; gap: 4px; line-height: 1.4; }
+.image-controls button { background: var(--editor-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 5px; padding: 4px 8px; font-size: 11px; }
+.image-resize { position: absolute; bottom: -5px; inset-inline-end: -5px; width: 12px; height: 12px; border-radius: 4px; background: var(--accent-color); border: 2px solid var(--editor-bg); cursor: ew-resize; touch-action: none; }
+@media print { .note-image.is-selected { outline: none; } }

@@ -192,3 +192,23 @@ On the development Mac, the repeated-profile median editor-ready time improved f
 Open **Scribe → Settings…** (**⌘,**) or the sidebar’s Settings button. Under **Keyboard shortcuts**, choose **Change…** beside Quick Capture, select modifiers and a key, then save. Scribe checks for conflicts with its own shortcuts and other apps before replacing the current shortcut. The selection is saved on this Mac and appears immediately in the File menu. **Use default** selects the original combination; save it to apply the reset.
 
 Moving a note to Trash shows a brief **Undo** notification. Undo restores the exact trashed file to its original folder, including when multiple notes have the same name. The notification pauses while hovered or focused, and recent deletions can be undone in reverse order. This covers ⌘Delete, note-menu actions, and dragging a note to Trash. Dismissal or timeout leaves the note recoverable in Recently Deleted.
+
+### Finding and navigating long notes
+
+- **⌘F** finds text within the current note, including across bold, italic, and link boundaries. **Enter / Shift+Enter** move between matches; **Escape** returns to editing. **⌘⇧F** opens replacement controls.
+- Each note remembers its cursor and scroll position across switches and restarts. Restoring the scroll position accounts for images that load after the editor appears; scrolling or typing takes control immediately.
+- The **outline icon** beside Export opens a heading list. Choose a heading to jump to it; folded parent sections are revealed. Headings use the existing **Aa** menu.
+
+### Checklists
+
+**⌘⇧C** toggles checklist formatting. **⌘⇧U** checks or unchecks the task containing the caret. **Aa → Move Completed to Bottom** (or the Format menu) sorts the current checklist while keeping the caret with its task. Automatic sorting remains optional in Settings.
+
+### Images and files
+
+Drop one or more files into a note, paste clipboard files/images, or choose **Insert (+) → Image or File…**. Originals are stored in the notes folder’s `assets` directory. Click a file attachment to open it in its default macOS app. Select an image to reveal its resize handle and Open/Original size controls; double-click also opens the original. The resize handle supports left/right arrow keys.
+
+Attachment links stay relative on disk, including after moving or trashing/restoring a note. Resized images use an HTML `<img width="…">` in Markdown so their size survives reopening. **Export Markdown / Export HTML** now use a Save dialog and copy referenced attachments into a companion assets folder. Keep that folder beside the exported note when sharing it.
+
+### Keyboard reference and capture placement
+
+**Help → Keyboard Shortcuts** opens a reference including your current Quick Capture combination. Pressing **Enter** in a note title saves the title and moves into the body, including after a rename. Quick Capture remembers its size and location across launches, adjusting to available displays; Enter from its title also moves into the body.

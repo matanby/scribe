@@ -7,9 +7,10 @@ import {
   type LucideIcon
 } from 'lucide-react';
 import { confirmDestructive, showMessage } from '../utils/dialogs';
+import { NoteOutline } from './NoteOutline';
 import { Popover } from './Popover';
 
-interface FormattingBarProps { editor: Editor | null; }
+interface FormattingBarProps { editor: Editor | null; onAttach: () => void; noteFilePath: string; }
 interface Action {
   label: string;
   icon?: LucideIcon;
@@ -38,7 +39,7 @@ const Actions: React.FC<{ actions: Action[]; close: () => void }> = ({ actions, 
   </>
 );
 
-export const FormattingBar: React.FC<FormattingBarProps> = ({ editor }) => {
+export const FormattingBar: React.FC<FormattingBarProps> = ({ editor, onAttach, noteFilePath }) => {
   if (!editor) return null;
 
   const paragraphStyles: Action[] = [
@@ -68,6 +69,7 @@ export const FormattingBar: React.FC<FormattingBarProps> = ({ editor }) => {
     else editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
   };
   const inserts: Action[] = [
+    { label: 'Image or File…', icon: Plus, run: onAttach },
     { label: 'Link…', icon: LinkIcon, run: setLink },
     { label: 'Divider', icon: Minus, run: () => { editor.chain().focus().setHorizontalRule().run(); } },
     { label: 'Math Formula', icon: Sigma, run: () => { editor.chain().focus().insertContent('$E = mc^2$ ').run(); } }
@@ -83,13 +85,9 @@ export const FormattingBar: React.FC<FormattingBarProps> = ({ editor }) => {
       });
     } }
   ];
-  const download = (content: string, type: string, fileName: string) => {
-    const url = URL.createObjectURL(new Blob([content], { type }));
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = fileName;
-    anchor.click();
-    URL.revokeObjectURL(url);
+  const exportDocument = async (content: string, format: 'md' | 'html') => {
+    try { await window.scribeAPI.exportDocument({ filePath: noteFilePath, content, format }); }
+    catch (error: any) { void showMessage('Could not export note', error.message || 'The note or its attachments could not be copied.', 'error'); }
   };
   const exports: Action[] = [
     { label: 'Print / PDF…', icon: Printer, run: () => { window.print(); } },
@@ -97,7 +95,7 @@ export const FormattingBar: React.FC<FormattingBarProps> = ({ editor }) => {
       try {
         const markdown = editor.storage.markdown?.getMarkdown?.();
         if (typeof markdown !== 'string') throw new Error('Markdown serializer unavailable');
-        download(markdown, 'text/markdown', 'Note.md');
+        void exportDocument(markdown, 'md');
       } catch (error: any) {
         console.error('Failed to export markdown:', error);
         void showMessage('Could not export markdown', error?.message || 'unknown error', 'error');
@@ -105,7 +103,7 @@ export const FormattingBar: React.FC<FormattingBarProps> = ({ editor }) => {
     } },
     { label: 'Export HTML', icon: FileText, run: () => {
       const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Note</title><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem;line-height:1.7;}table{border-collapse:collapse;width:100%;}td,th{border:1px solid #ccc;padding:8px;}</style></head><body>${editor.getHTML()}</body></html>`;
-      download(html, 'text/html', 'Note.html');
+      void exportDocument(html, 'html');
     } }
   ];
 
@@ -114,7 +112,7 @@ export const FormattingBar: React.FC<FormattingBarProps> = ({ editor }) => {
       <div className="flex items-center gap-1">
         <Popover label="Text style and formatting" triggerClassName={toolbarButton}
           trigger={<><span className="text-[15px] font-medium">Aa</span><ChevronDown size={11} /></>}>
-          {close => <><Actions actions={paragraphStyles} close={close} /><Divider /><Actions actions={inlineStyles} close={close} /><Divider /><Actions actions={listStyles} close={close} /></>}
+          {close => <><Actions actions={paragraphStyles} close={close} /><Divider /><Actions actions={inlineStyles} close={close} /><Divider /><Actions actions={listStyles} close={close} />{editor.isActive('taskList') && <><Divider /><Actions close={close} actions={[{ label: 'Check / Uncheck Task', shortcut: '⌘⇧U', run: () => { editor.chain().focus().toggleCurrentTask().run(); } }, { label: 'Move Completed to Bottom', run: () => { editor.chain().focus().sortCompletedTasks().run(); } }]} /></>}</>}
         </Popover>
         <button type="button" aria-label="Checklist" aria-pressed={editor.isActive('taskList')} title="Checklist (⌘⇧C)"
           onClick={() => editor.chain().focus().toggleTaskList().run()}
@@ -135,9 +133,10 @@ export const FormattingBar: React.FC<FormattingBarProps> = ({ editor }) => {
           {close => <Actions actions={inserts} close={close} />}
         </Popover>
       </div>
+      <div className="flex items-center gap-1"><NoteOutline editor={editor} />
       <Popover label="Export note" align="right" triggerClassName={`${toolbarButton} text-[var(--text-secondary)]`} trigger={<><Share size={15} /><span>Export</span></>}>
         {close => <Actions actions={exports} close={close} />}
-      </Popover>
+      </Popover></div>
     </div>
   );
 };

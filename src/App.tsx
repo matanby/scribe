@@ -15,6 +15,8 @@ const Editor = lazy(() => editorModule.then(module => ({ default: module.Editor 
 const QuickSwitcher = lazy(() => import('./components/QuickSwitcher').then(module => ({ default: module.QuickSwitcher })));
 const AppearanceModal = lazy(() => import('./components/AppearanceModal').then(module => ({ default: module.AppearanceModal })));
 
+const ShortcutsReference = lazy(() => import('./components/ShortcutsReference').then(module => ({ default: module.ShortcutsReference })));
+
 export const App: React.FC = () => {
   const [tree, setTree] = useState<NotesTree | null>(null);
   const [selectedFolder, setSelectedFolder] = useState<string>('');
@@ -40,6 +42,8 @@ export const App: React.FC = () => {
   };
   const [isQuickSwitcherOpen, setIsQuickSwitcherOpen] = useState(false);
   const [isAppearanceOpen, setIsAppearanceOpen] = useState(() => new URLSearchParams(window.location.search).has('settings'));
+
+  const [shortcutsOpen, setShortcutsOpen] = useState(() => new URLSearchParams(window.location.search).has('shortcuts'));
 
   // Appearance & Themes
   const [appearance, setAppearance] = useState<AppearanceSettings>(() => {
@@ -569,6 +573,7 @@ export const App: React.FC = () => {
       loadTree();
     });
 
+    const unsubscribeShortcuts = window.scribeAPI.onMenuEvent('menu:shortcuts', () => setShortcutsOpen(true));
     const unsubscribeSettings = window.scribeAPI.onMenuEvent('menu:settings', () => setIsAppearanceOpen(true));
 
     const unsubscribeQuickSwitcher = window.scribeAPI.onMenuEvent?.('menu:quickSwitcher', () => {
@@ -623,6 +628,7 @@ export const App: React.FC = () => {
       unsubscribe();
       unsubscribeRoot?.();
       unsubscribeSettings();
+      unsubscribeShortcuts();
       unsubscribeQuickSwitcher?.();
       unsubscribeNewNote?.();
       unsubscribeDuplicateNote?.();
@@ -719,11 +725,12 @@ export const App: React.FC = () => {
   }, []);
 
   // Rename Note
-  const handleRenameNote = useCallback(async (filePath: string, newTitle: string) => {
+  const handleRenameNote = useCallback(async (filePath: string, newTitle: string, focusBody = false) => {
     const updated = await window.scribeAPI.renameNote({ filePath, newTitle });
     remapNotePath(filePath, updated.filePath);
     await loadTree(updated.filePath);
     setSelectedNote(updated);
+    if (focusBody) setEditorFocusRequest({ filePath: updated.filePath, requestId: ++editorFocusSequence.current });
   }, [loadTree, remapNotePath]);
 
   // Toggle Pinned
@@ -980,6 +987,7 @@ export const App: React.FC = () => {
       {trashToast}
 
       {/* Appearance & Typography Settings Modal */}
+      {shortcutsOpen && <Suspense fallback={null}><ShortcutsReference onClose={() => setShortcutsOpen(false)} /></Suspense>}
       {isAppearanceOpen && <Suspense fallback={null}><AppearanceModal
         isOpen={isAppearanceOpen}
         onClose={() => setIsAppearanceOpen(false)}

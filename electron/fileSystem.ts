@@ -168,9 +168,9 @@ export function fromAssetUrl(url: string): string | null {
 }
 
 // Matches markdown images and raw <img src="..."> so both survive the round-trip.
-const IMAGE_REFERENCE = /(!\[[^\]]*\]\()([^)\s]+)((?:\s+"[^"]*")?\))|(<img\b[^>]*?\ssrc=")([^"]+)(")/g;
+const IMAGE_REFERENCE = /(!?\[[^\]]*\]\()([^)\s]+)((?:\s+"[^"]*")?\))|(<(?:img\b[^>]*?\ssrc|a\b[^>]*?\shref)=")([^"]+)(")/g;
 
-function rewriteImageReferences(markdown: string, rewrite: (src: string) => string): string {
+export function rewriteImageReferences(markdown: string, rewrite: (src: string) => string): string {
   return markdown.replace(IMAGE_REFERENCE, (match, mdOpen, mdSrc, mdClose, imgOpen, imgSrc, imgClose) => {
     if (mdOpen !== undefined) return `${mdOpen}${rewrite(mdSrc)}${mdClose}`;
     if (imgOpen !== undefined) return `${imgOpen}${rewrite(imgSrc)}${imgClose}`;
@@ -179,7 +179,7 @@ function rewriteImageReferences(markdown: string, rewrite: (src: string) => stri
 }
 
 function isExternalReference(src: string): boolean {
-  return /^(https?:|data:|mailto:)/i.test(src);
+  return /^(?:[a-z][a-z0-9+.-]*:|#)/i.test(src);
 }
 
 /** Disk form (relative path) -> in-app form (asset URL). */
@@ -250,7 +250,7 @@ export async function saveAttachment(
   originId?: number
 ): Promise<{ absolutePath: string; assetUrl: string }> {
   const assetsDir = getAssetsDir(rootDir);
-  const ext = path.extname(fileName) || '.png';
+  const ext = path.extname(fileName);
   const base = sanitizeFileName(path.basename(fileName, ext)) || 'image';
   const stamp = new Date().toISOString().slice(0, 10);
   const target = uniqueTarget(assetsDir, `${stamp}-${base}${ext}`);

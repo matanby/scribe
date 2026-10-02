@@ -6,7 +6,8 @@ export function writeStored(key: string, value: unknown) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* A full preference store must not interrupt editing. */ }
 }
 export function readPosition(file: string): NotePosition | null {
-  return readStored<Record<string, NotePosition>>('scribe_note_positions', {})[file] || null;
+  const position = readStored<Record<string, NotePosition>>('scribe_note_positions', {})[file];
+  return position && [position.from, position.to, position.scroll].every(Number.isFinite) ? position : null;
 }
 export function savePosition(file: string, position: NotePosition) {
   const positions = readStored<Record<string, NotePosition>>('scribe_note_positions', {});

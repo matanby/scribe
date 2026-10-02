@@ -5,6 +5,8 @@ import { Markdown } from 'tiptap-markdown';
 import Underline from '@tiptap/extension-underline';
 import Highlight from '@tiptap/extension-highlight';
 import Link from '@tiptap/extension-link';
+import { Attachment } from '../extensions/Attachment';
+import { showMessage } from '../utils/dialogs';
 import Image from '@tiptap/extension-image';
 import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
@@ -30,7 +32,7 @@ export const NotePreview: React.FC<{ markdown: string }> = ({ markdown }) => {
         }
       }),
       Link.configure({ openOnClick: false, HTMLAttributes: { class: 'text-[var(--accent-color)] underline' } }),
-      Image.configure({ inline: true, allowBase64: true }), Table.configure({ resizable: false }), TableRow, TableCell, TableHeader,
+      Attachment, Image.extend({ addAttributes() { return { ...this.parent?.(), width: { default: null, parseHTML: element => Number(element.getAttribute('width')) || null } }; } }).configure({ inline: true, allowBase64: true }), Table.configure({ resizable: false }), TableRow, TableCell, TableHeader,
       TaskList, TaskItem.configure({ nested: true }), BiDiExtension,
       Markdown.configure({ html: true, transformPastedText: false, transformCopiedText: false })
     ],
@@ -39,7 +41,10 @@ export const NotePreview: React.FC<{ markdown: string }> = ({ markdown }) => {
       handleClick: (_view, _pos, event) => {
         const link = (event.target as HTMLElement).closest<HTMLAnchorElement>('a[href]');
         if (!link) return false;
-        event.preventDefault(); void window.scribeAPI.openExternal(link.href); return true;
+        event.preventDefault();
+        if (link.href.startsWith('scribe-asset:')) window.scribeAPI.openAttachment(link.href).catch(error => void showMessage('Could not open attachment', error.message, 'error'));
+        else void window.scribeAPI.openExternal(link.href);
+        return true;
       }
     }
   });

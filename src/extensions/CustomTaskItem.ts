@@ -1,4 +1,5 @@
 import TaskItem from '@tiptap/extension-task-item';
+import { TextSelection } from '@tiptap/pm/state';
 import { getDirection } from './BiDiExtension';
 
 declare module '@tiptap/extension-task-item' {
@@ -7,7 +8,17 @@ declare module '@tiptap/extension-task-item' {
   }
 }
 
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    checklistActions: {
+      toggleCurrentTask: () => ReturnType;
+      sortCompletedTasks: () => ReturnType;
+    };
+  }
+}
+
 function reorderTasksInList(editor: any, pos: number) {
+  if (editor.isDestroyed) return false;
   try {
     const tr = editor.state.tr;
     const $pos = tr.doc.resolve(pos);
@@ -18,7 +29,7 @@ function reorderTasksInList(editor: any, pos: number) {
         break;
       }
     }
-    if (taskListDepth === -1) return;
+    if (taskListDepth === -1) return false;
 
     const taskListPos = $pos.before(taskListDepth);
     const taskListNode = $pos.node(taskListDepth);
@@ -35,7 +46,7 @@ function reorderTasksInList(editor: any, pos: number) {
     });
 
     // If all are checked or none are checked, no reorder needed
-    if (uncheckedItems.length === 0 || checkedItems.length === 0) return;
+    if (uncheckedItems.length === 0 || checkedItems.length === 0) return true;
 
     const sortedChildren = [...uncheckedItems, ...checkedItems];
     let changed = false;
@@ -47,11 +58,27 @@ function reorderTasksInList(editor: any, pos: number) {
 
     if (changed) {
       const newTaskList = taskListNode.type.create(taskListNode.attrs, sortedChildren);
+      const remap = (position: number) => {
+        let result = position;
+        taskListNode.forEach((child: any, offset: number) => {
+          const start = taskListPos + 1 + offset;
+          if (position > start && position < start + child.nodeSize) {
+            const index = sortedChildren.indexOf(child);
+            const newOffset = sortedChildren.slice(0, index).reduce((sum: number, item: any) => sum + item.nodeSize, 0);
+            result = taskListPos + 1 + newOffset + position - start;
+          }
+        });
+        return result;
+      };
+      const from = remap(editor.state.selection.from), to = remap(editor.state.selection.to);
       tr.replaceWith(taskListPos, taskListPos + taskListNode.nodeSize, newTaskList);
+      if (editor.state.selection instanceof TextSelection) tr.setSelection(TextSelection.create(tr.doc, from, to));
       editor.view.dispatch(tr);
     }
+    return true;
   } catch (err) {
     console.error('Error auto-sorting tasks:', err);
+    return false;
   }
 }
 
@@ -62,6 +89,33 @@ export const CustomTaskItem = TaskItem.extend({
       nested: false,
       autoSort: true,
       HTMLAttributes: {}
+    };
+  },
+
+  addCommands() {
+    return {
+      ...this.parent?.(),
+      toggleCurrentTask: () => ({ state, tr, dispatch }) => {
+        const { $from } = state.selection;
+        for (let depth = $from.depth; depth > 0; depth--) {
+          if ($from.node(depth).type.name !== this.name) continue;
+          const position = $from.before(depth), node = $from.node(depth);
+          if (dispatch) {
+            tr.setNodeMarkup(position, undefined, { ...node.attrs, checked: !node.attrs.checked });
+            if (this.storage.autoSort ?? this.options.autoSort) {
+              // Resolve the current selection after the toggle; sorting keeps the caret in its task.
+              queueMicrotask(() => { if (!this.editor.isDestroyed) reorderTasksInList(this.editor, this.editor.state.selection.from); });
+            }
+          }
+          return true;
+        }
+        return false;
+      },
+      sortCompletedTasks: () => ({ state, dispatch }) => {
+        if (!this.editor.isActive('taskList')) return false;
+        if (dispatch) queueMicrotask(() => { if (!this.editor.isDestroyed) reorderTasksInList(this.editor, this.editor.state.selection.from); });
+        return true;
+      }
     };
   },
 
@@ -157,6 +211,7 @@ export const CustomTaskItem = TaskItem.extend({
           listItem.dataset.checked = String(updatedNode.attrs.checked);
           checkbox.checked = !!updatedNode.attrs.checked;
           setDirection(updatedNode);
+          node = updatedNode;
           updateA11Y();
           return true;
         }
@@ -192,6 +247,7 @@ export const CustomTaskItem = TaskItem.extend({
   addKeyboardShortcuts() {
     return {
       ...this.parent?.(),
+      'Mod-Shift-u': () => this.editor.commands.toggleCurrentTask(),
       Backspace: () => {
         const { state, dispatch } = this.editor.view;
         const { selection } = state;

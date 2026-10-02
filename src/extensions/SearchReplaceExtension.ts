@@ -192,21 +192,26 @@ export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorag
             }
 
             const results: { from: number; to: number }[] = [];
-            const term = caseSensitive ? rawTerm : rawTerm.toLowerCase();
 
-            newState.doc.descendants((node, pos) => {
-              if (node.isText && node.text) {
-                const text = caseSensitive ? node.text : node.text.toLowerCase();
-                let index = text.indexOf(term);
-                while (index !== -1) {
-                  const from = pos + index;
-                  const to = from + term.length;
-                  if (from < to && to <= newState.doc.content.size) {
-                    results.push({ from, to });
-                  }
-                  index = text.indexOf(term, index + term.length);
-                }
+
+            // Match across bold/italic/link boundaries inside each text block.
+            const escaped = rawTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const pattern = new RegExp(escaped, caseSensitive ? 'g' : 'gi');
+            newState.doc.descendants((block, blockPos) => {
+              if (!block.isTextblock) return;
+              let text = '';
+              const positions: number[] = [];
+              block.forEach((child, offset) => {
+                const value = child.isText ? child.text || '' : '\uFFFC';
+                for (let index = 0; index < value.length; index++) positions.push(blockPos + 1 + offset + index);
+                text += value;
+              });
+              pattern.lastIndex = 0;
+              let match: RegExpExecArray | null;
+              while ((match = pattern.exec(text))) {
+                results.push({ from: positions[match.index], to: positions[match.index + match[0].length - 1] + 1 });
               }
+              return false;
             });
 
             extension.storage.results = results;
