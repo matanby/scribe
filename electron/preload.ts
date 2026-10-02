@@ -33,7 +33,7 @@ export const scribeAPI = {
   renameFolder: (payload: { folderPath: string; newName: string }) => ipcRenderer.invoke('folders:rename', payload),
   deleteFolder: (folderPath: string) => ipcRenderer.invoke('folders:delete', folderPath),
   copyToClipboard: (text: string) => ipcRenderer.invoke('clipboard:writeText', text),
-  showNoteContextMenu: (payload: { note: any; isPinned: boolean; isTrash: boolean; folders: any[] }) =>
+  showNoteContextMenu: (payload: { note: any; isPinned: boolean; isTrash: boolean; folders: any[]; position?: { x: number; y: number } }) =>
     ipcRenderer.invoke('contextMenu:note', payload),
   showFolderContextMenu: (payload: { folderPath: string; isRoot: boolean }) =>
     ipcRenderer.invoke('contextMenu:folder', payload),

@@ -1,15 +1,13 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { FolderNode, NoteMeta, SortMode } from '../types';
 import { 
-  Trash2, 
   FileText, 
-  RotateCcw, 
-  XCircle, 
   Pin, 
   ArrowUpDown, 
   Check, 
   List,
-  Folder
+  Folder,
+  MoreHorizontal
 } from 'lucide-react';
 
 interface NoteListProps {
@@ -86,6 +84,7 @@ export const NoteList: React.FC<NoteListProps> = ({
   const [showSortMenu, setShowSortMenu] = useState(false);
   const sortMenuRef = useRef<HTMLDivElement>(null);
   const noteRefs = useRef(new Map<string, HTMLDivElement>());
+  const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -104,7 +103,9 @@ export const NoteList: React.FC<NoteListProps> = ({
     };
   }, []);
 
-  const handleContextMenu = async (note: NoteMeta, e: React.MouseEvent) => {
+  const handleContextMenu = async (note: NoteMeta, e: React.MouseEvent, position?: { x: number; y: number }) => {
+    const trigger = e.currentTarget as HTMLElement;
+    const index = orderedNotes.findIndex(item => item.filePath === note.filePath);
     e.preventDefault();
     e.stopPropagation();
     onSelectNote(note);
@@ -117,7 +118,8 @@ export const NoteList: React.FC<NoteListProps> = ({
           note,
           isPinned,
           isTrash: !!isTrash,
-          folders
+          folders,
+          position
         });
       } catch (err) {
         console.error('Failed to open note context menu:', err);
@@ -128,7 +130,7 @@ export const NoteList: React.FC<NoteListProps> = ({
         if (res.action === 'togglePin') {
           onTogglePin(note.filePath, e);
         } else if (res.action === 'duplicate') {
-          onDuplicateNote?.(note);
+          await onDuplicateNote?.(note);
         } else if (res.action === 'revealInFinder') {
           if (onRevealInFinder) {
             onRevealInFinder(note.filePath);
@@ -136,17 +138,23 @@ export const NoteList: React.FC<NoteListProps> = ({
             window.scribeAPI.showInFinder?.(note.filePath);
           }
         } else if (res.action === 'moveToFolder' && res.targetPath) {
-          onMoveNote?.(note.filePath, res.targetPath);
+          await onMoveNote?.(note.filePath, res.targetPath);
         } else if (res.action === 'exportPDF') {
           onExportPDF?.(note.title);
         } else if (res.action === 'trash') {
-          onDeleteNote(note, e);
+          await onDeleteNote(note, e);
         } else if (res.action === 'restore') {
-          onRestoreNote?.(note, e);
+          await onRestoreNote?.(note, e);
         } else if (res.action === 'permanentDelete') {
-          onDeleteNote(note, e);
+          await onDeleteNote(note, e);
         }
       }
+      requestAnimationFrame(() => {
+        const rows = Array.from(listRef.current?.querySelectorAll<HTMLDivElement>('.note-list-row') || []);
+        const selectedRow = rows.find(row => row.getAttribute('aria-current') === 'true') || rows[Math.max(0, Math.min(index, rows.length - 1))];
+        const target = trigger.isConnected && trigger.closest('.note-list-row') === selectedRow ? trigger : selectedRow;
+        target?.focus({ preventScroll: true });
+      });
     }
   };
 
@@ -281,7 +289,7 @@ export const NoteList: React.FC<NoteListProps> = ({
           event.currentTarget.focus({ preventScroll: true });
           onSelectNote(note);
         }}
-        onContextMenu={(e) => handleContextMenu(note, e)}
+        onContextMenu={e => handleContextMenu(note, e, { x: e.clientX, y: e.clientY })}
         draggable={!isTrash}
         onDragStart={(e) => {
           e.dataTransfer.setData('text/plain', note.filePath);
@@ -312,54 +320,22 @@ export const NoteList: React.FC<NoteListProps> = ({
             </h3>
           </div>
           
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity shrink-0">
-            {!isTrash && (
-              <button
-                tabIndex={isSelected ? 0 : -1}
-                aria-label={isPinned ? 'Unpin note' : 'Pin note'}
-                onClick={(e) => onTogglePin(note.filePath, e)}
-                title={isPinned ? "Unpin Note" : "Pin Note to Top"}
-                className={`p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 ${
-                  isPinned ? 'text-[var(--accent-color)]' : 'text-[var(--text-secondary)]'
-                }`}
-              >
-                <Pin size={11} className={isPinned ? 'fill-[var(--accent-color)]' : ''} />
-              </button>
-            )}
-
-            {isTrash ? (
-              <>
-                <button
-                  tabIndex={isSelected ? 0 : -1}
-                  aria-label="Restore note"
-                  onClick={(e) => onRestoreNote && onRestoreNote(note, e)}
-                  title="Restore Note"
-                  className="p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 text-emerald-600"
-                >
-                  <RotateCcw size={11.5} />
-                </button>
-                <button
-                  tabIndex={isSelected ? 0 : -1}
-                  aria-label="Delete permanently"
-                  onClick={(e) => onDeleteNote(note, e)}
-                  title="Delete Permanently"
-                  className="p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 text-red-500"
-                >
-                  <XCircle size={11.5} />
-                </button>
-              </>
-            ) : (
-              <button
-                tabIndex={isSelected ? 0 : -1}
-                aria-label="Move to trash"
-                onClick={(e) => onDeleteNote(note, e)}
-                title="Move to Trash"
-                className="p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 text-red-500"
-              >
-                <Trash2 size={11} />
-              </button>
-            )}
-          </div>
+          {isSelected && (
+            <button
+              type="button"
+              aria-label={`Actions for ${note.title || 'Untitled Note'}`}
+              aria-haspopup="menu"
+              title="Note actions"
+              draggable={false}
+              onClick={event => {
+                const bounds = event.currentTarget.getBoundingClientRect();
+                void handleContextMenu(note, event, { x: bounds.left, y: bounds.bottom + 4 });
+              }}
+              className="shrink-0 p-0.5 rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+            >
+              <MoreHorizontal size={14} />
+            </button>
+          )}
         </div>
 
         {/* Note Metadata & Snippet */}
@@ -454,7 +430,7 @@ export const NoteList: React.FC<NoteListProps> = ({
       </div>
 
       {/* Note Cards List with Apple Notes Section Headers */}
-      <div role="list" aria-label="Notes. Use arrow keys to browse and Enter to edit." className="flex-1 overflow-y-auto px-2 py-1.5 space-y-2">
+      <div ref={listRef} role="list" aria-label="Notes. Use arrow keys to browse and Enter to edit." className="flex-1 overflow-y-auto px-2 py-1.5 space-y-2">
         {notes.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center p-6 text-center text-[var(--text-secondary)] select-none">
             <FileText size={32} className="opacity-20 mb-2" />

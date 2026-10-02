@@ -678,7 +678,7 @@ ipcMain.handle('clipboard:writeText', async (_, text: string) => {
   return true;
 });
 
-ipcMain.handle('contextMenu:note', async (event, { note, isPinned, isTrash, folders }) => {
+ipcMain.handle('contextMenu:note', async (event, { note, isPinned, isTrash, folders, position }) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win) return null;
 
@@ -790,8 +790,17 @@ ipcMain.handle('contextMenu:note', async (event, { note, isPinned, isTrash, fold
     }
 
     const menu = Menu.buildFromTemplate(template);
+    const zoom = win.webContents.getZoomFactor();
+    const bounds = win.getContentBounds();
+    const anchor = position && Number.isFinite(position.x) && Number.isFinite(position.y)
+      ? {
+          x: Math.max(0, Math.min(bounds.width - 1, Math.round(position.x * zoom))),
+          y: Math.max(0, Math.min(bounds.height - 1, Math.round(position.y * zoom)))
+        }
+      : {};
     menu.popup({
       window: win,
+      ...anchor,
       callback: () => {
         setTimeout(() => resolve(null), 100);
       }
