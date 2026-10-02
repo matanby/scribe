@@ -1,11 +1,13 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { flushNote } from './utils/flushNote';
+import { readStored, writeStored, remapPosition } from './utils/session';
 import { Titlebar } from './components/Titlebar';
 import { Sidebar } from './components/Sidebar';
 import { NoteList } from './components/NoteList';
 import { Editor } from './components/Editor';
 import { QuickSwitcher } from './components/QuickSwitcher';
 import { AppearanceModal, AppearanceSettings, ACCENT_PALETTES } from './components/AppearanceModal';
-import { NoteMeta, NoteFocusRequest, NotesTree, SortMode } from './types';
+import { NoteMeta, NoteFocusRequest, NotesTree, SortMode, FolderNode } from './types';
 import { confirmDestructive, showMessage } from './utils/dialogs';
 
 export const App: React.FC = () => {
@@ -217,16 +219,33 @@ export const App: React.FC = () => {
     window.addEventListener('mouseup', onMouseUp);
   }, [noteListWidth]);
 
+  const restoredRoot = useRef('');
+  useEffect(() => {
+    if (!tree || restoredRoot.current !== tree.rootPath) return;
+    if (selectedNote && ![...tree.allNotes, ...tree.trashNotes].some(note => note.filePath === selectedNote.filePath)) return;
+    writeStored(`scribe_session:${tree.rootPath}`, { folder: selectedFolder, note: selectedNote?.filePath || null });
+  }, [tree, selectedNote, selectedFolder]);
+
   // Load / Refresh Notes Tree
   const loadTree = useCallback(async (preferredSelectPath?: string) => {
     try {
       const data = await window.scribeAPI.listNotesTree();
+      let restoredPath: string | undefined;
+      if (restoredRoot.current !== data.rootPath) {
+        restoredRoot.current = data.rootPath;
+        const session = readStored<{ folder: string; note: string | null } | null>(`scribe_session:${data.rootPath}`, null);
+        if (session) {
+          restoredPath = session.note || undefined;
+          const folders = (nodes: FolderNode[]): string[] => nodes.flatMap(node => [node.relativePath, ...folders(node.children)]);
+          setSelectedFolder(session.folder === '__TRASH__' || folders(data.folders).includes(session.folder) ? session.folder : '');
+        } else setSelectedFolder('');
+      }
       setTree(data);
 
       setSelectedNote((prev: NoteMeta | null) => {
-        if (preferredSelectPath) {
+        if (preferredSelectPath || restoredPath) {
           const found = [...data.allNotes, ...data.trashNotes].find(
-            (n: NoteMeta) => n.filePath === preferredSelectPath
+            (n: NoteMeta) => n.filePath === (preferredSelectPath || restoredPath)
           );
           if (found) return found;
         }
@@ -308,6 +327,7 @@ export const App: React.FC = () => {
    */
   const remapNotePath = useCallback((oldPath: string, newPath: string) => {
     if (oldPath === newPath) return;
+    remapPosition(oldPath, newPath);
 
     setPinnedIds(prev => {
       if (!prev.has(oldPath)) return prev;
@@ -582,8 +602,8 @@ export const App: React.FC = () => {
   }, [loadTree]);
 
   // Delete / Trash Note
-  const handleDeleteNote = useCallback(async (note: NoteMeta, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleDeleteNote = useCallback(async (note: NoteMeta, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     if (selectedFolder === '__TRASH__') {
       const what = note.isFolder ? `folder "${note.title}" and everything in it` : `"${note.title}"`;
       const confirmDelete = await confirmDestructive(
@@ -599,13 +619,21 @@ export const App: React.FC = () => {
       }
     } else {
       try {
+        await flushNote(note.filePath);
         await window.scribeAPI.trashNote(note.filePath);
         await loadTree();
       } catch (err) {
         console.error('Failed to move note to trash:', err);
+        void showMessage('Could not move note to Trash', (err as Error).message, 'error');
       }
     }
   }, [selectedFolder, loadTree]);
+
+  useEffect(() => window.scribeAPI.onMenuEvent('menu:trashNote', () => {
+    if (document.querySelector('[aria-modal="true"]') || selectedFolder === '__TRASH__') return;
+    const note = selectedNoteRef.current;
+    if (note && !note.isFolder) void handleDeleteNote(note);
+  }), [handleDeleteNote, selectedFolder]);
 
   // Restore note from trash
   const handleRestoreNote = useCallback(async (note: NoteMeta, e: React.MouseEvent) => {
@@ -694,7 +722,7 @@ export const App: React.FC = () => {
   // Full-text matches come from the main process, which can read note bodies. The list
   // still filters on title/snippet immediately so typing stays responsive; body matches
   // fold in when the search returns.
-  const [bodyMatches, setBodyMatches] = useState<Set<string> | null>(null);
+  const [bodyMatches, setBodyMatches] = useState<Map<string, string> | null>(null);
 
   useEffect(() => {
     const query = searchQuery.trim();
@@ -703,12 +731,13 @@ export const App: React.FC = () => {
       return;
     }
 
+    setBodyMatches(null);
     let cancelled = false;
     const timer = setTimeout(() => {
       window.scribeAPI
-        .searchNotes(query)
-        .then(paths => {
-          if (!cancelled) setBodyMatches(new Set(paths));
+        .searchExcerpts(query)
+        .then(results => {
+          if (!cancelled) setBodyMatches(new Map(results.map(result => [result.filePath, result.excerpt])));
         })
         .catch(err => console.error('Search failed:', err));
     }, 200);
@@ -717,7 +746,7 @@ export const App: React.FC = () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [searchQuery]);
+  }, [searchQuery, tree]);
 
   // Filter notes based on selected folder / trash and search query
   const isTrashView = selectedFolder === '__TRASH__';
@@ -794,6 +823,7 @@ export const App: React.FC = () => {
         onGoForward={handleGoForward}
         canGoBack={canGoBack}
         canGoForward={canGoForward}
+        onQuickCapture={() => { void window.scribeAPI.openCapture(); }}
         onExportPDF={handleExportPDF}
         onPrint={handlePrint}
       />
@@ -812,6 +842,7 @@ export const App: React.FC = () => {
         >
           <div style={{ width: `${sidebarWidth}px` }} className="h-full">
             <Sidebar
+              key={tree?.rootPath || "loading"}
               tree={tree}
               selectedFolder={selectedFolder}
               onSelectFolder={setSelectedFolder}
@@ -848,8 +879,16 @@ export const App: React.FC = () => {
             onToggleCompact={handleToggleCompactNotes}
             notes={filteredNotes}
             selectedNoteId={selectedNote?.id || null}
-            onSelectNote={selectNoteWithHistory}
-            onEditNote={handleEditNote}
+            searchQuery={searchQuery}
+            searchExcerpts={bodyMatches}
+            onSelectNote={note => {
+              selectNoteWithHistory(note);
+              if (searchQuery.trim()) setEditorFocusRequest({ filePath: note.filePath, requestId: ++editorFocusSequence.current, search: searchQuery.trim() });
+            }}
+            onEditNote={note => {
+              handleEditNote(note);
+              if (searchQuery.trim()) setEditorFocusRequest({ filePath: note.filePath, requestId: ++editorFocusSequence.current, search: searchQuery.trim(), focus: true });
+            }}
             onDeleteNote={handleDeleteNote}
             isTrash={isTrashView}
             onRestoreNote={handleRestoreNote}

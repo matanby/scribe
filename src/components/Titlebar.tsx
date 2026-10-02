@@ -13,7 +13,8 @@ import {
   ChevronLeft,
   ChevronRight,
   FileDown,
-  Printer
+  Printer,
+  NotebookPen
 } from 'lucide-react';
 
 interface TitlebarProps {
@@ -33,6 +34,7 @@ interface TitlebarProps {
   onGoForward?: () => void;
   canGoBack?: boolean;
   canGoForward?: boolean;
+  onQuickCapture?: () => void;
   onExportPDF?: () => void;
   onPrint?: () => void;
 }
@@ -54,6 +56,7 @@ export const Titlebar: React.FC<TitlebarProps> = ({
   onGoForward,
   canGoBack,
   canGoForward,
+  onQuickCapture,
   onExportPDF,
   onPrint
 }) => {
@@ -78,6 +81,7 @@ export const Titlebar: React.FC<TitlebarProps> = ({
     };
   }, [showActions]);
   const secondaryActions = [
+    ...(onQuickCapture ? [{ label: 'Quick Capture…', icon: NotebookPen, action: onQuickCapture }] : []),
     ...(onExportPDF ? [{ label: 'Export PDF…', icon: FileDown, action: onExportPDF }] : []),
     ...(onPrint ? [{ label: 'Print…', icon: Printer, action: onPrint }] : []),
     { label: 'Open Notes Folder…', icon: FolderOpen, action: onSelectFolder },

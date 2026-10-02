@@ -160,3 +160,11 @@ Official `brew install --cask` on Homebrew’s own tap is not possible without a
 - [ ] **Milestone 4:** Implement TipTap WYSIWYG editor with Markdown serialization.
 - [ ] **Milestone 5:** Build and verify dynamic BiDi/RTL engine for Hebrew & English.
 - [ ] **Milestone 6:** Launch, test with real notes, and package native app.
+
+
+## Capture, search, history, and returning to work
+
+- **Quick Capture:** press **⌃⌥⌘N** while Scribe is running, or choose **File → Quick Capture** (also available in the toolbar’s More actions). Save with **⌘Return**. Escape dismisses the window and retains its draft. Captured notes go to the current notes folder’s root; when another app is active, the most recently opened notes folder is used.
+- **Search:** matching passages appear in the note list, including in compact view while searching. Select a result to scroll to the first matching passage. Search uses the selected folder or Recently Deleted as its scope.
+- **Version History:** click the date above a note’s title and choose **View Version History**. Browse dated versions with excerpts, preview the formatted note next to the version list, and restore a previous version. The current note is also available for comparison. Scribe preserves the initial content before editing, then takes checkpoints at five-minute intervals when content changes, retaining up to 100 versions per note. Restoring always preserves the outgoing version. History is local to this Mac in Scribe’s application data; it starts with edits made in this version and is not synced with the Markdown files. App-initiated moves and renames carry history along. Permanent deletion also removes that note’s history.
+- **Resume:** each notes folder remembers its selected note and folder; the last 100 notes remember their cursor and scroll positions. Expanded folders are restored when you return.

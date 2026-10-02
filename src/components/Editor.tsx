@@ -26,6 +26,9 @@ import { CollapsibleHeadingsExtension } from '../extensions/CollapsibleHeadingsE
 import { MathExtension } from '../extensions/MathExtension';
 import { BubbleMenu } from './BubbleMenu';
 import { FormattingBar } from './FormattingBar';
+import { FLUSH_NOTE_EVENT, FlushNoteRequest } from '../utils/flushNote';
+import { NoteHistory } from './NoteHistory';
+import { readPosition, savePosition } from '../utils/session';
 import { NoteInfo } from './NoteInfo';
 import { TableControls } from './TableControls';
 import { SlashMenu } from './SlashMenu';
@@ -145,6 +148,10 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   onFocusRequestHandled
 }) => {
   const [title, setTitle] = useState(note.title);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const positionRestored = useRef(false);
+  const initialPosition = useRef(readPosition(note.filePath));
   const [isFindOpen, setIsFindOpen] = useState(false);
   const [showReplaceMode, setShowReplaceMode] = useState(false);
   const [findTrigger, setFindTrigger] = useState(0);
@@ -211,6 +218,19 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
 
   const performSaveRef = useRef(performSave);
   performSaveRef.current = performSave;
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const request = (event as CustomEvent<FlushNoteRequest>).detail;
+      if (request.filePath !== notePathRef.current) return;
+      request.pending.push((async () => {
+        await performSaveRef.current();
+        if (isDirtyRef.current) throw new Error('Could not save your latest changes. Retry saving before deleting this note.');
+      })());
+    };
+    window.addEventListener(FLUSH_NOTE_EVENT, handler);
+    return () => window.removeEventListener(FLUSH_NOTE_EVENT, handler);
+  }, []);
 
   const scheduleSave = useCallback(() => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -469,8 +489,40 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   editorRef.current = editor;
 
   useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    const position = initialPosition.current;
+    if (position) {
+      const max = Math.max(1, editor.state.doc.content.size - 1);
+      editor.commands.setTextSelection({ from: Math.max(1, Math.min(position.from, max)), to: Math.max(1, Math.min(position.to, max)) });
+    }
+    const frame = requestAnimationFrame(() => {
+      if (scrollerRef.current && position && !searchQuery?.trim() && !focusRequest) scrollerRef.current.scrollTop = position.scroll;
+      positionRestored.current = true;
+    });
+    const scroller = scrollerRef.current;
+    const persist = () => {
+      if (!positionRestored.current || editor.isDestroyed) return;
+      const { from, to } = editor.state.selection;
+      savePosition(note.filePath, { from, to, scroll: scroller?.scrollTop || 0 });
+    };
+    editor.on('selectionUpdate', persist);
+    const onScroll = persist;
+    scroller?.addEventListener('scroll', onScroll);
+    window.addEventListener('beforeunload', persist);
+    return () => {
+      persist(); cancelAnimationFrame(frame);
+      editor.off('selectionUpdate', persist); scroller?.removeEventListener('scroll', onScroll); window.removeEventListener('beforeunload', persist);
+    };
+  }, [editor, note.filePath]);
+
+  useEffect(() => {
     if (!editor || editor.isDestroyed || focusRequest?.filePath !== note.filePath) return;
-    editor.commands.focus('end');
+    if (focusRequest.search) {
+      editor.commands.setSearchTerm(focusRequest.search);
+      const match = editor.storage.searchReplace.results[0];
+      if (match) editor.commands.setTextSelection(match);
+      if (focusRequest.focus) editor.commands.focus();
+    } else editor.commands.focus();
     onFocusRequestHandled?.(focusRequest.requestId);
   }, [editor, focusRequest, note.filePath, onFocusRequestHandled]);
 
@@ -647,10 +699,24 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
         </div>
       )}
 
+      {historyOpen && <NoteHistory note={note} currentMarkdown={editor?.storage.markdown.getMarkdown() ?? initialMarkdown} onClose={() => setHistoryOpen(false)} onRestore={async id => {
+        await performSaveRef.current();
+        if (isDirtyRef.current) throw new Error('Save your changes before restoring a version.');
+        await window.scribeAPI.restoreVersion(note.filePath, id);
+        const data = await window.scribeAPI.readNote(note.filePath);
+        applyExternalContent(editor, data.markdown);
+        lastSyncedMarkdownRef.current = data.markdown;
+        isDirtyRef.current = false;
+        setConflictMarkdown(null);
+      }} />}
+
       {/* Scrollable Note Content Container */}
-      <div className="flex-1 overflow-y-auto relative">
+      <div ref={scrollerRef} className="flex-1 overflow-y-auto relative">
         <div className="w-full max-w-[900px] mx-auto px-8 pt-7 pb-2 print:max-w-full print:p-0 print:m-0">
-          <NoteInfo note={note} wordCount={wordCount} onSelectFolder={onSelectFolder} />
+          <NoteInfo note={note} wordCount={wordCount} onSelectFolder={onSelectFolder} onHistory={async () => {
+            await performSaveRef.current();
+            if (!isDirtyRef.current) setHistoryOpen(true);
+          }} />
 
           {/* Note Title Input */}
           <input

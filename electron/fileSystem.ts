@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import matter from 'gray-matter';
 import chokidar, { FSWatcher } from 'chokidar';
 import { app } from 'electron';
+import { checkpoint, remapVersions, readVersions, forgetVersions } from './history';
 import { NoteMeta, FolderNode, NotesTree } from './types';
 
 function getDefaultNotesPath(): string {
@@ -552,12 +553,12 @@ export async function searchNotes(rootDir: string, query: string): Promise<strin
       } else {
         const stats = await fs.stat(note.filePath);
         const raw = await fs.readFile(note.filePath, 'utf-8');
-        text = safeParseFrontmatter(raw).content.toLowerCase();
+        text = safeParseFrontmatter(raw).content;
         bodyCache.set(key, { mtimeMs: stats.mtimeMs, size: stats.size, text });
         trimCache(bodyCache);
       }
 
-      if (text.includes(needle)) matches.push(note.filePath);
+      if (text.toLowerCase().includes(needle)) matches.push(note.filePath);
     } catch {
       // Unreadable file; just don't match it.
     }
@@ -731,16 +732,12 @@ export async function saveNoteContent(filePath: string, markdown: string, origin
 
   // Re-attach whatever frontmatter is currently on disk, verbatim. The editor never owns
   // frontmatter, so round-tripping it through YAML would only lose comments and ordering.
-  let block = '';
-  try {
-    const existing = await fs.readFile(filePath, 'utf-8');
-    block = splitFrontmatter(existing).block;
-  } catch {
-    // Unreadable but present; write the body alone rather than losing the edit.
-  }
-
+  const existing = await fs.readFile(filePath, 'utf-8');
+  const block = splitFrontmatter(existing).block;
   const body = toDiskMarkdown(markdown, filePath);
   const fileContent = block ? `${block}${body}` : body;
+  if (existing === fileContent) return;
+  await checkpoint(filePath, existing, (await fs.stat(filePath)).mtimeMs);
   markSelfWrite(filePath, fileContent, originId);
   await fs.writeFile(filePath, fileContent, 'utf-8');
   invalidateDerived(filePath);
@@ -787,6 +784,7 @@ export async function renameNote(rootDir: string, filePath: string, newTitle: st
     newFilePath = uniqueTarget(dir, `${sanitizedTitle}${ext}`);
     markSelfOp(originId, filePath, newFilePath);
     await fs.rename(filePath, newFilePath);
+    await remapVersions(filePath, newFilePath);
     invalidateDerived(filePath);
   }
 
@@ -816,6 +814,7 @@ export async function moveNote(rootDir: string, filePath: string, targetFolderPa
     targetPath = uniqueTarget(targetFolderPath, fileName);
     markSelfOp(originId, filePath, targetPath);
     await fs.rename(filePath, targetPath);
+    await remapVersions(filePath, targetPath);
     invalidateDerived(filePath);
 
     // Image links are relative to the note, so moving it to another folder invalidates
@@ -847,6 +846,7 @@ export async function moveToTrash(filePath: string, rootDir: string, originId?: 
 
   markSelfOp(originId, filePath, targetPath);
   await fs.rename(filePath, targetPath);
+  await remapVersions(filePath, targetPath);
   invalidateDerived(filePath);
 
   const index = readTrashIndex(rootDir);
@@ -880,6 +880,7 @@ export async function restoreFromTrash(filePath: string, rootDir: string, origin
 
   markSelfOp(originId, filePath, targetPath);
   await fs.rename(filePath, targetPath);
+  await remapVersions(filePath, targetPath);
   invalidateDerived(filePath);
 
   if (record) {
@@ -892,6 +893,7 @@ export async function restoreFromTrash(filePath: string, rootDir: string, origin
 
 export async function permanentDeleteNote(filePath: string, rootDir?: string, originId?: number): Promise<void> {
   markSelfOp(originId, filePath);
+  await forgetVersions(filePath);
   await fs.rm(filePath, { recursive: true, force: true });
   invalidateDerived(filePath);
 
@@ -915,6 +917,7 @@ export async function emptyTrash(rootDir: string, originId?: number): Promise<vo
     const target = path.join(trashDir, entry);
     markSelfOp(originId, target);
     // Deleted folders land in the trash too, so this has to handle directories.
+    await forgetVersions(target);
     await fs.rm(target, { recursive: true, force: true });
     invalidateDerived(target);
   }
@@ -966,6 +969,7 @@ export async function renameFolder(folderPath: string, newName: string, originId
     target = uniqueTarget(parent, sanitized);
     markSelfOp(originId, folderPath, target);
     await fs.rename(folderPath, target);
+    await remapVersions(folderPath, target);
     derivedCache.clear();
   }
   return target;
@@ -977,6 +981,7 @@ export async function deleteFolder(folderPath: string, rootDir: string, originId
 
   markSelfOp(originId, folderPath, finalTarget);
   await fs.rename(folderPath, finalTarget);
+  await remapVersions(folderPath, finalTarget);
   derivedCache.clear();
 
   const index = readTrashIndex(rootDir);
@@ -1059,4 +1064,61 @@ export function startWatchingWindow(
   };
 
   windowWatchers.set(webContentsId, watcher);
+}
+
+export async function previewVersion(filePath: string, id: string) {
+  const version = (await readVersions(filePath)).find(item => item.id === id);
+  if (!version) throw new Error('This version is no longer available.');
+  return toDisplayMarkdown(safeParseFrontmatter(version.raw).content, version.sourcePath);
+}
+export async function restoreVersion(filePath: string, id: string, originId?: number) {
+  const version = (await readVersions(filePath)).find(item => item.id === id);
+  if (!version) throw new Error('This version is no longer available.');
+  const current = await fs.readFile(filePath, 'utf8');
+  await checkpoint(filePath, current, (await fs.stat(filePath)).mtimeMs, true);
+  const raw = toDiskMarkdown(toDisplayMarkdown(version.raw, version.sourcePath), filePath);
+  markSelfWrite(filePath, raw, originId);
+  await fs.writeFile(filePath, raw, 'utf8');
+  invalidateDerived(filePath);
+}
+export async function searchExcerpts(rootDir: string, query: string) {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [];
+  const tree = await readAllNotesTree(rootDir);
+  const results: { filePath: string; excerpt: string }[] = [];
+  for (const note of [...tree.allNotes, ...tree.trashNotes].filter(note => !note.isFolder)) {
+    try {
+      const key = normalizePath(note.filePath);
+      const cached = bodyCache.get(key);
+      let body: string;
+      if (cached && cached.mtimeMs === note.modifiedAt) body = cached.text;
+      else {
+        const stats = await fs.stat(note.filePath);
+        body = safeParseFrontmatter(await fs.readFile(note.filePath, 'utf8')).content;
+        bodyCache.set(key, { mtimeMs: stats.mtimeMs, size: stats.size, text: body });
+        trimCache(bodyCache);
+      }
+      const text = body
+        .replace(/<[^>]*>/g, '')
+        .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+        .replace(/^\s{0,3}(?:#{1,6} |[-*+] (?:\[[ x]\] )?)/gm, '')
+        .replace(/\*\*(.*?)\*\*/g, '$1')
+        .replace(/`([^`]+)`/g, '$1')
+        .replace(/\s+/g, ' ');
+      const index = text.toLowerCase().indexOf(needle);
+      if (index < 0 && !note.title.toLowerCase().includes(needle)) continue;
+      const start = index < 0 ? 0 : Math.max(0, index - 65);
+      const end = index < 0 ? 160 : Math.min(text.length, index + needle.length + 95);
+      results.push({ filePath: note.filePath, excerpt: `${start ? '…' : ''}${text.slice(start, end).replace(/\s+/g, ' ')}${end < text.length ? '…' : ''}` });
+    } catch { /* An unreadable note should not prevent other results. */ }
+  }
+  return results;
+}
+
+export async function listVersionSummaries(filePath: string) {
+  return (await readVersions(filePath)).reverse().map(({ id, savedAt, raw }) => {
+    const content = safeParseFrontmatter(raw).content;
+    return { id, savedAt, excerpt: cleanMarkdownSnippet(content), wordCount: content.trim() ? content.trim().split(/\s+/u).length : 0 };
+  });
 }

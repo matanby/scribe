@@ -1,6 +1,14 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 export const scribeAPI = {
+  searchExcerpts: (query: string) => ipcRenderer.invoke('notes:searchExcerpts', query) as Promise<{ filePath: string; excerpt: string }[]>,
+  listVersions: (filePath: string) => ipcRenderer.invoke('notes:versions', filePath) as Promise<{ id: string; savedAt: number; excerpt: string; wordCount: number }[]>,
+  previewVersion: (filePath: string, id: string) => ipcRenderer.invoke('notes:previewVersion', filePath, id) as Promise<string>,
+  restoreVersion: (filePath: string, id: string) => ipcRenderer.invoke('notes:restoreVersion', filePath, id),
+  captureInfo: () => ipcRenderer.invoke('capture:info') as Promise<{ rootPath: string; shortcutAvailable: boolean }>,
+  saveCapture: (title: string, content: string) => ipcRenderer.invoke('capture:save', title, content),
+  closeCapture: () => ipcRenderer.invoke('capture:close'),
+  openCapture: () => ipcRenderer.invoke('capture:open'),
   listNotesTree: () => ipcRenderer.invoke('notes:listTree'),
   readNote: (filePath: string) => ipcRenderer.invoke('notes:read', filePath),
   saveNote: (payload: { filePath: string; markdown: string }) =>

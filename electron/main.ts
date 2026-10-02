@@ -1,8 +1,9 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu, shell, screen, clipboard, protocol, net, MenuItemConstructorOptions } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu, shell, screen, clipboard, protocol, net, MenuItemConstructorOptions, globalShortcut } from 'electron';
 import path from 'path';
 import fsSync from 'fs';
 import { pathToFileURL } from 'url';
 import { 
+  searchExcerpts, previewVersion, restoreVersion, listVersionSummaries,
   getWindowRoot,
   setWindowRoot,
   removeWindowTracking,
@@ -44,6 +45,7 @@ process.env.DIST = path.join(__dirname, '../dist');
 process.env.VITE_PUBLIC = app.isPackaged ? process.env.DIST : path.join(process.env.DIST, '../public');
 
 const allWindows = new Set<BrowserWindow>();
+const QUICK_CAPTURE_SHORTCUT = process.platform === 'darwin' ? 'Control+Alt+Command+N' : 'Control+Alt+N';
 
 function getAppIconPath(): string {
   const possiblePaths = [
@@ -301,9 +303,21 @@ function setupMenu() {
         },
         { type: 'separator' as const },
         {
+          label: 'Quick Capture…',
+          accelerator: QUICK_CAPTURE_SHORTCUT,
+          click: () => openCapture()
+        },
+        {
           label: 'Save Note',
           accelerator: 'CmdOrCtrl+S',
           click: (_item, focusedWin) => sendToFocusedWindow('menu:saveNote', focusedWin as BrowserWindow)
+        },
+        {
+          label: 'Move Note to Trash',
+          accelerator: 'CmdOrCtrl+Backspace',
+          click: (_item, focusedWin) => {
+            if (focusedWin && allWindows.has(focusedWin as BrowserWindow)) sendToFocusedWindow('menu:trashNote', focusedWin as BrowserWindow);
+          }
         },
         {
           label: 'Duplicate Note',
@@ -435,11 +449,14 @@ app.whenReady().then(() => {
 
   setupMenu();
   createWindow();
+  captureShortcutAvailable = globalShortcut.register(QUICK_CAPTURE_SHORTCUT, () => openCapture());
 
   app.on('activate', () => {
     if (allWindows.size === 0) createWindow();
   });
 });
+
+app.on('will-quit', () => globalShortcut.unregisterAll());
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -526,13 +543,13 @@ ipcMain.handle('notes:print', (event) => {
 ipcMain.handle('notes:delete', async (event, filePath: string) => {
   const root = getWindowRoot(event.sender.id);
   assertInsideRoot(root, filePath);
-  return await moveToTrash(filePath, root, event.sender.id);
+  return await withFileLock(filePath, () => moveToTrash(filePath, root, event.sender.id));
 });
 
 ipcMain.handle('notes:trash', async (event, filePath: string) => {
   const root = getWindowRoot(event.sender.id);
   assertInsideRoot(root, filePath);
-  return await moveToTrash(filePath, root, event.sender.id);
+  return await withFileLock(filePath, () => moveToTrash(filePath, root, event.sender.id));
 });
 
 ipcMain.handle('notes:restore', async (event, filePath: string) => {
@@ -854,4 +871,62 @@ ipcMain.handle('contextMenu:folder', async (event, { folderPath, isRoot }) => {
       }
     });
   });
+});
+
+let captureWindow: BrowserWindow | null = null;
+let captureShortcutAvailable = false;
+let captureRoot = '';
+let captureSaving = false;
+function openCapture() {
+  if (captureWindow && !captureWindow.isDestroyed()) { captureWindow.show(); captureWindow.focus(); return; }
+  const focused = BrowserWindow.getFocusedWindow();
+  captureRoot = focused && allWindows.has(focused) ? getWindowRoot(focused.webContents.id) : loadSavedRoot();
+  const win = new BrowserWindow({ width: 520, height: 410, minWidth: 380, minHeight: 300,
+    title: 'Quick Capture', titleBarStyle: 'hiddenInset', backgroundColor: '#fafafa',
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false } });
+  captureWindow = win;
+  setWindowRoot(win.webContents.id, captureRoot);
+  const captureId = win.webContents.id;
+  win.on('closed', () => { removeWindowTracking(captureId); captureWindow = null; });
+  if (process.env.VITE_DEV_SERVER_URL) win.loadURL(`${process.env.VITE_DEV_SERVER_URL}?capture=1`);
+  else win.loadFile(path.join(process.env.DIST!, 'index.html'), { query: { capture: '1' } });
+}
+ipcMain.handle('capture:open', () => openCapture());
+ipcMain.handle('capture:info', () => ({ rootPath: captureRoot, shortcutAvailable: captureShortcutAvailable }));
+ipcMain.handle('capture:close', event => {
+  if (captureWindow?.webContents.id === event.sender.id) captureWindow.close();
+});
+ipcMain.handle('capture:save', async (event, title: string, content: string) => {
+  if (event.sender.id !== captureWindow?.webContents.id || captureSaving) throw new Error('Capture is already saving.');
+  if (!title.trim() && !content.trim()) throw new Error('Write something before saving.');
+  captureSaving = true;
+  try {
+    const root = getWindowRoot(event.sender.id);
+    await fsSync.promises.mkdir(root, { recursive: true });
+    const note = await createNote(root, root, title.trim() || 'Quick Note', content, event.sender.id);
+    for (const win of allWindows) {
+      if (getWindowRoot(win.webContents.id) === root) win.webContents.send('notes:changed', { changedPaths: [note.filePath], structural: true });
+    }
+    return note;
+  } finally { captureSaving = false; }
+});
+ipcMain.handle('notes:searchExcerpts', eventQuery);
+async function eventQuery(event: Electron.IpcMainInvokeEvent, query: string) {
+  return searchExcerpts(getWindowRoot(event.sender.id), query);
+}
+ipcMain.handle('notes:versions', async (event, filePath: string) => {
+  assertInsideRoot(getWindowRoot(event.sender.id), filePath);
+  return withFileLock(filePath, () => listVersionSummaries(filePath));
+});
+ipcMain.handle('notes:previewVersion', async (event, filePath: string, id: string) => {
+  assertInsideRoot(getWindowRoot(event.sender.id), filePath);
+  return withFileLock(filePath, () => previewVersion(filePath, id));
+});
+ipcMain.handle('notes:restoreVersion', async (event, filePath: string, id: string) => {
+  const root = getWindowRoot(event.sender.id);
+  assertInsideRoot(root, filePath);
+  await withFileLock(filePath, () => restoreVersion(filePath, id, event.sender.id));
+  for (const win of allWindows) {
+    if (getWindowRoot(win.webContents.id) === root) win.webContents.send('notes:changed', { changedPaths: [filePath], structural: false });
+  }
 });

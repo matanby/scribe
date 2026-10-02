@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import { readStored, writeStored } from '../utils/session';
+import React, { useState, useEffect } from 'react';
 import { 
   Folder, 
   FolderOpen, 
@@ -44,7 +45,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onDeleteFolder,
   onRevealInFinder
 }) => {
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => readStored(`scribe_folders:${tree?.rootPath}`, {}));
+  useEffect(() => { if (tree) writeStored(`scribe_folders:${tree.rootPath}`, collapsed); }, [tree?.rootPath, collapsed]);
   const [dragOverTarget, setDragOverTarget] = useState<string | null>(null);
   const [dialogState, setDialogState] = useState<FolderDialogState>({
     isOpen: false,

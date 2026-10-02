@@ -6,6 +6,7 @@ import { Popover } from './Popover';
 interface NoteInfoProps {
   note: NoteMeta;
   wordCount: number;
+  onHistory?: () => void;
   onSelectFolder?: (path: string) => void;
 }
 
@@ -13,7 +14,7 @@ const formatDate = (timestamp: number) => new Date(timestamp).toLocaleString([],
   year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
 });
 
-export const NoteInfo: React.FC<NoteInfoProps> = ({ note, wordCount, onSelectFolder }) => {
+export const NoteInfo: React.FC<NoteInfoProps> = ({ note, wordCount, onSelectFolder, onHistory }) => {
   const folder = note.folder && note.folder !== '/' ? note.folder : 'All Notes';
   return (
     <div className="no-print flex justify-center mb-5 text-xs text-[var(--text-secondary)] select-none">
@@ -31,6 +32,7 @@ export const NoteInfo: React.FC<NoteInfoProps> = ({ note, wordCount, onSelectFol
               </dl>
             </div>
             <div className="h-px bg-[var(--border-subtle)] my-1" />
+            {onHistory && <button type="button" onClick={() => { close(); onHistory(); }} className="w-full px-2.5 py-2 rounded-md text-left text-xs text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10">View Version History…</button>}
             {onSelectFolder && (
               <button type="button" title={`Go to ${folder}`} onClick={() => { close(); onSelectFolder(note.folder === '/' ? '' : note.folder); }}
                 className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left text-xs text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10">

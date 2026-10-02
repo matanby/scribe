@@ -15,6 +15,8 @@ export interface NoteMeta {
 export interface NoteFocusRequest {
   filePath: string;
   requestId: number;
+  search?: string;
+  focus?: boolean;
 }
 
 export interface FolderNode {

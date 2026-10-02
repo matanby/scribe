@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 
 interface NoteListProps {
+  searchQuery?: string;
+  searchExcerpts?: Map<string, string> | null;
   compact: boolean;
   onToggleCompact: () => void;
   notes: NoteMeta[];
@@ -30,6 +32,18 @@ interface NoteListProps {
   onMoveNote?: (filePath: string, targetFolderPath: string) => void;
   onRevealInFinder?: (filePath: string) => void;
   onExportPDF?: (title: string) => void;
+}
+
+function highlightExcerpt(text: string, query: string): React.ReactNode {
+  const lower = text.toLowerCase(), needle = query.toLowerCase();
+  const parts: React.ReactNode[] = [];
+  let cursor = 0, index = lower.indexOf(needle);
+  while (index >= 0 && needle) {
+    parts.push(text.slice(cursor, index));
+    parts.push(<mark key={index} className="bg-[var(--accent-light)] text-[var(--text-primary)] rounded-sm">{text.slice(index, index + query.length)}</mark>);
+    cursor = index + query.length; index = lower.indexOf(needle, cursor);
+  }
+  parts.push(text.slice(cursor)); return parts;
 }
 
 function formatDate(timestamp: number): string {
@@ -61,6 +75,8 @@ interface NoteGroup {
 }
 
 export const NoteList: React.FC<NoteListProps> = ({
+  searchQuery = '',
+  searchExcerpts,
   compact,
   onToggleCompact,
   notes,
@@ -316,7 +332,7 @@ export const NoteList: React.FC<NoteListProps> = ({
               dir="auto"
               className="text-left text-[13px] leading-snug truncate flex-1 font-semibold text-[var(--text-primary)]"
             >
-              {note.title || 'Untitled Note'}
+              {searchQuery.trim() ? highlightExcerpt(note.title || 'Untitled Note', searchQuery.trim()) : note.title || 'Untitled Note'}
             </h3>
           </div>
           
@@ -339,7 +355,7 @@ export const NoteList: React.FC<NoteListProps> = ({
         </div>
 
         {/* Note Metadata & Snippet */}
-        {!compact && (
+        {!compact && !searchQuery.trim() && (
           <div className="flex items-baseline gap-2 text-[11.5px] text-[var(--text-secondary)]">
             <span className="shrink-0 text-[11px]">{displayDate}</span>
             {note.snippet && (
@@ -348,6 +364,12 @@ export const NoteList: React.FC<NoteListProps> = ({
               </p>
             )}
           </div>
+        )}
+
+        {searchQuery.trim() && searchExcerpts?.get(note.filePath) && (
+          <p dir="auto" className="text-left text-xs leading-relaxed text-[var(--text-secondary)] mt-1.5 line-clamp-3">
+            {highlightExcerpt(searchExcerpts.get(note.filePath)!, searchQuery.trim())}
+          </p>
         )}
 
         {/* Subfolder label if applicable */}

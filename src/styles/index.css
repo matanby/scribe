@@ -970,3 +970,15 @@ u,
 .math-editing-block {
   transition: all 0.15s ease-in-out;
 }
+
+/* History previews use the document styles inside their own scroll pane. */
+.history-preview .tiptap {
+  min-height: 0;
+  max-width: none;
+  width: 100%;
+  padding: 0 0 24px;
+  font-size: 14px;
+}
+.history-preview img { max-width: 100%; height: auto; border-radius: 6px; }
+.history-preview .tiptap table { width: 100%; }
+.history-preview .tiptap input[type="checkbox"] { pointer-events: none; }
