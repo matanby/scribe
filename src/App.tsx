@@ -501,6 +501,8 @@ export const App: React.FC = () => {
       }
       await loadTree(newNote.filePath);
       selectNoteWithHistory(newNote);
+      setSearchQuery('');
+      setEditorFocusRequest({ filePath: newNote.filePath, requestId: ++editorFocusSequence.current, target: 'title' });
     } catch (err) {
       console.error('Failed to create note:', err);
     }
@@ -518,6 +520,8 @@ export const App: React.FC = () => {
       });
       await loadTree(newNote.filePath);
       selectNoteWithHistory(newNote);
+      setSearchQuery('');
+      setEditorFocusRequest({ filePath: newNote.filePath, requestId: ++editorFocusSequence.current, target: 'title' });
     } catch (err) {
       console.error('Failed to create note in folder:', err);
     }

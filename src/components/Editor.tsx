@@ -149,6 +149,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   onFocusRequestHandled
 }) => {
   const [title, setTitle] = useState(note.title);
+  const titleInputRef = useRef<HTMLInputElement>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const positionRestored = useRef(false);
@@ -518,7 +519,11 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
 
   useEffect(() => {
     if (!editor || editor.isDestroyed || focusRequest?.filePath !== note.filePath) return;
-    if (focusRequest.search) {
+    if (focusRequest.target === 'title') {
+      if (!titleInputRef.current) return;
+      titleInputRef.current.focus();
+      titleInputRef.current.select();
+    } else if (focusRequest.search) {
       editor.commands.setSearchTerm(focusRequest.search);
       const match = editor.storage.searchReplace.results[0];
       if (match) editor.commands.setTextSelection(match);
@@ -721,6 +726,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
 
           {/* Note Title Input */}
           <input
+            ref={titleInputRef}
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}

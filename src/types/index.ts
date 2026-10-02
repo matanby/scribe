@@ -15,6 +15,7 @@ export interface NoteMeta {
 export interface NoteFocusRequest {
   filePath: string;
   requestId: number;
+  target?: 'title' | 'body';
   search?: string;
   focus?: boolean;
 }
