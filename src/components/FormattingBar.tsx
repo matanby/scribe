@@ -2,15 +2,16 @@ import React from 'react';
 import { Editor } from '@tiptap/react';
 import {
   Bold, Italic, Underline, Strikethrough, Highlighter, Code, List, ListOrdered,
-  CheckSquare, Table as TableIcon, Link as LinkIcon, ChevronDown, Plus,
-  Trash2, Columns, Rows, Share, Printer, Download, FileText, Minus, Sigma,
+  CheckSquare, Link as LinkIcon, ChevronDown, Plus,
+  Share, Printer, Download, FileText, Minus, Sigma,
   type LucideIcon
 } from 'lucide-react';
-import { confirmDestructive, showMessage } from '../utils/dialogs';
+import { showMessage } from '../utils/dialogs';
+import { TableButton } from './TableButton';
 import { NoteOutline } from './NoteOutline';
 import { Popover } from './Popover';
 
-interface FormattingBarProps { editor: Editor | null; onAttach: () => void; noteFilePath: string; }
+interface FormattingBarProps { editor: Editor | null; onAttach: () => void; noteFilePath: string; tableInsertTrigger: number; }
 interface Action {
   label: string;
   icon?: LucideIcon;
@@ -39,7 +40,7 @@ const Actions: React.FC<{ actions: Action[]; close: () => void }> = ({ actions, 
   </>
 );
 
-export const FormattingBar: React.FC<FormattingBarProps> = ({ editor, onAttach, noteFilePath }) => {
+export const FormattingBar: React.FC<FormattingBarProps> = ({ editor, onAttach, noteFilePath, tableInsertTrigger }) => {
   if (!editor) return null;
 
   const paragraphStyles: Action[] = [
@@ -73,17 +74,6 @@ export const FormattingBar: React.FC<FormattingBarProps> = ({ editor, onAttach, 
     { label: 'Link…', icon: LinkIcon, run: setLink },
     { label: 'Divider', icon: Minus, run: () => { editor.chain().focus().setHorizontalRule().run(); } },
     { label: 'Math Formula', icon: Sigma, run: () => { editor.chain().focus().insertContent('$E = mc^2$ ').run(); } }
-  ];
-  const tableActions: Action[] = [
-    { label: 'Add Row', icon: Rows, run: () => { editor.chain().focus().addRowAfter().run(); } },
-    { label: 'Add Column', icon: Columns, run: () => { editor.chain().focus().addColumnAfter().run(); } },
-    { label: 'Delete Row', icon: Trash2, danger: true, run: () => { editor.chain().focus().deleteRow().run(); } },
-    { label: 'Delete Column', icon: Trash2, danger: true, run: () => { editor.chain().focus().deleteColumn().run(); } },
-    { label: 'Delete Table…', icon: Trash2, danger: true, run: () => {
-      void confirmDestructive('Delete this table?', 'All of its contents will be removed.').then(ok => {
-        if (ok && !editor.isDestroyed) editor.chain().focus().deleteTable().run();
-      });
-    } }
   ];
   const exportDocument = async (content: string, format: 'md' | 'html') => {
     try { await window.scribeAPI.exportDocument({ filePath: noteFilePath, content, format }); }
@@ -119,16 +109,7 @@ export const FormattingBar: React.FC<FormattingBarProps> = ({ editor, onAttach, 
           className={`${toolbarButton} ${editor.isActive('taskList') ? 'bg-[var(--accent-light)] text-[var(--accent-color)]' : ''}`}>
           <CheckSquare size={16} />
         </button>
-        {editor.isActive('table') ? (
-          <Popover label="Table options" triggerClassName={`${toolbarButton} bg-[var(--accent-light)] text-[var(--accent-color)]`} trigger={<><TableIcon size={16} /><ChevronDown size={11} /></>}>
-            {close => <Actions actions={tableActions} close={close} />}
-          </Popover>
-        ) : (
-          <button type="button" aria-label="Insert table" title="Insert table" className={toolbarButton}
-            onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>
-            <TableIcon size={16} />
-          </button>
-        )}
+        <TableButton editor={editor} insertTrigger={tableInsertTrigger} />
         <Popover label="Insert" triggerClassName={toolbarButton} trigger={<><Plus size={16} /><ChevronDown size={11} /></>}>
           {close => <Actions actions={inserts} close={close} />}
         </Popover>

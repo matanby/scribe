@@ -212,3 +212,11 @@ Attachment links stay relative on disk, including after moving or trashing/resto
 ### Keyboard reference and capture placement
 
 **Help → Keyboard Shortcuts** opens a reference including your current Quick Capture combination. Pressing **Enter** in a note title saves the title and moves into the body, including after a rename. Quick Capture remembers its size and location across launches, adjusting to available displays; Enter from its title also moves into the body.
+
+### Tables
+
+The table button opens a size picker: hover or use arrow keys over the grid, or enter a custom number of columns and rows. Tables start with a simple 2×2 preview; a header row is optional. `/table` opens the same picker.
+
+Click a cell to reveal a small row menu at the left and a column menu above the table. These menus insert before/after, move, or delete the corresponding row or column. The **+** at the bottom appends a row; the **+** at the right appends a column. New rows and columns are ready for typing. The toolbar’s **Table options** menu provides the same insert/delete actions and header, clear, and delete-table controls. Menus stay within the window when working near its edges.
+
+**Tab / Shift+Tab** navigate cells; Tab from the last cell adds a row. Row/column deletion is undoable with **⌘Z**. Deleting the entire table (including its last row or column) asks for confirmation. Moving rows/columns is disabled for merged tables to preserve their structure.

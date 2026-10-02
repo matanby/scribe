@@ -1,5 +1,6 @@
 import { Editor } from '@tiptap/react';
-import { Node as ProseMirrorNode } from 'prosemirror-model';
+import { Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { CellSelection, TableMap } from '@tiptap/pm/tables';
 import { Selection, Transaction } from '@tiptap/pm/state';
 
 /**
@@ -66,7 +67,7 @@ export function getTableInfo(editor: Editor | null): TableInfo {
 
   const { state } = editor;
   const { selection } = state;
-  const { $from } = selection;
+  const $from = selection instanceof CellSelection ? state.doc.resolve(selection.$anchorCell.pos + 1) : selection.$from;
 
   let tableDepth = -1;
   let rowDepth = -1;
@@ -76,6 +77,7 @@ export function getTableInfo(editor: Editor | null): TableInfo {
     const node = $from.node(d);
     if (node.type.name === 'table') {
       tableDepth = d;
+      break;
     } else if (node.type.name === 'tableRow') {
       rowDepth = d;
     } else if (node.type.name === 'tableCell' || node.type.name === 'tableHeader') {
@@ -99,16 +101,19 @@ export function getTableInfo(editor: Editor | null): TableInfo {
   const tableNode = $from.node(tableDepth);
   const tablePos = $from.before(tableDepth);
   const rowCount = tableNode.childCount;
-  const colCount = rowCount > 0 ? tableNode.child(0).childCount : 0;
+  const map = TableMap.get(tableNode);
+  const colCount = map.width;
 
-  const currentRowIndex = rowDepth !== -1 ? $from.index(tableDepth) : 0;
-  const currentColIndex = cellDepth !== -1 && rowDepth !== -1 ? $from.index(rowDepth) : 0;
+  const cell = cellDepth !== -1 ? map.findCell($from.before(cellDepth) - tablePos - 1) : null;
+  const currentRowIndex = cell?.top ?? 0;
+  const currentColIndex = cell?.left ?? 0;
 
   // Check if first row is header row
   let hasHeaderRow = false;
   if (rowCount > 0) {
     const firstRow = tableNode.child(0);
-    hasHeaderRow = firstRow.childCount > 0 && firstRow.child(0).type.name === 'tableHeader';
+    hasHeaderRow = firstRow.childCount > 0;
+    firstRow.forEach(cell => { if (cell.type.name !== 'tableHeader') hasHeaderRow = false; });
   }
 
   return {
@@ -121,6 +126,17 @@ export function getTableInfo(editor: Editor | null): TableInfo {
     currentColIndex,
     hasHeaderRow,
   };
+}
+
+export function selectTableCell(editor: Editor, row: number, column: number): boolean {
+  const info = getTableInfo(editor);
+  if (!info.tableNode) return false;
+  const map = TableMap.get(info.tableNode);
+  const r = Math.max(0, Math.min(row, map.height - 1));
+  const c = Math.max(0, Math.min(column, map.width - 1));
+  const position = info.tablePos + 1 + map.map[r * map.width + c];
+  editor.view.dispatch(editor.state.tr.setSelection(Selection.near(editor.state.doc.resolve(position + 1))));
+  return true;
 }
 
 export function moveRow(editor: Editor, fromIndex: number, toIndex: number): boolean {
@@ -162,7 +178,7 @@ export function moveRow(editor: Editor, fromIndex: number, toIndex: number): boo
 
   const newTable = tableNode.type.create(tableNode.attrs, rows);
   const tr = state.tr.replaceWith(tablePos, tablePos + tableNode.nodeSize, newTable);
-  placeCursorInCell(tr, tablePos, newTable, toIndex, 0);
+  placeCursorInCell(tr, tablePos, newTable, toIndex, getTableInfo(editor).currentColIndex);
   view.dispatch(tr);
   return true;
 }
@@ -212,7 +228,7 @@ export function moveColumn(editor: Editor, fromIndex: number, toIndex: number): 
 
   const newTable = tableNode.type.create(tableNode.attrs, newRows);
   const tr = state.tr.replaceWith(tablePos, tablePos + tableNode.nodeSize, newTable);
-  placeCursorInCell(tr, tablePos, newTable, 0, toIndex);
+  placeCursorInCell(tr, tablePos, newTable, getTableInfo(editor).currentRowIndex, toIndex);
   view.dispatch(tr);
   return true;
 }

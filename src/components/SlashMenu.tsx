@@ -18,6 +18,7 @@ import {
 
 interface SlashMenuProps {
   editor: Editor | null;
+  onInsertTable: () => void;
 }
 
 interface CommandItem {
@@ -28,7 +29,7 @@ interface CommandItem {
   action: (editor: Editor) => void;
 }
 
-export const SlashMenu: React.FC<SlashMenuProps> = ({ editor }) => {
+export const SlashMenu: React.FC<SlashMenuProps> = ({ editor, onInsertTable }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -82,9 +83,9 @@ export const SlashMenu: React.FC<SlashMenuProps> = ({ editor }) => {
     {
       id: 'table',
       title: 'Table',
-      subtitle: 'Insert a 3x3 table',
+      subtitle: 'Choose rows and columns',
       icon: <TableIcon size={15} className="text-purple-500" />,
-      action: (ed) => ed.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+      action: () => onInsertTable()
     },
     {
       id: 'image',

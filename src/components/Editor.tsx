@@ -161,6 +161,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   const scrollerRef = useRef<HTMLDivElement>(null);
   const positionRestored = useRef(false);
   const initialPosition = useRef(readPosition(note.filePath));
+  const [tableInsertTrigger, setTableInsertTrigger] = useState(0);
   const [isFindOpen, setIsFindOpen] = useState(false);
   const [showReplaceMode, setShowReplaceMode] = useState(false);
   const [findTrigger, setFindTrigger] = useState(0);
@@ -694,7 +695,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   return (
     <div className="flex-1 h-full bg-[var(--editor-bg)] flex flex-col relative overflow-hidden">
       {/* Top Pinned Formatting & Search/Replace Bars */}
-      <FormattingBar editor={editor} noteFilePath={note.filePath} onAttach={() => attachmentInput.current?.click()} />
+      <FormattingBar editor={editor} noteFilePath={note.filePath} tableInsertTrigger={tableInsertTrigger} onAttach={() => attachmentInput.current?.click()} />
       <input ref={attachmentInput} type="file" multiple className="hidden" aria-label="Attach images or files" onChange={event => {
         const files = Array.from(event.target.files || []);
         event.target.value = '';
@@ -710,7 +711,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
       />
 
       <BubbleMenu editor={editor} />
-      <SlashMenu editor={editor} />
+      <SlashMenu editor={editor} onInsertTable={() => setTableInsertTrigger(value => value + 1)} />
 
       {conflictMarkdown !== null && (
         <div className="no-print flex items-center gap-3 px-4 py-2 text-[12px] bg-amber-500/15 border-b border-amber-500/40 text-[var(--text-primary)]">
