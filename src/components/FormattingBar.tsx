@@ -1,498 +1,143 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React from 'react';
 import { Editor } from '@tiptap/react';
-import { 
-  Bold, 
-  Italic, 
-  Underline, 
-  Strikethrough, 
-  Highlighter, 
-  Heading1, 
-  Heading2, 
-  Heading3, 
-  Pilcrow, 
-  Code, 
-  List, 
-  ListOrdered, 
-  CheckSquare, 
-  Table as TableIcon, 
-  Link as LinkIcon, 
-  AlignRight, 
-  AlignLeft, 
-  ChevronDown,
-  Plus,
-  Trash2,
-  Columns,
-  Rows,
-  Share,
-  Printer,
-  Download,
-  FileText,
-  Minus,
-  Sigma
+import {
+  Bold, Italic, Underline, Strikethrough, Highlighter, Code, List, ListOrdered,
+  CheckSquare, Table as TableIcon, Link as LinkIcon, ChevronDown, Plus,
+  Trash2, Columns, Rows, Share, Printer, Download, FileText, Minus, Sigma,
+  type LucideIcon
 } from 'lucide-react';
 import { confirmDestructive, showMessage } from '../utils/dialogs';
+import { Popover } from './Popover';
 
-interface FormattingBarProps {
-  editor: Editor | null;
+interface FormattingBarProps { editor: Editor | null; }
+interface Action {
+  label: string;
+  icon?: LucideIcon;
+  shortcut?: string;
+  active?: boolean;
+  danger?: boolean;
+  run: () => void;
 }
 
+const toolbarButton = 'flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors';
+const Divider = () => <div className="h-px bg-[var(--border-subtle)] my-1" />;
+const Actions: React.FC<{ actions: Action[]; close: () => void }> = ({ actions, close }) => (
+  <>
+    {actions.map(({ label, icon: Icon, shortcut, active, danger, run }) => (
+      <button key={label} type="button" aria-pressed={active} onClick={() => { close(); run(); }}
+        className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left text-xs transition-colors ${
+          active ? 'bg-[var(--accent-light)] text-[var(--accent-color)]'
+            : danger ? 'text-red-500 hover:bg-red-500/10'
+              : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
+        }`}>
+        {Icon && <Icon size={14} className="shrink-0" />}
+        <span className="flex-1">{label}</span>
+        {shortcut && <span className="text-[11px] text-[var(--text-secondary)]">{shortcut}</span>}
+      </button>
+    ))}
+  </>
+);
+
 export const FormattingBar: React.FC<FormattingBarProps> = ({ editor }) => {
-  const [showAaMenu, setShowAaMenu] = useState(false);
-  const [showTableMenu, setShowTableMenu] = useState(false);
-  const [showExportMenu, setShowExportMenu] = useState(false);
-  const aaMenuRef = useRef<HTMLDivElement>(null);
-  const tableMenuRef = useRef<HTMLDivElement>(null);
-  const exportMenuRef = useRef<HTMLDivElement>(null);
-
-  // Close menus when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (aaMenuRef.current && !aaMenuRef.current.contains(e.target as Node)) {
-        setShowAaMenu(false);
-      }
-      if (tableMenuRef.current && !tableMenuRef.current.contains(e.target as Node)) {
-        setShowTableMenu(false);
-      }
-      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
-        setShowExportMenu(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
   if (!editor) return null;
 
-  const getCurrentFormatLabel = () => {
-    if (editor.isActive('heading', { level: 1 })) return 'Title';
-    if (editor.isActive('heading', { level: 2 })) return 'Heading';
-    if (editor.isActive('heading', { level: 3 })) return 'Subheading';
-    if (editor.isActive('codeBlock')) return 'Monospaced';
-    if (editor.isActive('bulletList')) return 'Bullet List';
-    if (editor.isActive('orderedList')) return 'Numbered List';
-    if (editor.isActive('taskList')) return 'Checklist';
-    return 'Body';
-  };
-
+  const paragraphStyles: Action[] = [
+    { label: 'Title', shortcut: '⌘⌥1', active: editor.isActive('heading', { level: 1 }), run: () => { editor.chain().focus().toggleHeading({ level: 1 }).run(); } },
+    { label: 'Heading', shortcut: '⌘⌥2', active: editor.isActive('heading', { level: 2 }), run: () => { editor.chain().focus().toggleHeading({ level: 2 }).run(); } },
+    { label: 'Subheading', shortcut: '⌘⌥3', active: editor.isActive('heading', { level: 3 }), run: () => { editor.chain().focus().toggleHeading({ level: 3 }).run(); } },
+    { label: 'Body', shortcut: '⌘⌥0', active: editor.isActive('paragraph') && !['taskList', 'bulletList', 'orderedList', 'codeBlock'].some(type => editor.isActive(type)), run: () => { editor.chain().focus().setParagraph().run(); } }
+  ];
+  const inlineStyles: Action[] = [
+    { label: 'Bold', icon: Bold, shortcut: '⌘B', active: editor.isActive('bold'), run: () => { editor.chain().focus().toggleBold().run(); } },
+    { label: 'Italic', icon: Italic, shortcut: '⌘I', active: editor.isActive('italic'), run: () => { editor.chain().focus().toggleItalic().run(); } },
+    { label: 'Underline', icon: Underline, shortcut: '⌘U', active: editor.isActive('underline'), run: () => { editor.chain().focus().toggleUnderline().run(); } },
+    { label: 'Strikethrough', icon: Strikethrough, active: editor.isActive('strike'), run: () => { editor.chain().focus().toggleStrike().run(); } },
+    { label: 'Highlight', icon: Highlighter, active: editor.isActive('highlight'), run: () => { editor.chain().focus().toggleHighlight({ color: '#fde047' }).run(); } }
+  ];
+  const listStyles: Action[] = [
+    { label: 'Checklist', icon: CheckSquare, active: editor.isActive('taskList'), run: () => { editor.chain().focus().toggleTaskList().run(); } },
+    { label: 'Bullet List', icon: List, active: editor.isActive('bulletList'), run: () => { editor.chain().focus().toggleBulletList().run(); } },
+    { label: 'Numbered List', icon: ListOrdered, active: editor.isActive('orderedList'), run: () => { editor.chain().focus().toggleOrderedList().run(); } },
+    { label: 'Monospaced', icon: Code, active: editor.isActive('codeBlock'), run: () => { editor.chain().focus().toggleCodeBlock().run(); } }
+  ];
   const setLink = () => {
     const previousUrl = editor.getAttributes('link').href;
     const url = window.prompt('Enter Link URL:', previousUrl);
     if (url === null) return;
-    if (url === '') {
-      editor.chain().focus().extendMarkRange('link').unsetLink().run();
-      return;
-    }
-    editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+    if (!url) editor.chain().focus().extendMarkRange('link').unsetLink().run();
+    else editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
   };
+  const inserts: Action[] = [
+    { label: 'Link…', icon: LinkIcon, run: setLink },
+    { label: 'Divider', icon: Minus, run: () => { editor.chain().focus().setHorizontalRule().run(); } },
+    { label: 'Math Formula', icon: Sigma, run: () => { editor.chain().focus().insertContent('$E = mc^2$ ').run(); } }
+  ];
+  const tableActions: Action[] = [
+    { label: 'Add Row', icon: Rows, run: () => { editor.chain().focus().addRowAfter().run(); } },
+    { label: 'Add Column', icon: Columns, run: () => { editor.chain().focus().addColumnAfter().run(); } },
+    { label: 'Delete Row', icon: Trash2, danger: true, run: () => { editor.chain().focus().deleteRow().run(); } },
+    { label: 'Delete Column', icon: Trash2, danger: true, run: () => { editor.chain().focus().deleteColumn().run(); } },
+    { label: 'Delete Table…', icon: Trash2, danger: true, run: () => {
+      void confirmDestructive('Delete this table?', 'All of its contents will be removed.').then(ok => {
+        if (ok && !editor.isDestroyed) editor.chain().focus().deleteTable().run();
+      });
+    } }
+  ];
+  const download = (content: string, type: string, fileName: string) => {
+    const url = URL.createObjectURL(new Blob([content], { type }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+  const exports: Action[] = [
+    { label: 'Print / PDF…', icon: Printer, run: () => { window.print(); } },
+    { label: 'Export Markdown', icon: Download, run: () => {
+      try {
+        const markdown = editor.storage.markdown?.getMarkdown?.();
+        if (typeof markdown !== 'string') throw new Error('Markdown serializer unavailable');
+        download(markdown, 'text/markdown', 'Note.md');
+      } catch (error: any) {
+        console.error('Failed to export markdown:', error);
+        void showMessage('Could not export markdown', error?.message || 'unknown error', 'error');
+      }
+    } },
+    { label: 'Export HTML', icon: FileText, run: () => {
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Note</title><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:900px;margin:2rem auto;padding:0 1rem;line-height:1.7;}table{border-collapse:collapse;width:100%;}td,th{border:1px solid #ccc;padding:8px;}</style></head><body>${editor.getHTML()}</body></html>`;
+      download(html, 'text/html', 'Note.html');
+    } }
+  ];
 
   return (
-    <div className="no-print flex items-center justify-between px-6 py-1.5 border-b border-[var(--border-subtle)] bg-[var(--editor-bg)]/80 backdrop-blur-md select-none shrink-0 sticky top-0 z-20">
+    <div role="group" aria-label="Note formatting" className="no-print flex flex-wrap items-center justify-between gap-1 px-6 py-1.5 border-b border-[var(--border-subtle)] bg-[var(--editor-bg)] select-none shrink-0 sticky top-0 z-20">
       <div className="flex items-center gap-1">
-        {/* Apple Notes Aa Paragraph Style Popover */}
-        <div className="relative" ref={aaMenuRef}>
-          <button
-            onClick={() => setShowAaMenu(!showAaMenu)}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border transition-all ${
-              showAaMenu 
-                ? 'bg-[var(--accent-color)] text-white border-[var(--accent-color)] shadow-xs' 
-                : 'bg-black/5 dark:bg-white/10 text-[var(--text-primary)] border-transparent hover:bg-black/10 dark:hover:bg-white/15'
-            }`}
-            title="Text Style & Formatting"
-          >
-            <span className="font-serif text-[13px] font-bold">Aa</span>
-            <span className="text-[11px] font-medium opacity-80 max-w-[80px] truncate">{getCurrentFormatLabel()}</span>
-            <ChevronDown size={11} className={`opacity-60 transition-transform ${showAaMenu ? 'rotate-180' : ''}`} />
-          </button>
-
-          {/* Aa Dropdown Menu */}
-          {showAaMenu && (
-            <div className="absolute left-0 top-full mt-1.5 w-48 p-1.5 rounded-xl bg-white dark:bg-[#252528] border border-[var(--border-color)] shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-100 space-y-0.5">
-              <button
-                onClick={() => {
-                  editor.chain().focus().toggleHeading({ level: 1 }).run();
-                  setShowAaMenu(false);
-                }}
-                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-left text-sm font-bold transition-colors ${
-                  editor.isActive('heading', { level: 1 })
-                    ? 'bg-[var(--accent-light)] text-[var(--accent-color)]'
-                    : 'hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-primary)]'
-                }`}
-              >
-                <span>Title</span>
-                <span className="text-[10px] opacity-40 font-normal">⌘⌥1</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  editor.chain().focus().toggleHeading({ level: 2 }).run();
-                  setShowAaMenu(false);
-                }}
-                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-left text-xs font-bold transition-colors ${
-                  editor.isActive('heading', { level: 2 })
-                    ? 'bg-[var(--accent-light)] text-[var(--accent-color)]'
-                    : 'hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-primary)]'
-                }`}
-              >
-                <span>Heading</span>
-                <span className="text-[10px] opacity-40 font-normal">⌘⌥2</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  editor.chain().focus().toggleHeading({ level: 3 }).run();
-                  setShowAaMenu(false);
-                }}
-                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-left text-xs font-semibold transition-colors ${
-                  editor.isActive('heading', { level: 3 })
-                    ? 'bg-[var(--accent-light)] text-[var(--accent-color)]'
-                    : 'hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-primary)]'
-                }`}
-              >
-                <span>Subheading</span>
-                <span className="text-[10px] opacity-40 font-normal">⌘⌥3</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  editor.chain().focus().setParagraph().run();
-                  setShowAaMenu(false);
-                }}
-                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-left text-xs transition-colors ${
-                  editor.isActive('paragraph') && !editor.isActive('taskList') && !editor.isActive('bulletList') && !editor.isActive('orderedList')
-                    ? 'bg-[var(--accent-light)] text-[var(--accent-color)] font-medium'
-                    : 'hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-primary)]'
-                }`}
-              >
-                <span>Body</span>
-                <span className="text-[10px] opacity-40 font-normal">⌘⌥0</span>
-              </button>
-
-              <div className="h-[1px] bg-[var(--border-subtle)] my-1" />
-
-              <button
-                onClick={() => {
-                  editor.chain().focus().toggleTaskList().run();
-                  setShowAaMenu(false);
-                }}
-                className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-left text-xs transition-colors ${
-                  editor.isActive('taskList')
-                    ? 'bg-[var(--accent-light)] text-[var(--accent-color)] font-medium'
-                    : 'hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-primary)]'
-                }`}
-              >
-                <CheckSquare size={13} />
-                <span>Checklist</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  editor.chain().focus().toggleBulletList().run();
-                  setShowAaMenu(false);
-                }}
-                className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-left text-xs transition-colors ${
-                  editor.isActive('bulletList')
-                    ? 'bg-[var(--accent-light)] text-[var(--accent-color)] font-medium'
-                    : 'hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-primary)]'
-                }`}
-              >
-                <List size={13} />
-                <span>Bullet List</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  editor.chain().focus().toggleOrderedList().run();
-                  setShowAaMenu(false);
-                }}
-                className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-left text-xs transition-colors ${
-                  editor.isActive('orderedList')
-                    ? 'bg-[var(--accent-light)] text-[var(--accent-color)] font-medium'
-                    : 'hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-primary)]'
-                }`}
-              >
-                <ListOrdered size={13} />
-                <span>Numbered List</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  editor.chain().focus().toggleCodeBlock().run();
-                  setShowAaMenu(false);
-                }}
-                className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-left text-xs transition-colors ${
-                  editor.isActive('codeBlock')
-                    ? 'bg-[var(--accent-light)] text-[var(--accent-color)] font-medium'
-                    : 'hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-primary)]'
-                }`}
-              >
-                <Code size={13} />
-                <span>Monospaced</span>
-              </button>
-            </div>
-          )}
-        </div>
-
-        <div className="w-[1px] h-3.5 bg-[var(--border-color)] mx-1" />
-
-        {/* Inline Formatting Controls */}
-        <button
-          onClick={() => editor.chain().focus().toggleBold().run()}
-          className={`p-1.5 rounded-md text-xs transition-all ${
-            editor.isActive('bold')
-              ? 'bg-[var(--accent-color)] text-white shadow-xs'
-              : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
-          }`}
-          title="Bold (⌘B)"
-        >
-          <Bold size={13.5} />
-        </button>
-
-        <button
-          onClick={() => editor.chain().focus().toggleItalic().run()}
-          className={`p-1.5 rounded-md text-xs transition-all ${
-            editor.isActive('italic')
-              ? 'bg-[var(--accent-color)] text-white shadow-xs'
-              : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
-          }`}
-          title="Italic (⌘I)"
-        >
-          <Italic size={13.5} />
-        </button>
-
-        <button
-          onClick={() => (editor.chain().focus() as any).toggleUnderline().run()}
-          className={`p-1.5 rounded-md text-xs transition-all ${
-            editor.isActive('underline')
-              ? 'bg-[var(--accent-color)] text-white shadow-xs'
-              : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
-          }`}
-          title="Underline (⌘U)"
-        >
-          <Underline size={13.5} />
-        </button>
-
-        <button
-          onClick={() => editor.chain().focus().toggleStrike().run()}
-          className={`p-1.5 rounded-md text-xs transition-all ${
-            editor.isActive('strike')
-              ? 'bg-[var(--accent-color)] text-white shadow-xs'
-              : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
-          }`}
-          title="Strikethrough"
-        >
-          <Strikethrough size={13.5} />
-        </button>
-
-        <button
-          onClick={() => (editor.chain().focus() as any).toggleHighlight({ color: '#fde047' }).run()}
-          className={`p-1.5 rounded-md text-xs transition-all ${
-            editor.isActive('highlight')
-              ? 'bg-yellow-400 text-black shadow-xs'
-              : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
-          }`}
-          title="Highlight"
-        >
-          <Highlighter size={13.5} />
-        </button>
-
-        <div className="w-[1px] h-3.5 bg-[var(--border-color)] mx-1" />
-
-        {/* Checklist Quick Button */}
-        <button
+        <Popover label="Text style and formatting" triggerClassName={toolbarButton}
+          trigger={<><span className="text-[15px] font-medium">Aa</span><ChevronDown size={11} /></>}>
+          {close => <><Actions actions={paragraphStyles} close={close} /><Divider /><Actions actions={inlineStyles} close={close} /><Divider /><Actions actions={listStyles} close={close} /></>}
+        </Popover>
+        <button type="button" aria-label="Checklist" aria-pressed={editor.isActive('taskList')} title="Checklist (⌘⇧C)"
           onClick={() => editor.chain().focus().toggleTaskList().run()}
-          className={`p-1.5 rounded-md text-xs transition-all ${
-            editor.isActive('taskList')
-              ? 'bg-[var(--accent-color)] text-white shadow-xs'
-              : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
-          }`}
-          title="Checklist Item (⌘⇧C)"
-        >
-          <CheckSquare size={13.5} />
+          className={`${toolbarButton} ${editor.isActive('taskList') ? 'bg-[var(--accent-light)] text-[var(--accent-color)]' : ''}`}>
+          <CheckSquare size={16} />
         </button>
-
-        {/* Table Button & Table Controls */}
-        <div className="relative" ref={tableMenuRef}>
-          <button
-            onClick={() => {
-              if (editor.isActive('table')) {
-                setShowTableMenu(!showTableMenu);
-              } else {
-                editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
-              }
-            }}
-            className={`p-1.5 rounded-md text-xs transition-all flex items-center gap-1 ${
-              editor.isActive('table')
-                ? 'bg-[var(--accent-color)] text-white shadow-xs'
-                : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
-            }`}
-            title={editor.isActive('table') ? "Table Options" : "Insert Table"}
-          >
-            <TableIcon size={13.5} />
-            {editor.isActive('table') && <ChevronDown size={10} />}
+        {editor.isActive('table') ? (
+          <Popover label="Table options" triggerClassName={`${toolbarButton} bg-[var(--accent-light)] text-[var(--accent-color)]`} trigger={<><TableIcon size={16} /><ChevronDown size={11} /></>}>
+            {close => <Actions actions={tableActions} close={close} />}
+          </Popover>
+        ) : (
+          <button type="button" aria-label="Insert table" title="Insert table" className={toolbarButton}
+            onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>
+            <TableIcon size={16} />
           </button>
-
-          {/* Table Actions Popover when inside a table */}
-          {showTableMenu && editor.isActive('table') && (
-            <div className="absolute left-0 top-full mt-1.5 w-44 p-1.5 rounded-xl bg-white dark:bg-[#252528] border border-[var(--border-color)] shadow-2xl z-50 space-y-0.5 text-xs">
-              <button
-                onClick={() => {
-                  editor.chain().focus().addRowAfter().run();
-                  setShowTableMenu(false);
-                }}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-primary)]"
-              >
-                <Rows size={13} />
-                <span>Add Row</span>
-              </button>
-              <button
-                onClick={() => {
-                  editor.chain().focus().addColumnAfter().run();
-                  setShowTableMenu(false);
-                }}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-primary)]"
-              >
-                <Columns size={13} />
-                <span>Add Column</span>
-              </button>
-              <button
-                onClick={() => {
-                  editor.chain().focus().deleteRow().run();
-                  setShowTableMenu(false);
-                }}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left hover:bg-black/5 dark:hover:bg-white/10 text-red-500"
-              >
-                <Trash2 size={13} />
-                <span>Delete Row</span>
-              </button>
-              <button
-                onClick={() => {
-                  editor.chain().focus().deleteColumn().run();
-                  setShowTableMenu(false);
-                }}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left hover:bg-black/5 dark:hover:bg-white/10 text-red-500"
-              >
-                <Trash2 size={13} />
-                <span>Delete Column</span>
-              </button>
-              <div className="h-[1px] bg-[var(--border-subtle)] my-1" />
-              <button
-                onClick={() => {
-                  void confirmDestructive('Delete this table?', 'All of its contents will be removed.').then(ok => {
-                    if (ok) editor.chain().focus().deleteTable().run();
-                  });
-                  setShowTableMenu(false);
-                }}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left hover:bg-red-50 dark:hover:bg-red-950/40 text-red-600 font-medium"
-              >
-                <Trash2 size={13} />
-                <span>Delete Table</span>
-              </button>
-            </div>
-          )}
-        </div>
-
-        <button
-          onClick={setLink}
-          className={`p-1.5 rounded-md text-xs transition-all ${
-            editor.isActive('link')
-              ? 'bg-[var(--accent-color)] text-white shadow-xs'
-              : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
-          }`}
-          title="Insert Link"
-        >
-          <LinkIcon size={13.5} />
-        </button>
-
-        <button
-          onClick={() => editor.chain().focus().setHorizontalRule().run()}
-          className="p-1.5 rounded-md text-xs text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-all"
-          title="Insert Divider Line (---)"
-        >
-          <Minus size={13.5} />
-        </button>
-
-        <button
-          onClick={() => editor.chain().focus().insertContent('$E = mc^2$ ').run()}
-          className="p-1.5 rounded-md text-xs text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-all"
-          title="Insert LaTeX Math Formula ($...$)"
-        >
-          <Sigma size={13.5} />
-        </button>
+        )}
+        <Popover label="Insert" triggerClassName={toolbarButton} trigger={<><Plus size={16} /><ChevronDown size={11} /></>}>
+          {close => <Actions actions={inserts} close={close} />}
+        </Popover>
       </div>
-
-      {/* Right side: Export & Direction Switcher */}
-      <div className="flex items-center gap-1.5">
-        {/* Export Button */}
-        <div className="relative" ref={exportMenuRef}>
-          <button
-            onClick={() => setShowExportMenu(!showExportMenu)}
-            className="flex items-center gap-1 px-2 py-1 rounded-md text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-all active:scale-95"
-            title="Export / Print Note"
-          >
-            <Share size={12.5} />
-            <span className="text-[11px] font-medium">Export</span>
-          </button>
-
-          {showExportMenu && (
-            <div className="absolute right-0 top-full mt-1.5 w-44 p-1.5 rounded-xl bg-white dark:bg-[#252528] border border-[var(--border-color)] shadow-2xl z-50 space-y-0.5 text-xs">
-              <button
-                onClick={() => {
-                  window.print();
-                  setShowExportMenu(false);
-                }}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-primary)]"
-              >
-                <Printer size={13} />
-                <span>Print / PDF...</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  try {
-                    const rawMarkdown = (editor.storage as any)?.markdown?.getMarkdown?.();
-                    if (typeof rawMarkdown !== 'string') {
-                      throw new Error('Markdown serializer unavailable');
-                    }
-                    const blob = new Blob([rawMarkdown], { type: 'text/markdown' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'Note.md';
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  } catch (err: any) {
-                    console.error('Failed to export markdown:', err);
-                    void showMessage('Could not export markdown', err?.message || 'unknown error', 'error');
-                  }
-                  setShowExportMenu(false);
-                }}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-primary)]"
-              >
-                <Download size={13} />
-                <span>Export Markdown</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Note</title><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:720px;margin:2rem auto;padding:0 1rem;line-height:1.7;}table{border-collapse:collapse;width:100%;}td,th{border:1px solid #ccc;padding:8px;}</style></head><body>${editor.getHTML()}</body></html>`;
-                  const blob = new Blob([html], { type: 'text/html' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = 'Note.html';
-                  a.click();
-                  URL.revokeObjectURL(url);
-                  setShowExportMenu(false);
-                }}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-primary)]"
-              >
-                <FileText size={13} />
-                <span>Export HTML</span>
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
+      <Popover label="Export note" align="right" triggerClassName={`${toolbarButton} text-[var(--text-secondary)]`} trigger={<><Share size={15} /><span>Export</span></>}>
+        {close => <Actions actions={exports} close={close} />}
+      </Popover>
     </div>
   );
 };

@@ -5,13 +5,15 @@ import { NoteList } from './components/NoteList';
 import { Editor } from './components/Editor';
 import { QuickSwitcher } from './components/QuickSwitcher';
 import { AppearanceModal, AppearanceSettings, ACCENT_PALETTES } from './components/AppearanceModal';
-import { NoteMeta, NotesTree, SortMode } from './types';
+import { NoteMeta, NoteFocusRequest, NotesTree, SortMode } from './types';
 import { confirmDestructive, showMessage } from './utils/dialogs';
 
 export const App: React.FC = () => {
   const [tree, setTree] = useState<NotesTree | null>(null);
   const [selectedFolder, setSelectedFolder] = useState<string>('');
   const [selectedNote, setSelectedNote] = useState<NoteMeta | null>(null);
+  const [editorFocusRequest, setEditorFocusRequest] = useState<NoteFocusRequest | null>(null);
+  const editorFocusSequence = useRef(0);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
   const [lastSavedText, setLastSavedText] = useState('');
@@ -249,6 +251,7 @@ export const App: React.FC = () => {
   });
 
   const selectNoteWithHistory = useCallback((note: NoteMeta | null) => {
+    setEditorFocusRequest(null);
     setSelectedNote(note);
     if (!note) return;
     setHistory(prev => {
@@ -256,6 +259,15 @@ export const App: React.FC = () => {
       const entries = [...prev.entries.slice(0, prev.index + 1), note.filePath];
       return { entries, index: entries.length - 1 };
     });
+  }, []);
+
+  const handleEditNote = useCallback((note: NoteMeta) => {
+    selectNoteWithHistory(note);
+    setEditorFocusRequest({ filePath: note.filePath, requestId: ++editorFocusSequence.current });
+  }, [selectNoteWithHistory]);
+
+  const handleEditorFocused = useCallback((requestId: number) => {
+    setEditorFocusRequest(prev => prev?.requestId === requestId ? null : prev);
   }, []);
 
   const canGoBack = history.index > 0;
@@ -625,6 +637,8 @@ export const App: React.FC = () => {
   // Save Note Content
   const handleSaveNote = useCallback(async (filePath: string, markdown: string) => {
     await window.scribeAPI.saveNote({ filePath, markdown });
+    const modifiedAt = Date.now();
+    setSelectedNote(prev => prev?.filePath === filePath ? { ...prev, modifiedAt } : prev);
     setTree(prev => {
       if (!prev) return prev;
       return {
@@ -633,7 +647,7 @@ export const App: React.FC = () => {
           if (n.filePath === filePath) {
             return {
               ...n,
-              modifiedAt: Date.now()
+              modifiedAt
             };
           }
           return n;
@@ -835,6 +849,7 @@ export const App: React.FC = () => {
             notes={filteredNotes}
             selectedNoteId={selectedNote?.id || null}
             onSelectNote={selectNoteWithHistory}
+            onEditNote={handleEditNote}
             onDeleteNote={handleDeleteNote}
             isTrash={isTrashView}
             onRestoreNote={handleRestoreNote}
@@ -862,6 +877,8 @@ export const App: React.FC = () => {
         <div className="flex-1 h-full min-w-0 overflow-hidden">
           <Editor
             note={selectedNote}
+            focusRequest={editorFocusRequest}
+            onFocusRequestHandled={handleEditorFocused}
             onSave={handleSaveNote}
             onRename={handleRenameNote}
             onSelectFolder={setSelectedFolder}

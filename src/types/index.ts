@@ -12,6 +12,11 @@ export interface NoteMeta {
   frontmatter?: Record<string, any>;
 }
 
+export interface NoteFocusRequest {
+  filePath: string;
+  requestId: number;
+}
+
 export interface FolderNode {
   name: string;
   path: string;
@@ -35,4 +40,3 @@ export type SortMode =
   | 'date-created-asc'
   | 'title-asc'
   | 'title-desc';
-

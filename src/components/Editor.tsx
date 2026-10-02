@@ -26,12 +26,13 @@ import { CollapsibleHeadingsExtension } from '../extensions/CollapsibleHeadingsE
 import { MathExtension } from '../extensions/MathExtension';
 import { BubbleMenu } from './BubbleMenu';
 import { FormattingBar } from './FormattingBar';
+import { NoteInfo } from './NoteInfo';
 import { TableControls } from './TableControls';
 import { SlashMenu } from './SlashMenu';
 import { FindReplaceBar } from './FindReplaceBar';
 import { getTableInfo } from '../utils/tableUtils';
-import { NoteMeta } from '../types';
-import { Folder, FileText, AlertTriangle } from 'lucide-react';
+import { NoteFocusRequest, NoteMeta } from '../types';
+import { FileText, AlertTriangle } from 'lucide-react';
 import { showMessage } from '../utils/dialogs';
 
 const lowlight = createLowlight(common);
@@ -49,6 +50,8 @@ interface EditorProps {
   searchQuery?: string;
   smartTypography?: boolean;
   autoSortTasks?: boolean;
+  focusRequest?: NoteFocusRequest | null;
+  onFocusRequestHandled?: (requestId: number) => void;
 }
 
 interface TipTapNoteEditorProps {
@@ -63,6 +66,8 @@ interface TipTapNoteEditorProps {
   searchQuery?: string;
   smartTypography?: boolean;
   autoSortTasks?: boolean;
+  focusRequest?: NoteFocusRequest | null;
+  onFocusRequestHandled?: (requestId: number) => void;
 }
 
 /**
@@ -135,7 +140,9 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   externalChangeToken,
   searchQuery,
   smartTypography = true,
-  autoSortTasks = true
+  autoSortTasks = true,
+  focusRequest,
+  onFocusRequestHandled
 }) => {
   const [title, setTitle] = useState(note.title);
   const [isFindOpen, setIsFindOpen] = useState(false);
@@ -461,6 +468,12 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
 
   editorRef.current = editor;
 
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || focusRequest?.filePath !== note.filePath) return;
+    editor.commands.focus('end');
+    onFocusRequestHandled?.(focusRequest.requestId);
+  }, [editor, focusRequest, note.filePath, onFocusRequestHandled]);
+
   /**
    * Renaming rewrites the file on disk, which changes the note's identity. Doing that on
    * a keystroke debounce fought the user's cursor and could race an in-flight content
@@ -583,13 +596,6 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   const text = editor ? editor.getText() : '';
   const wordCount = (text || '').trim() ? (text || '').trim().split(/\s+/).length : 0;
 
-  const modifiedDate = new Date(note.modifiedAt).toLocaleDateString([], {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
 
   return (
     <div className="flex-1 h-full bg-[var(--editor-bg)] flex flex-col relative overflow-hidden">
@@ -644,24 +650,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
       {/* Scrollable Note Content Container */}
       <div className="flex-1 overflow-y-auto relative">
         <div className="w-full max-w-[900px] mx-auto px-8 pt-7 pb-2 print:max-w-full print:p-0 print:m-0">
-          {/* Apple Notes Floating Breadcrumbs & Metadata Header */}
-          <div className="no-print flex items-center justify-between text-[11px] text-[var(--text-secondary)] mb-4 select-none">
-            {/* Breadcrumb Navigation */}
-            <div className="flex items-center gap-1.5 min-w-0">
-              <button
-                onClick={() => onSelectFolder && onSelectFolder(note.folder === '/' ? '' : note.folder)}
-                className="flex items-center gap-1 font-semibold text-[var(--accent-color)] hover:underline opacity-90 transition-opacity truncate"
-                title={`Go to folder: ${note.folder || 'All Notes'}`}
-              >
-                <Folder size={12} />
-                <span>{note.folder && note.folder !== '/' ? note.folder : 'All Notes'}</span>
-              </button>
-            </div>
-
-            <span className="shrink-0 ml-3" title={`Last modified: ${modifiedDate}`}>
-              {wordCount} {wordCount === 1 ? 'word' : 'words'}
-            </span>
-          </div>
+          <NoteInfo note={note} wordCount={wordCount} onSelectFolder={onSelectFolder} />
 
           {/* Note Title Input */}
           <input
@@ -680,6 +669,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
               }
             }}
             placeholder="Title"
+            aria-label="Note title"
             dir="auto"
             className="w-full text-2xl font-bold bg-transparent text-[var(--text-primary)] placeholder-[var(--text-tertiary)] border-none focus:outline-none focus:ring-0 mb-3 px-0 tracking-tight"
           />
@@ -705,7 +695,9 @@ export const Editor: React.FC<EditorProps> = ({
   externalChangeToken,
   searchQuery,
   smartTypography = true,
-  autoSortTasks = true
+  autoSortTasks = true,
+  focusRequest,
+  onFocusRequestHandled
 }) => {
   const [loadedData, setLoadedData] = useState<{
     filePath: string;
@@ -781,6 +773,8 @@ export const Editor: React.FC<EditorProps> = ({
       searchQuery={searchQuery}
       smartTypography={smartTypography}
       autoSortTasks={autoSortTasks}
+      focusRequest={focusRequest}
+      onFocusRequestHandled={onFocusRequestHandled}
     />
   );
 };

@@ -18,6 +18,7 @@ interface NoteListProps {
   notes: NoteMeta[];
   selectedNoteId: string | null;
   onSelectNote: (note: NoteMeta) => void;
+  onEditNote: (note: NoteMeta) => void;
   onDeleteNote: (note: NoteMeta, e: React.MouseEvent) => void;
   isTrash?: boolean;
   onRestoreNote?: (note: NoteMeta, e: React.MouseEvent) => void;
@@ -67,6 +68,7 @@ export const NoteList: React.FC<NoteListProps> = ({
   notes,
   selectedNoteId,
   onSelectNote,
+  onEditNote,
   onDeleteNote,
   isTrash,
   onRestoreNote,
@@ -83,6 +85,7 @@ export const NoteList: React.FC<NoteListProps> = ({
 }) => {
   const [showSortMenu, setShowSortMenu] = useState(false);
   const sortMenuRef = useRef<HTMLDivElement>(null);
+  const noteRefs = useRef(new Map<string, HTMLDivElement>());
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -228,6 +231,32 @@ export const NoteList: React.FC<NoteListProps> = ({
     return { pinnedNotes: pinned, groupedNotes: groups };
   }, [notes, pinnedIds, sortMode, isTrash]);
 
+  // Navigate the visible order, including the pinned section and date groups.
+  const orderedNotes = useMemo(() => [
+    ...pinnedNotes,
+    ...groupedNotes.flatMap(group => group.notes)
+  ], [pinnedNotes, groupedNotes]);
+  const tabStop = orderedNotes.find(note => note.id === selectedNoteId || note.filePath === selectedNoteId) || orderedNotes[0];
+
+  const handleNoteKeyDown = (note: NoteMeta, event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget || event.nativeEvent.isComposing || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      if (!isTrash && !note.isFolder) onEditNote(note);
+      return;
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const index = orderedNotes.findIndex(item => item.filePath === note.filePath);
+    const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? orderedNotes.length - 1
+      : Math.max(0, Math.min(orderedNotes.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)));
+    const nextNote = orderedNotes[nextIndex];
+    if (!nextNote) return;
+    const row = noteRefs.current.get(nextNote.filePath);
+    row?.focus({ preventScroll: true });
+    row?.scrollIntoView({ block: 'nearest' });
+  };
+
   const renderNoteCard = (note: NoteMeta) => {
     const isSelected = selectedNoteId === note.id || selectedNoteId === note.filePath;
     const isPinned = pinnedIds.has(note.filePath) || note.frontmatter?.pinned;
@@ -236,7 +265,22 @@ export const NoteList: React.FC<NoteListProps> = ({
     return (
       <div
         key={note.id}
-        onClick={() => onSelectNote(note)}
+        ref={row => {
+          if (row) noteRefs.current.set(note.filePath, row);
+          else noteRefs.current.delete(note.filePath);
+        }}
+        role="listitem"
+        tabIndex={tabStop?.filePath === note.filePath ? 0 : -1}
+        aria-current={isSelected ? 'true' : undefined}
+        aria-label={note.title || 'Untitled Note'}
+        onKeyDown={event => handleNoteKeyDown(note, event)}
+        onFocus={event => {
+          if (event.target === event.currentTarget && !isSelected) onSelectNote(note);
+        }}
+        onClick={event => {
+          event.currentTarget.focus({ preventScroll: true });
+          onSelectNote(note);
+        }}
         onContextMenu={(e) => handleContextMenu(note, e)}
         draggable={!isTrash}
         onDragStart={(e) => {
@@ -245,7 +289,7 @@ export const NoteList: React.FC<NoteListProps> = ({
           e.dataTransfer.effectAllowed = 'move';
         }}
         title={compact ? `${note.title || 'Untitled Note'}${note.folder ? ` · ${note.folder}` : ''} · ${displayDate}` : undefined}
-        className={`group relative px-3.5 rounded-md ${compact ? 'py-2' : 'py-2.5'} cursor-pointer transition-colors duration-150 select-none ${
+        className={`note-list-row group relative px-3.5 rounded-md ${compact ? 'py-2' : 'py-2.5'} cursor-pointer transition-colors duration-150 select-none ${
           isSelected
             ? 'bg-[var(--card-active)] text-[var(--text-primary)]'
             : 'hover:bg-[var(--card-hover)] text-[var(--text-primary)]'
@@ -271,6 +315,8 @@ export const NoteList: React.FC<NoteListProps> = ({
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity shrink-0">
             {!isTrash && (
               <button
+                tabIndex={isSelected ? 0 : -1}
+                aria-label={isPinned ? 'Unpin note' : 'Pin note'}
                 onClick={(e) => onTogglePin(note.filePath, e)}
                 title={isPinned ? "Unpin Note" : "Pin Note to Top"}
                 className={`p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 ${
@@ -284,6 +330,8 @@ export const NoteList: React.FC<NoteListProps> = ({
             {isTrash ? (
               <>
                 <button
+                  tabIndex={isSelected ? 0 : -1}
+                  aria-label="Restore note"
                   onClick={(e) => onRestoreNote && onRestoreNote(note, e)}
                   title="Restore Note"
                   className="p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 text-emerald-600"
@@ -291,6 +339,8 @@ export const NoteList: React.FC<NoteListProps> = ({
                   <RotateCcw size={11.5} />
                 </button>
                 <button
+                  tabIndex={isSelected ? 0 : -1}
+                  aria-label="Delete permanently"
                   onClick={(e) => onDeleteNote(note, e)}
                   title="Delete Permanently"
                   className="p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 text-red-500"
@@ -300,6 +350,8 @@ export const NoteList: React.FC<NoteListProps> = ({
               </>
             ) : (
               <button
+                tabIndex={isSelected ? 0 : -1}
+                aria-label="Move to trash"
                 onClick={(e) => onDeleteNote(note, e)}
                 title="Move to Trash"
                 className="p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 text-red-500"
@@ -402,7 +454,7 @@ export const NoteList: React.FC<NoteListProps> = ({
       </div>
 
       {/* Note Cards List with Apple Notes Section Headers */}
-      <div className="flex-1 overflow-y-auto px-2 py-1.5 space-y-2">
+      <div role="list" aria-label="Notes. Use arrow keys to browse and Enter to edit." className="flex-1 overflow-y-auto px-2 py-1.5 space-y-2">
         {notes.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center p-6 text-center text-[var(--text-secondary)] select-none">
             <FileText size={32} className="opacity-20 mb-2" />
