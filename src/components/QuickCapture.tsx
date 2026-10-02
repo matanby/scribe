@@ -4,12 +4,14 @@ export const QuickCapture: React.FC = () => {
   const [title, setTitle] = useState(() => localStorage.getItem('scribe_capture_title') || '');
   const [content, setContent] = useState(() => localStorage.getItem('scribe_capture_content') || '');
   const [folder, setFolder] = useState('');
+  const [shortcutLabel, setShortcutLabel] = useState('');
   const [shortcutAvailable, setShortcutAvailable] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => {
-    window.scribeAPI.captureInfo().then(info => { setFolder(info.rootPath.split('/').pop() || 'Notes'); setShortcutAvailable(info.shortcutAvailable); }).catch(() => setError('Could not locate your notes folder.'));
+    window.scribeAPI.captureInfo().then(info => { setFolder(info.rootPath.split('/').pop() || 'Notes'); setShortcutAvailable(info.shortcutAvailable); setShortcutLabel(info.shortcutLabel); }).catch(() => setError('Could not locate your notes folder.'));
     document.documentElement.classList.toggle('dark', window.matchMedia('(prefers-color-scheme: dark)').matches);
+    return window.scribeAPI.onShortcutsChanged(state => { setShortcutAvailable(state.available); setShortcutLabel(state.label); });
   }, []);
   useEffect(() => {
     localStorage.setItem('scribe_capture_title', title);
@@ -35,7 +37,7 @@ export const QuickCapture: React.FC = () => {
         onChange={event => setTitle(event.target.value)} className="text-xl font-semibold bg-transparent outline-none" />
       <textarea aria-label="Note content" dir="auto" placeholder="Write something…" value={content} disabled={saving}
         onChange={event => setContent(event.target.value)} className="flex-1 resize-none bg-transparent outline-none text-sm leading-relaxed" />
-      {!shortcutAvailable && <p className="text-xs text-[var(--text-secondary)]">⌃⌥⌘N is in use by another app. Open Quick Capture from Scribe’s File menu.</p>}
+      {!shortcutAvailable && <p className="text-xs text-[var(--text-secondary)]">{shortcutLabel || 'This shortcut'} is unavailable. Open Quick Capture from Scribe’s File menu.</p>}
       {error && <p role="alert" className="text-xs text-red-500">{error}</p>}
       <footer className="flex items-center justify-between gap-3 text-xs text-[var(--text-secondary)]">
         <span className="truncate" title={folder}>Save to {folder} · ⌘↵</span>

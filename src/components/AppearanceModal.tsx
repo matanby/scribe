@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Check, Palette, Type, Sun, Moon, Laptop } from 'lucide-react';
+import { ShortcutSettings } from './ShortcutSettings';
 import { useFocusTrap } from '../utils/useFocusTrap';
 
 import { AppearanceSettings, ACCENT_PALETTES } from '../utils/appearance';
@@ -48,16 +49,17 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md bg-white/95 dark:bg-[#202024]/95 backdrop-blur-2xl border border-[var(--border-color)] shadow-2xl rounded-2xl overflow-hidden flex flex-col select-none animate-in zoom-in-95 duration-100"
+        className="w-full max-w-md max-h-[85vh] bg-white/95 dark:bg-[#202024]/95 backdrop-blur-2xl border border-[var(--border-color)] shadow-2xl rounded-2xl overflow-hidden flex flex-col select-none animate-in zoom-in-95 duration-100"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-color)]">
           <div className="flex items-center gap-2">
             <Palette size={18} className="text-[var(--accent-color)]" />
-            <h2 className="text-sm font-semibold text-[var(--text-primary)]">Appearance & Typography</h2>
+            <h2 className="text-sm font-semibold text-[var(--text-primary)]">Settings</h2>
           </div>
           <button 
             onClick={onClose}
+            aria-label="Close settings"
             className="p-1 rounded-lg text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
           >
             <X size={16} />
@@ -65,7 +67,7 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
         </div>
 
         {/* Settings Body */}
-        <div className="p-5 space-y-5">
+        <div className="p-5 space-y-5 overflow-y-auto">
           {/* Accent Colors */}
           <div>
             <label className="text-xs font-semibold text-[var(--text-primary)] block mb-2.5">
@@ -234,6 +236,7 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
               />
             </button>
           </div>
+          <ShortcutSettings />
         </div>
 
         {/* Footer */}

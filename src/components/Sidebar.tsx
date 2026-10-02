@@ -337,7 +337,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <button
           onClick={onOpenAppearance}
           className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 hover:text-[var(--text-primary)] transition-colors"
-          title="Appearance & Typography"
+          title="Settings"
         >
           <Sliders size={13} />
         </button>

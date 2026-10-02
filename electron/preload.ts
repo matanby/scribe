@@ -1,11 +1,19 @@
+import type { CaptureShortcut, CaptureShortcutState } from './shortcuts';
 import { contextBridge, ipcRenderer } from 'electron';
 
 export const scribeAPI = {
+  getShortcutSettings: () => ipcRenderer.invoke('shortcuts:get') as Promise<CaptureShortcutState>,
+  setCaptureShortcut: (config: CaptureShortcut) => ipcRenderer.invoke('shortcuts:setCapture', config) as Promise<CaptureShortcutState>,
+  onShortcutsChanged: (callback: (state: CaptureShortcutState) => void) => {
+    const handler = (_: unknown, state: CaptureShortcutState) => callback(state);
+    ipcRenderer.on('shortcuts:changed', handler);
+    return () => { ipcRenderer.removeListener('shortcuts:changed', handler); };
+  },
   searchExcerpts: (query: string) => ipcRenderer.invoke('notes:searchExcerpts', query) as Promise<{ filePath: string; excerpt: string }[]>,
   listVersions: (filePath: string) => ipcRenderer.invoke('notes:versions', filePath) as Promise<{ id: string; savedAt: number; excerpt: string; wordCount: number }[]>,
   previewVersion: (filePath: string, id: string) => ipcRenderer.invoke('notes:previewVersion', filePath, id) as Promise<string>,
   restoreVersion: (filePath: string, id: string) => ipcRenderer.invoke('notes:restoreVersion', filePath, id),
-  captureInfo: () => ipcRenderer.invoke('capture:info') as Promise<{ rootPath: string; shortcutAvailable: boolean }>,
+  captureInfo: () => ipcRenderer.invoke('capture:info') as Promise<{ rootPath: string; shortcutAvailable: boolean; shortcutLabel: string }>,
   saveCapture: (title: string, content: string) => ipcRenderer.invoke('capture:save', title, content),
   closeCapture: () => ipcRenderer.invoke('capture:close'),
   openCapture: () => ipcRenderer.invoke('capture:open'),
@@ -20,7 +28,7 @@ export const scribeAPI = {
   moveNote: (payload: { filePath: string; targetFolderPath: string }) =>
     ipcRenderer.invoke('notes:move', payload),
   deleteNote: (filePath: string) => ipcRenderer.invoke('notes:delete', filePath),
-  trashNote: (filePath: string) => ipcRenderer.invoke('notes:trash', filePath),
+  trashNote: (filePath: string) => ipcRenderer.invoke('notes:trash', filePath) as Promise<string>,
   restoreNote: (filePath: string) => ipcRenderer.invoke('notes:restore', filePath),
   permanentDeleteNote: (filePath: string) => ipcRenderer.invoke('notes:permanentDelete', filePath),
   emptyTrash: () => ipcRenderer.invoke('notes:emptyTrash'),

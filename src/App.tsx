@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef, lazy, Suspense } from 'react';
 import { flushNote } from './utils/flushNote';
 import { readStored, writeStored, remapPosition } from './utils/session';
+import { useTrashUndo } from './components/TrashUndo';
 import { Titlebar } from './components/Titlebar';
 import { Sidebar } from './components/Sidebar';
 import { NoteList } from './components/NoteList';
@@ -38,7 +39,7 @@ export const App: React.FC = () => {
     localStorage.setItem('scribe_compact_notes', String(next));
   };
   const [isQuickSwitcherOpen, setIsQuickSwitcherOpen] = useState(false);
-  const [isAppearanceOpen, setIsAppearanceOpen] = useState(false);
+  const [isAppearanceOpen, setIsAppearanceOpen] = useState(() => new URLSearchParams(window.location.search).has('settings'));
 
   // Appearance & Themes
   const [appearance, setAppearance] = useState<AppearanceSettings>(() => {
@@ -261,10 +262,25 @@ export const App: React.FC = () => {
         );
         return match || (data.allNotes.length > 0 ? data.allNotes[0] : null);
       });
+      return data as NotesTree;
     } catch (err) {
       console.error('Failed to load notes tree:', err);
     }
   }, []);
+
+  const rootRef = useRef(tree?.rootPath || '');
+  rootRef.current = tree?.rootPath || '';
+  const { remember: rememberTrash, toast: trashToast } = useTrashUndo(tree?.rootPath || '', async entry => {
+    if (entry.root !== rootRef.current) throw new Error('Return to the original notes folder to restore this note.');
+    const restoredPath = await window.scribeAPI.restoreNote(entry.trashPath);
+    const data = await loadTree(restoredPath);
+    if (data?.rootPath === entry.root && entry.root === rootRef.current) {
+      const note = data?.allNotes.find(note => note.filePath === restoredPath);
+      setSelectedFolder(note?.folder && note.folder !== '/' ? note.folder : '');
+      setSearchQuery('');
+      requestAnimationFrame(() => document.querySelector<HTMLElement>('.note-list-row[aria-current="true"]')?.focus());
+    }
+  });
 
   // Navigation history. Entries and cursor live in one piece of state so the two can
   // never disagree, and so nothing has to update state from inside a state updater.
@@ -434,15 +450,22 @@ export const App: React.FC = () => {
     }
   }, [loadTree]);
 
+  const trashNoteWithUndo = useCallback(async (filePath: string, title: string) => {
+    const operationRoot = rootRef.current;
+    await flushNote(filePath);
+    const trashPath = await window.scribeAPI.trashNote(filePath);
+    rememberTrash(operationRoot, trashPath, title);
+    await loadTree();
+  }, [loadTree, rememberTrash]);
+
   // Trash note via drag or action
   const handleTrashNoteByPath = useCallback(async (filePath: string) => {
     try {
-      await window.scribeAPI.trashNote(filePath);
-      await loadTree();
+      await trashNoteWithUndo(filePath, findNoteByPath(filePath)?.title || filePath.split('/').pop()?.replace(/\.md$/i, '') || 'Note');
     } catch (err) {
       console.error('Failed to trash note:', err);
     }
-  }, [loadTree]);
+  }, [trashNoteWithUndo, findNoteByPath]);
 
   // Export PDF & Print
   const handleExportPDF = useCallback(async () => {
@@ -546,6 +569,8 @@ export const App: React.FC = () => {
       loadTree();
     });
 
+    const unsubscribeSettings = window.scribeAPI.onMenuEvent('menu:settings', () => setIsAppearanceOpen(true));
+
     const unsubscribeQuickSwitcher = window.scribeAPI.onMenuEvent?.('menu:quickSwitcher', () => {
       setIsQuickSwitcherOpen(true);
     });
@@ -597,6 +622,7 @@ export const App: React.FC = () => {
     return () => {
       unsubscribe();
       unsubscribeRoot?.();
+      unsubscribeSettings();
       unsubscribeQuickSwitcher?.();
       unsubscribeNewNote?.();
       unsubscribeDuplicateNote?.();
@@ -627,15 +653,13 @@ export const App: React.FC = () => {
       }
     } else {
       try {
-        await flushNote(note.filePath);
-        await window.scribeAPI.trashNote(note.filePath);
-        await loadTree();
+        await trashNoteWithUndo(note.filePath, note.title);
       } catch (err) {
         console.error('Failed to move note to trash:', err);
         void showMessage('Could not move note to Trash', (err as Error).message, 'error');
       }
     }
-  }, [selectedFolder, loadTree]);
+  }, [selectedFolder, loadTree, trashNoteWithUndo]);
 
   useEffect(() => window.scribeAPI.onMenuEvent('menu:trashNote', () => {
     if (isQuickSwitcherOpen || isAppearanceOpen || document.querySelector('[aria-modal="true"]') || selectedFolder === '__TRASH__') return;
@@ -952,6 +976,8 @@ export const App: React.FC = () => {
         }}
         onNewNote={handleNewNote}
       /></Suspense>}
+
+      {trashToast}
 
       {/* Appearance & Typography Settings Modal */}
       {isAppearanceOpen && <Suspense fallback={null}><AppearanceModal

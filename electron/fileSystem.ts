@@ -904,7 +904,7 @@ export async function moveNote(rootDir: string, filePath: string, targetFolderPa
   };
 }
 
-export async function moveToTrash(filePath: string, rootDir: string, originId?: number): Promise<void> {
+export async function moveToTrash(filePath: string, rootDir: string, originId?: number): Promise<string> {
   const trashDir = getTrashDir(rootDir);
   const targetPath = uniqueTarget(trashDir, path.basename(filePath));
 
@@ -919,6 +919,7 @@ export async function moveToTrash(filePath: string, rootDir: string, originId?: 
     deletedAt: Date.now()
   };
   writeTrashIndex(rootDir, index);
+  return targetPath;
 }
 
 export async function restoreFromTrash(filePath: string, rootDir: string, originId?: number): Promise<string> {

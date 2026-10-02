@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, dialog, Menu, shell, screen, clipboard, protocol, net, MenuItemConstructorOptions, globalShortcut } from 'electron';
+import { CaptureShortcut, captureAccelerator, captureShortcutState, loadCaptureShortcut, registerCaptureShortcut, updateCaptureShortcut } from './shortcuts';
 import path from 'path';
 import fsSync from 'fs';
 import { pathToFileURL } from 'url';
@@ -45,7 +46,6 @@ process.env.DIST = path.join(__dirname, '../dist');
 process.env.VITE_PUBLIC = app.isPackaged ? process.env.DIST : path.join(process.env.DIST, '../public');
 
 const allWindows = new Set<BrowserWindow>();
-const QUICK_CAPTURE_SHORTCUT = process.platform === 'darwin' ? 'Control+Alt+Command+N' : 'Control+Alt+N';
 
 function getAppIconPath(): string {
   const possiblePaths = [
@@ -131,7 +131,7 @@ function saveWindowState(state: WindowState) {
   }
 }
 
-export function createWindow(targetFolderPath?: string): BrowserWindow {
+export function createWindow(targetFolderPath?: string, openSettings = false): BrowserWindow {
   const windowState = loadWindowState();
   const cascadeOffset = (allWindows.size * 25) % 150;
 
@@ -227,9 +227,9 @@ export function createWindow(targetFolderPath?: string): BrowserWindow {
   });
 
   if (process.env.VITE_DEV_SERVER_URL) {
-    win.loadURL(process.env.VITE_DEV_SERVER_URL);
+    win.loadURL(`${process.env.VITE_DEV_SERVER_URL}${openSettings ? '?settings=1' : ''}`);
   } else {
-    win.loadFile(path.join(process.env.DIST || path.join(__dirname, '../dist'), 'index.html'));
+    win.loadFile(path.join(process.env.DIST || path.join(__dirname, '../dist'), 'index.html'), { query: openSettings ? { settings: '1' } : {} });
   }
 
   // Watch for external file changes in this window's workspace folder
@@ -264,6 +264,14 @@ function setupMenu() {
       label: app.name,
       submenu: [
         { role: 'about' as const },
+        {
+          label: 'Settings…', accelerator: 'CmdOrCtrl+,',
+          click: (_item: Electron.MenuItem, focusedWin: Electron.BaseWindow | undefined) => {
+            const win = focusedWin && allWindows.has(focusedWin as BrowserWindow) ? focusedWin as BrowserWindow : Array.from(allWindows)[0];
+            if (win) { win.show(); win.focus(); sendToFocusedWindow('menu:settings', win); }
+            else createWindow(undefined, true);
+          }
+        },
         { type: 'separator' as const },
         { role: 'services' as const },
         { type: 'separator' as const },
@@ -303,8 +311,9 @@ function setupMenu() {
         },
         { type: 'separator' as const },
         {
+          id: 'quick-capture',
           label: 'Quick Capture…',
-          accelerator: QUICK_CAPTURE_SHORTCUT,
+          accelerator: captureAccelerator(),
           click: () => openCapture()
         },
         {
@@ -447,9 +456,10 @@ app.whenReady().then(() => {
     }
   });
 
+  loadCaptureShortcut();
   setupMenu();
   createWindow();
-  captureShortcutAvailable = globalShortcut.register(QUICK_CAPTURE_SHORTCUT, () => openCapture());
+  registerCaptureShortcut(() => openCapture());
 
   app.on('activate', () => {
     if (allWindows.size === 0) createWindow();
@@ -874,7 +884,6 @@ ipcMain.handle('contextMenu:folder', async (event, { folderPath, isRoot }) => {
 });
 
 let captureWindow: BrowserWindow | null = null;
-let captureShortcutAvailable = false;
 let captureRoot = '';
 let captureSaving = false;
 function openCapture() {
@@ -892,7 +901,7 @@ function openCapture() {
   else win.loadFile(path.join(process.env.DIST!, 'index.html'), { query: { capture: '1' } });
 }
 ipcMain.handle('capture:open', () => openCapture());
-ipcMain.handle('capture:info', () => ({ rootPath: captureRoot, shortcutAvailable: captureShortcutAvailable }));
+ipcMain.handle('capture:info', () => ({ rootPath: captureRoot, shortcutAvailable: captureShortcutState().available, shortcutLabel: captureShortcutState().label }));
 ipcMain.handle('capture:close', event => {
   if (captureWindow?.webContents.id === event.sender.id) captureWindow.close();
 });
@@ -929,4 +938,14 @@ ipcMain.handle('notes:restoreVersion', async (event, filePath: string, id: strin
   for (const win of allWindows) {
     if (getWindowRoot(win.webContents.id) === root) win.webContents.send('notes:changed', { changedPaths: [filePath], structural: false });
   }
+});
+
+ipcMain.handle('shortcuts:get', () => captureShortcutState());
+ipcMain.handle('shortcuts:setCapture', (_event, config: CaptureShortcut) => {
+  const state = updateCaptureShortcut(config, () => openCapture());
+  setupMenu();
+  for (const win of [...allWindows, ...(captureWindow ? [captureWindow] : [])]) {
+    if (!win.isDestroyed()) win.webContents.send('shortcuts:changed', state);
+  }
+  return state;
 });

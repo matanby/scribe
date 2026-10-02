@@ -164,7 +164,7 @@ Official `brew install --cask` on Homebrew’s own tap is not possible without a
 
 ## Capture, search, history, and returning to work
 
-- **Quick Capture:** press **⌃⌥⌘N** while Scribe is running, or choose **File → Quick Capture** (also available in the toolbar’s More actions). Save with **⌘Return**. Escape dismisses the window and retains its draft. Captured notes go to the current notes folder’s root; when another app is active, the most recently opened notes folder is used.
+- **Quick Capture:** press **⌃⌥⌘N** (default) while Scribe is running, or choose **File → Quick Capture** (also available in the toolbar’s More actions). Save with **⌘Return**. Escape dismisses the window and retains its draft. Captured notes go to the current notes folder’s root; when another app is active, the most recently opened notes folder is used.
 - **Search:** matching passages appear in the note list, including in compact view while searching. Select a result to scroll to the first matching passage. Search uses the selected folder or Recently Deleted as its scope.
 - **Version History:** click the date above a note’s title and choose **View Version History**. Browse dated versions with excerpts, preview the formatted note next to the version list, and restore a previous version. The current note is also available for comparison. Scribe preserves the initial content before editing, then takes checkpoints at five-minute intervals when content changes, retaining up to 100 versions per note. Restoring always preserves the outgoing version. History is local to this Mac in Scribe’s application data; it starts with edits made in this version and is not synced with the Markdown files. App-initiated moves and renames carry history along. Permanent deletion also removes that note’s history.
 - **Resume:** each notes folder remembers its selected note and folder; the last 100 notes remember their cursor and scroll positions. Expanded folders are restored when you return.
@@ -185,3 +185,10 @@ node scripts/measure-startup.cjs /Applications/Scribe.app/Contents/MacOS/Scribe 
 The script records three fresh-process launches, measuring the shell and the editor with all 500 rows loaded. `reuse` reopens the same profile to include normal session/index reuse. Omit it for a new profile on each run. Results are saved under the system temporary directory in `scribe-startup`. Measurements use an OS file cache that may already be warm; they are not power-on measurements. The first launch of a newly built bundle can take longer than subsequent launches.
 
 On the development Mac, the repeated-profile median editor-ready time improved from 883 ms to 767 ms. The arm64 bundle shrank from about 292 MiB to 199 MiB. Results depend on the note collection, disk, and OS cache.
+
+
+## Shortcuts and Undo deletion
+
+Open **Scribe → Settings…** (**⌘,**) or the sidebar’s Settings button. Under **Keyboard shortcuts**, choose **Change…** beside Quick Capture, select modifiers and a key, then save. Scribe checks for conflicts with its own shortcuts and other apps before replacing the current shortcut. The selection is saved on this Mac and appears immediately in the File menu. **Use default** selects the original combination; save it to apply the reset.
+
+Moving a note to Trash shows a brief **Undo** notification. Undo restores the exact trashed file to its original folder, including when multiple notes have the same name. The notification pauses while hovered or focused, and recent deletions can be undone in reverse order. This covers ⌘Delete, note-menu actions, and dragging a note to Trash. Dismissal or timeout leaves the note recoverable in Recently Deleted.
