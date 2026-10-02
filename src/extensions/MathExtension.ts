@@ -1,7 +1,11 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import katex from 'katex';
+let mathRenderer: Promise<typeof import('../utils/mathRenderer')> | null = null;
+function loadMathRenderer() {
+  if (!mathRenderer) mathRenderer = import('../utils/mathRenderer').catch(error => { mathRenderer = null; throw error; });
+  return mathRenderer;
+}
 
 export const mathPluginKey = new PluginKey('liveMathPlugin');
 
@@ -20,15 +24,13 @@ function createMathWidget(
   dom.setAttribute('contenteditable', 'false');
   dom.title = 'Click or double-click to edit formula';
 
-  try {
-    const raw = (latex || '').trim();
-    dom.innerHTML = katex.renderToString(raw || '\\dots', {
-      throwOnError: false,
-      displayMode: isBlock
-    });
-  } catch {
-    dom.textContent = isBlock ? `$$\n${latex || ''}\n$$` : `$${latex || ''}$`;
-  }
+  const raw = (latex || '').trim();
+  const content = document.createElement(isBlock ? 'div' : 'span');
+  content.textContent = isBlock ? `$$\n${raw}\n$$` : `$${raw}$`;
+  dom.appendChild(content);
+  void loadMathRenderer().then(({ renderMath }) => {
+    content.innerHTML = renderMath(raw, isBlock);
+  }).catch(() => { /* Retain the readable formula if rendering cannot load. */ });
 
   if (isBlock) {
     const badge = document.createElement('span');

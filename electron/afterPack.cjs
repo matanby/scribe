@@ -1,5 +1,6 @@
 const { execFileSync } = require('child_process')
 const path = require('path')
+const fs = require('fs/promises')
 
 /**
  * Ad-hoc sign the packed .app (identity "-") so Apple Silicon will launch it.
@@ -17,6 +18,16 @@ module.exports = async function afterPack(context) {
     context.packager.projectDir,
     'electron/entitlements.mac.plist'
   )
+
+  // electron-builder 25 filters top-level localizations, but leaves Chromium's
+  // copies in the framework. Keep the same language set in both locations.
+  const localeDirectory = path.join(appPath, 'Contents/Frameworks/Electron Framework.framework/Versions/A/Resources')
+  const languages = new Set(context.packager.config.electronLanguages || ['en', 'en_GB', 'he'])
+  for (const entry of await fs.readdir(localeDirectory)) {
+    if (entry.endsWith('.lproj') && !languages.has(entry.slice(0, -6))) {
+      await fs.rm(path.join(localeDirectory, entry), { recursive: true })
+    }
+  }
 
   execFileSync(
     'codesign',

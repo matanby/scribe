@@ -168,3 +168,20 @@ Official `brew install --cask` on Homebrew’s own tap is not possible without a
 - **Search:** matching passages appear in the note list, including in compact view while searching. Select a result to scroll to the first matching passage. Search uses the selected folder or Recently Deleted as its scope.
 - **Version History:** click the date above a note’s title and choose **View Version History**. Browse dated versions with excerpts, preview the formatted note next to the version list, and restore a previous version. The current note is also available for comparison. Scribe preserves the initial content before editing, then takes checkpoints at five-minute intervals when content changes, retaining up to 100 versions per note. Restoring always preserves the outgoing version. History is local to this Mac in Scribe’s application data; it starts with edits made in this version and is not synced with the Markdown files. App-initiated moves and renames carry history along. Permanent deletion also removes that note’s history.
 - **Resume:** each notes folder remembers its selected note and folder; the last 100 notes remember their cursor and scroll positions. Expanded folders are restored when you return.
+
+
+## Startup and packaging
+
+Renderer dependencies live in `devDependencies`: Vite bundles them into `dist`, so shipping their original `node_modules` copies is unnecessary. Only the filesystem watcher and frontmatter parser remain runtime dependencies. The package includes English and Hebrew Chromium localizations and a single native icon source.
+
+The main shell and Quick Capture load independently from the editor. History, appearance, the quick switcher, and formula rendering load when needed. Note scans use bounded parallel reads and a local, disposable snippet index; each file's modification time and size are checked before cached metadata is reused.
+
+For repeatable startup measurements with 500 synthetic bilingual notes and an isolated profile (Node 22+):
+
+```sh
+node scripts/measure-startup.cjs /Applications/Scribe.app/Contents/MacOS/Scribe baseline reuse
+```
+
+The script records three fresh-process launches, measuring the shell and the editor with all 500 rows loaded. `reuse` reopens the same profile to include normal session/index reuse. Omit it for a new profile on each run. Results are saved under the system temporary directory in `scribe-startup`. Measurements use an OS file cache that may already be warm; they are not power-on measurements. The first launch of a newly built bundle can take longer than subsequent launches.
+
+On the development Mac, the repeated-profile median editor-ready time improved from 883 ms to 767 ms. The arm64 bundle shrank from about 292 MiB to 199 MiB. Results depend on the note collection, disk, and OS cache.

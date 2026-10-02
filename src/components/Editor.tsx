@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, lazy, Suspense } from 'react';
 import { useEditor, EditorContent, ReactNodeViewRenderer } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
@@ -27,7 +27,6 @@ import { MathExtension } from '../extensions/MathExtension';
 import { BubbleMenu } from './BubbleMenu';
 import { FormattingBar } from './FormattingBar';
 import { FLUSH_NOTE_EVENT, FlushNoteRequest } from '../utils/flushNote';
-import { NoteHistory } from './NoteHistory';
 import { readPosition, savePosition } from '../utils/session';
 import { NoteInfo } from './NoteInfo';
 import { TableControls } from './TableControls';
@@ -37,6 +36,8 @@ import { getTableInfo } from '../utils/tableUtils';
 import { NoteFocusRequest, NoteMeta } from '../types';
 import { FileText, AlertTriangle } from 'lucide-react';
 import { showMessage } from '../utils/dialogs';
+
+const NoteHistory = lazy(() => import('./NoteHistory').then(module => ({ default: module.NoteHistory })));
 
 const lowlight = createLowlight(common);
 
@@ -699,7 +700,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
         </div>
       )}
 
-      {historyOpen && <NoteHistory note={note} currentMarkdown={editor?.storage.markdown.getMarkdown() ?? initialMarkdown} onClose={() => setHistoryOpen(false)} onRestore={async id => {
+      {historyOpen && <Suspense fallback={<div role="dialog" aria-modal="true" className="fixed inset-0 z-[100] bg-black/30 flex items-center justify-center"><span className="rounded-lg px-5 py-4 bg-[var(--editor-bg)] text-sm text-[var(--text-primary)]">Loading history…</span></div>}><NoteHistory note={note} currentMarkdown={editor?.storage.markdown.getMarkdown() ?? initialMarkdown} onClose={() => setHistoryOpen(false)} onRestore={async id => {
         await performSaveRef.current();
         if (isDirtyRef.current) throw new Error('Save your changes before restoring a version.');
         await window.scribeAPI.restoreVersion(note.filePath, id);
@@ -708,7 +709,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
         lastSyncedMarkdownRef.current = data.markdown;
         isDirtyRef.current = false;
         setConflictMarkdown(null);
-      }} />}
+      }} /></Suspense>}
 
       {/* Scrollable Note Content Container */}
       <div ref={scrollerRef} className="flex-1 overflow-y-auto relative">

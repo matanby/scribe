@@ -481,6 +481,65 @@ interface DerivedNoteData {
 
 const derivedCache = new Map<string, DerivedNoteData & { mtimeMs: number; size: number }>();
 
+// Cold launches can reuse snippets when the file's modification time and size
+// still match. Always stat the real file: the persisted index is only a cache.
+const indexLoads = new Map<string, Promise<void>>();
+const indexWrites = new Map<string, ReturnType<typeof setTimeout>>();
+function indexPath(root: string) {
+  return path.join(path.dirname(getConfigPath()), `note-index-${hashContent(path.resolve(root))}.json`);
+}
+async function loadDerivedIndex(root: string) {
+  let pending = indexLoads.get(root);
+  if (!pending) {
+    pending = (async () => {
+      try {
+        const saved = JSON.parse(await fs.readFile(indexPath(root), 'utf8'));
+        if (saved.version !== 1 || !Array.isArray(saved.entries)) return;
+        for (const [filePath, data] of saved.entries.slice(-2000)) {
+          const relative = path.relative(root, filePath);
+          if (relative.startsWith('..') || path.isAbsolute(relative)) continue;
+          if (typeof data?.snippet !== 'string' || typeof data?.mtimeMs !== 'number' || typeof data?.size !== 'number') continue;
+          if (!derivedCache.has(filePath)) derivedCache.set(filePath, data);
+        }
+        trimCache(derivedCache);
+      } catch { /* Missing or obsolete index: rebuild it from the notes. */ }
+    })();
+    indexLoads.set(root, pending);
+  }
+  await pending;
+}
+function scheduleDerivedIndex(root: string) {
+  const previous = indexWrites.get(root);
+  if (previous) clearTimeout(previous);
+  indexWrites.set(root, setTimeout(async () => {
+    indexWrites.delete(root);
+    const entries = [...derivedCache].filter(([filePath]) => {
+      const relative = path.relative(root, filePath);
+      return !relative.startsWith('..') && !path.isAbsolute(relative);
+    });
+    const destination = indexPath(root), temporary = `${destination}.${crypto.randomUUID()}.tmp`;
+    try {
+      await fs.writeFile(temporary, JSON.stringify({ version: 1, entries }), 'utf8');
+      await fs.rename(temporary, destination);
+    } catch { await fs.rm(temporary, { force: true }).catch(() => {}); }
+  }, 250));
+}
+
+async function mapConcurrent<T>(values: T[], concurrency: number, action: (value: T) => Promise<void>) {
+  let cursor = 0;
+  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, async () => {
+    while (cursor < values.length) { const index = cursor++; await action(values[index]); }
+  }));
+}
+let activeMetadataReads = 0;
+const metadataWaiters: (() => void)[] = [];
+async function readMetadata<T>(action: () => Promise<T>): Promise<T> {
+  if (activeMetadataReads >= 16) await new Promise<void>(resolve => metadataWaiters.push(resolve));
+  else activeMetadataReads++;
+  try { return await action(); }
+  finally { const next = metadataWaiters.shift(); if (next) next(); else activeMetadataReads--; }
+}
+
 /**
  * Reading every note in full on each rescan was the single largest cost in the refresh
  * path, and the reason a self-inflicted save could take longer than the old 1.5s
@@ -586,6 +645,7 @@ function relativeFolder(rootDir: string, filePath: string): string {
 }
 
 export async function readAllNotesTree(rootDir: string): Promise<NotesTree> {
+  await loadDerivedIndex(rootDir);
   const allNotes: NoteMeta[] = [];
   const trashNotes: NoteMeta[] = [];
 
@@ -595,10 +655,10 @@ export async function readAllNotesTree(rootDir: string): Promise<NotesTree> {
     const children: FolderNode[] = [];
     let noteCount = 0;
 
-    for (const entry of entries) {
-      if (entry.name.startsWith('.')) continue;
+    await mapConcurrent(entries, 8, async entry => {
+      if (entry.name.startsWith('.')) return;
       // The attachments folder is app plumbing, not somewhere the user files notes.
-      if (relative === '' && entry.isDirectory() && entry.name === ASSETS_DIR_NAME) continue;
+      if (relative === '' && entry.isDirectory() && entry.name === ASSETS_DIR_NAME) return;
 
       const fullPath = path.join(dir, entry.name);
       const relPath = path.join(relative, entry.name);
@@ -609,8 +669,10 @@ export async function readAllNotesTree(rootDir: string): Promise<NotesTree> {
         noteCount += subFolder.noteCount;
       } else if (entry.isFile() && entry.name.toLowerCase().endsWith('.md')) {
         try {
-          const stats = await fs.stat(fullPath);
-          const derived = await getDerivedNoteData(fullPath, stats);
+          const { stats, derived } = await readMetadata(async () => {
+            const stats = await fs.stat(fullPath);
+            return { stats, derived: await getDerivedNoteData(fullPath, stats) };
+          });
 
           allNotes.push({
             id: fullPath,
@@ -629,14 +691,14 @@ export async function readAllNotesTree(rootDir: string): Promise<NotesTree> {
           console.error(`Error reading note ${fullPath}:`, err);
         }
       }
-    }
+    });
 
     return {
       name: relative === '' ? 'Notes' : dirName,
       path: dir,
       relativePath: relative,
       noteCount,
-      children
+      children: children.sort((a, b) => a.name.localeCompare(b.name))
     };
   }
 
@@ -701,9 +763,11 @@ export async function readAllNotesTree(rootDir: string): Promise<NotesTree> {
     console.error('Error reading trash directory:', e);
   }
 
+  scheduleDerivedIndex(rootDir);
+
   // Sort notes by modifiedAt desc
-  allNotes.sort((a, b) => b.modifiedAt - a.modifiedAt);
-  trashNotes.sort((a, b) => b.modifiedAt - a.modifiedAt);
+  allNotes.sort((a, b) => b.modifiedAt - a.modifiedAt || a.filePath.localeCompare(b.filePath));
+  trashNotes.sort((a, b) => b.modifiedAt - a.modifiedAt || a.filePath.localeCompare(b.filePath));
 
   return {
     rootPath: rootDir,

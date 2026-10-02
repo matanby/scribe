@@ -1,14 +1,18 @@
-import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef, lazy, Suspense } from 'react';
 import { flushNote } from './utils/flushNote';
 import { readStored, writeStored, remapPosition } from './utils/session';
 import { Titlebar } from './components/Titlebar';
 import { Sidebar } from './components/Sidebar';
 import { NoteList } from './components/NoteList';
-import { Editor } from './components/Editor';
-import { QuickSwitcher } from './components/QuickSwitcher';
-import { AppearanceModal, AppearanceSettings, ACCENT_PALETTES } from './components/AppearanceModal';
+import { AppearanceSettings, ACCENT_PALETTES } from './utils/appearance';
 import { NoteMeta, NoteFocusRequest, NotesTree, SortMode, FolderNode } from './types';
 import { confirmDestructive, showMessage } from './utils/dialogs';
+
+// Start downloading the editor while the shell mounts and the note index loads.
+const editorModule = import('./components/Editor');
+const Editor = lazy(() => editorModule.then(module => ({ default: module.Editor })));
+const QuickSwitcher = lazy(() => import('./components/QuickSwitcher').then(module => ({ default: module.QuickSwitcher })));
+const AppearanceModal = lazy(() => import('./components/AppearanceModal').then(module => ({ default: module.AppearanceModal })));
 
 export const App: React.FC = () => {
   const [tree, setTree] = useState<NotesTree | null>(null);
@@ -630,10 +634,12 @@ export const App: React.FC = () => {
   }, [selectedFolder, loadTree]);
 
   useEffect(() => window.scribeAPI.onMenuEvent('menu:trashNote', () => {
-    if (document.querySelector('[aria-modal="true"]') || selectedFolder === '__TRASH__') return;
+    if (isQuickSwitcherOpen || isAppearanceOpen || document.querySelector('[aria-modal="true"]') || selectedFolder === '__TRASH__') return;
     const note = selectedNoteRef.current;
-    if (note && !note.isFolder) void handleDeleteNote(note);
-  }), [handleDeleteNote, selectedFolder]);
+    if (note && !note.isFolder) void handleDeleteNote(note).then(() => {
+      requestAnimationFrame(() => document.querySelector<HTMLElement>('.note-list-row[aria-current="true"]')?.focus());
+    });
+  }), [handleDeleteNote, selectedFolder, isQuickSwitcherOpen, isAppearanceOpen]);
 
   // Restore note from trash
   const handleRestoreNote = useCallback(async (note: NoteMeta, e: React.MouseEvent) => {
@@ -914,7 +920,7 @@ export const App: React.FC = () => {
 
         {/* Pane 3: WYSIWYG Editor (Takes remaining space) */}
         <div className="flex-1 h-full min-w-0 overflow-hidden">
-          <Editor
+          <Suspense fallback={<div className="h-full bg-[var(--editor-bg)]" />}><Editor
             note={selectedNote}
             focusRequest={editorFocusRequest}
             onFocusRequestHandled={handleEditorFocused}
@@ -927,12 +933,12 @@ export const App: React.FC = () => {
             searchQuery={searchQuery}
             smartTypography={appearance.smartTypography !== false}
             autoSortTasks={appearance.autoSortTasks !== false}
-          />
+          /></Suspense>
         </div>
       </main>
 
       {/* Quick Switcher Modal (⌘⇧O) */}
-      <QuickSwitcher
+      {isQuickSwitcherOpen && <Suspense fallback={null}><QuickSwitcher
         isOpen={isQuickSwitcherOpen}
         onClose={() => setIsQuickSwitcherOpen(false)}
         notes={tree?.allNotes || []}
@@ -941,15 +947,15 @@ export const App: React.FC = () => {
           setSelectedFolder('');
         }}
         onNewNote={handleNewNote}
-      />
+      /></Suspense>}
 
       {/* Appearance & Typography Settings Modal */}
-      <AppearanceModal
+      {isAppearanceOpen && <Suspense fallback={null}><AppearanceModal
         isOpen={isAppearanceOpen}
         onClose={() => setIsAppearanceOpen(false)}
         settings={appearance}
         onUpdateSettings={handleUpdateAppearance}
-      />
+      /></Suspense>}
     </div>
   );
 };
