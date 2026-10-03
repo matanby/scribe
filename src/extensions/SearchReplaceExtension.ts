@@ -1,5 +1,6 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
+import { closeHistory } from '@tiptap/pm/history';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 export interface SearchReplaceStorage {
@@ -133,8 +134,9 @@ export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorag
           if (!current) return false;
 
           if (dispatch && current.from < current.to && current.to <= tr.doc.content.size) {
+            closeHistory(tr);
             tr.insertText(replaceTerm, current.from, current.to);
-            tr.setMeta(searchPluginKey, { replace: true });
+            tr.setMeta(searchPluginKey, { replacementEnd: tr.mapping.map(current.to, 1) });
             scrollToActiveMatch();
           }
           return true;
@@ -147,6 +149,7 @@ export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorag
           if (results.length === 0) return false;
 
           if (dispatch) {
+            closeHistory(tr);
             // Replace backwards so document positions remain valid
             for (let i = results.length - 1; i >= 0; i--) {
               const { from, to } = results[i];
@@ -215,6 +218,11 @@ export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorag
             });
 
             extension.storage.results = results;
+            const replacementEnd = tr.getMeta(searchPluginKey)?.replacementEnd;
+            if (typeof replacementEnd === 'number') {
+              const next = results.findIndex(result => result.from >= replacementEnd);
+              extension.storage.currentIndex = next < 0 ? 0 : next;
+            }
             if (extension.storage.currentIndex >= results.length) {
               extension.storage.currentIndex = 0;
             }

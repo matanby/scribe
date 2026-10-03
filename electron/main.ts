@@ -579,6 +579,7 @@ app.on('window-all-closed', () => {
 
 // IPC Handlers scoped per window
 ipcMain.handle('windows:openLibrary', () => openLibraryWindow());
+ipcMain.handle('windows:closeEditor', event => { BrowserWindow.fromWebContents(event.sender)?.close(); });
 ipcMain.handle('notes:listTree', async (event) => {
   const root = getWindowRoot(event.sender.id);
   const document = documentFiles.get(event.sender.id);
@@ -591,10 +592,10 @@ ipcMain.handle('notes:read', async (event, filePath: string) => {
   return await withFileLock(filePath, () => readNoteContent(filePath));
 });
 
-ipcMain.handle('notes:save', async (event, { filePath, markdown }) => {
+ipcMain.handle('notes:save', async (event, { filePath, markdown, expectedMarkdown }) => {
   const root = getWindowRoot(event.sender.id);
   assertInsideRoot(root, filePath);
-  return await withFileLock(filePath, () => saveNoteContent(filePath, markdown, event.sender.id));
+  return await withFileLock(filePath, () => saveNoteContent(filePath, markdown, event.sender.id, expectedMarkdown));
 });
 
 ipcMain.handle('notes:create', async (event, { folderPath, title, content }) => {

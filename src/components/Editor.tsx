@@ -35,7 +35,7 @@ import { TableControls } from './TableControls';
 import { SlashMenu } from './SlashMenu';
 import { FindReplaceBar } from './FindReplaceBar';
 import { getTableInfo } from '../utils/tableUtils';
-import { NoteFocusRequest, NoteMeta } from '../types';
+import { NoteFocusRequest, NoteMeta, SaveResult } from '../types';
 import { FileText, AlertTriangle } from 'lucide-react';
 import { showMessage } from '../utils/dialogs';
 
@@ -48,7 +48,7 @@ const AUTOSAVE_DEBOUNCE_MS = 400;
 interface EditorProps {
   documentMode?: boolean;
   note: NoteMeta | null;
-  onSave: (filePath: string, markdown: string) => Promise<void>;
+  onSave: (filePath: string, markdown: string, expectedMarkdown: string) => Promise<SaveResult>;
   onRename: (filePath: string, newTitle: string, focusBody?: boolean) => Promise<void>;
   onSelectFolder?: (folderPath: string) => void;
   setIsSaving: (saving: boolean) => void;
@@ -65,7 +65,7 @@ interface TipTapNoteEditorProps {
   documentMode?: boolean;
   note: NoteMeta;
   initialMarkdown: string;
-  onSave: (filePath: string, markdown: string) => Promise<void>;
+  onSave: (filePath: string, markdown: string, expectedMarkdown: string) => Promise<SaveResult>;
   onRename: (filePath: string, newTitle: string, focusBody?: boolean) => Promise<void>;
   onSelectFolder?: (folderPath: string) => void;
   setIsSaving: (saving: boolean) => void;
@@ -170,6 +170,11 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   const [findTrigger, setFindTrigger] = useState(0);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [conflictMarkdown, setConflictMarkdown] = useState<string | null>(null);
+  const [resolvingConflict, setResolvingConflict] = useState(false);
+  const resolvingConflictRef = useRef(false);
+  const conflictRef = useRef<string | null>(null);
+  const saveInFlightRef = useRef<Promise<void> | null>(null);
+  const editRevisionRef = useRef(0);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Everything the debounced save needs is read through refs. TipTap builds its options
@@ -189,44 +194,66 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   const setLastSavedTextRef = useRef(setLastSavedText);
   setLastSavedTextRef.current = setLastSavedText;
 
+  const pauseForConflict = useCallback((markdown: string) => {
+    conflictRef.current = markdown;
+    setConflictMarkdown(markdown);
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = null;
+    setIsSavingRef.current(false);
+    setLastSavedTextRef.current('Review changes');
+  }, []);
+
   const performSave = useCallback(async () => {
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = null;
-    }
-
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = null;
+    // Serialize saves, including explicit Save/blur/rename flushes during an autosave.
+    while (saveInFlightRef.current) await saveInFlightRef.current;
+    if (conflictRef.current !== null) return;
     const editor = editorRef.current;
-    if (!editor || editor.isDestroyed || !isDirtyRef.current) {
+    if (!editor || editor.isDestroyed || !isDirtyRef.current) return;
+    let markdown: string;
+    try { markdown = editor.storage.markdown.getMarkdown(); }
+    catch {
+      setSaveError('The editor could not prepare your content for saving.');
       setIsSavingRef.current(false);
+      setLastSavedTextRef.current("Couldn't save");
       return;
     }
-
-    const markdown = editor.storage.markdown.getMarkdown();
-
-    // Serializing to an empty string while the document still holds content means the
-    // markdown pipeline misfired. Writing that would wipe the note.
     if (!markdown.trim() && !editor.isEmpty) {
-      console.warn('Auto-save skipped: serializer produced empty output for a non-empty document');
       setIsSavingRef.current(false);
+      setSaveError('The editor could not prepare your content for saving.');
+      setLastSavedTextRef.current("Couldn't save");
       return;
     }
+    const revision = editRevisionRef.current;
+    setIsSavingRef.current(true);
+    const save = (async () => {
+      try {
+        const result = await onSaveRef.current(notePathRef.current, markdown, lastSyncedMarkdownRef.current);
+        if (result.conflict) { pauseForConflict(result.markdown); return; }
+        lastSyncedMarkdownRef.current = result.markdown;
+        isDirtyRef.current = revision !== editRevisionRef.current;
+        setSaveError(null);
+        if (conflictRef.current !== null) return;
+        setIsSavingRef.current(isDirtyRef.current);
+        setLastSavedTextRef.current(`Saved ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
+      } catch (err: any) {
+        isDirtyRef.current = true;
+        setIsSavingRef.current(false);
+        setSaveError(err?.message?.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '') || 'Failed to save file');
+        setLastSavedTextRef.current("Couldn't save");
+      }
+    })();
+    const tracked = save.finally(() => {
+      if (saveInFlightRef.current === tracked) saveInFlightRef.current = null;
+    });
+    saveInFlightRef.current = tracked;
+    await tracked;
+  }, [pauseForConflict]);
 
-    isDirtyRef.current = false;
-    try {
-      await onSaveRef.current(notePathRef.current, markdown);
-      lastSyncedMarkdownRef.current = markdown;
-      setSaveError(null);
-      setIsSavingRef.current(false);
-      setLastSavedTextRef.current(
-        `Saved ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-      );
-    } catch (err: any) {
-      // Keep the buffer dirty so the next attempt retries instead of silently dropping it.
-      isDirtyRef.current = true;
-      setIsSavingRef.current(false);
-      setSaveError(err?.message || 'Failed to save note');
-      console.error('Error auto-saving:', err);
-    }
+  useEffect(() => {
+    setIsSavingRef.current(false);
+    setLastSavedTextRef.current('Saved');
   }, []);
 
   const performSaveRef = useRef(performSave);
@@ -258,6 +285,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
 
   const scheduleSave = useCallback(() => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    if (conflictRef.current !== null) return;
     saveTimeoutRef.current = setTimeout(() => {
       void performSaveRef.current();
     }, AUTOSAVE_DEBOUNCE_MS);
@@ -276,6 +304,8 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   // Find is driven purely by the application menu. A parallel window keydown listener
   // would swallow ⌘F everywhere, including inside text inputs, for no added behaviour.
   useEffect(() => {
+    const localFind = (event: Event) => openFind(!!(event as CustomEvent<boolean>).detail);
+    window.addEventListener('scribe:find', localFind);
     const unsubscribeMenuFind = window.scribeAPI.onMenuEvent?.('menu:find', () => {
       openFind(false);
     });
@@ -285,6 +315,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
     });
 
     return () => {
+      window.removeEventListener('scribe:find', localFind);
       unsubscribeMenuFind?.();
       unsubscribeMenuFindReplace?.();
     };
@@ -491,7 +522,8 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
       if (transaction.getMeta('bidiAutoDetect')) return;
 
       isDirtyRef.current = true;
-      setIsSavingRef.current(true);
+      editRevisionRef.current += 1;
+      if (conflictRef.current === null) setIsSavingRef.current(true);
       scheduleSaveRef.current();
     }
   });
@@ -623,12 +655,26 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
     };
 
     const unsubscribeSave = window.scribeAPI.onMenuEvent?.('menu:saveNote', flushNow);
-    window.addEventListener('beforeunload', flushNow);
+    let closing = false;
+    const beforeClose = (event: BeforeUnloadEvent) => {
+      if (!documentMode || (!isDirtyRef.current && !saveInFlightRef.current && conflictRef.current === null)) { flushNow(); return; }
+      event.preventDefault();
+      event.returnValue = '';
+      if (closing) return;
+      closing = true;
+      void (async () => {
+        await performSaveRef.current();
+        if (!isDirtyRef.current && conflictRef.current === null) await window.scribeAPI.closeEditorWindow();
+        else await showMessage('Your edits are not saved', conflictRef.current !== null ? 'Choose which version to keep before closing this file.' : 'Retry saving or copy your text before closing this file.', 'warning');
+        closing = false;
+      })();
+    };
+    window.addEventListener('beforeunload', beforeClose);
     window.addEventListener('blur', flushNow);
 
     return () => {
       unsubscribeSave?.();
-      window.removeEventListener('beforeunload', flushNow);
+      window.removeEventListener('beforeunload', beforeClose);
       window.removeEventListener('blur', flushNow);
     };
   }, []);
@@ -646,6 +692,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
 
     (async () => {
       try {
+        while (saveInFlightRef.current) await saveInFlightRef.current;
         const data = await window.scribeAPI.readNote(notePathRef.current);
         if (cancelled) return;
 
@@ -653,13 +700,20 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
         if (!editor || editor.isDestroyed) return;
         if (data.markdown === lastSyncedMarkdownRef.current) return;
 
-        if (isDirtyRef.current) {
-          setConflictMarkdown(data.markdown);
+        if (isDirtyRef.current || saveInFlightRef.current || conflictRef.current !== null) {
+          pauseForConflict(data.markdown);
         } else {
           applyExternalContent(editor, data.markdown);
           lastSyncedMarkdownRef.current = data.markdown;
+          setSaveError(null);
+          setLastSavedTextRef.current('Updated from disk');
         }
-      } catch (err) {
+      } catch (err: any) {
+        if (cancelled) return;
+        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+        setIsSavingRef.current(false);
+        setSaveError('The file could not be read. Your content is still here; restore the file or copy your text before closing.');
+        setLastSavedTextRef.current("Couldn't save");
         console.error('Failed to reload externally changed note:', err);
       }
     })();
@@ -669,20 +723,44 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
     };
   }, [externalChangeToken]);
 
-  const acceptExternalVersion = useCallback(() => {
-    const editor = editorRef.current;
-    if (editor && !editor.isDestroyed && conflictMarkdown !== null) {
-      applyExternalContent(editor, conflictMarkdown);
-      lastSyncedMarkdownRef.current = conflictMarkdown;
+  const acceptExternalVersion = useCallback(async () => {
+    // Read again: the file may have changed more than once while the banner was open.
+    if (resolvingConflictRef.current) return;
+    resolvingConflictRef.current = true;
+    setResolvingConflict(true);
+    try {
+      while (saveInFlightRef.current) await saveInFlightRef.current;
+      const data = await window.scribeAPI.readNote(notePathRef.current);
+      const editor = editorRef.current;
+      if (!editor || editor.isDestroyed) return;
+      applyExternalContent(editor, data.markdown);
+      lastSyncedMarkdownRef.current = data.markdown;
       isDirtyRef.current = false;
+      conflictRef.current = null;
+      setConflictMarkdown(null);
+      setSaveError(null);
+      setIsSavingRef.current(false);
+      setLastSavedTextRef.current('Updated from disk');
+    } catch {
+      setSaveError('Could not reload the file. Your edits are still here.');
+    } finally {
+      resolvingConflictRef.current = false;
+      setResolvingConflict(false);
     }
-    setConflictMarkdown(null);
-  }, [conflictMarkdown]);
+  }, []);
 
-  const keepLocalVersion = useCallback(() => {
+  const keepLocalVersion = useCallback(async () => {
+    // Authorize replacing only the version shown by this conflict. Another external
+    // edit will trigger a fresh conflict instead of being overwritten by this choice.
+    if (conflictRef.current === null || resolvingConflictRef.current) return;
+    resolvingConflictRef.current = true;
+    setResolvingConflict(true);
+    lastSyncedMarkdownRef.current = conflictRef.current;
+    conflictRef.current = null;
     setConflictMarkdown(null);
     isDirtyRef.current = true;
-    void performSaveRef.current();
+    try { await performSaveRef.current(); }
+    finally { resolvingConflictRef.current = false; setResolvingConflict(false); }
   }, []);
 
   // Sync in-document search highlight when global search query is active
@@ -731,15 +809,17 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
         <div className="no-print flex items-center gap-3 px-4 py-2 text-[12px] bg-amber-500/15 border-b border-amber-500/40 text-[var(--text-primary)]">
           <AlertTriangle size={14} className="shrink-0 text-amber-600 dark:text-amber-400" />
           <span className="flex-1">
-            This note was changed outside Scribe, and you have unsaved edits here.
+            This file changed outside Scribe. Autosave is paused to protect your edits.
           </span>
           <button
+            disabled={resolvingConflict}
             onClick={acceptExternalVersion}
             className="px-2 py-1 rounded font-medium hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
           >
             Use version on disk
           </button>
           <button
+            disabled={resolvingConflict}
             onClick={keepLocalVersion}
             className="px-2 py-1 rounded font-medium bg-[var(--accent-color)] text-white hover:opacity-90 transition-opacity"
           >
@@ -751,7 +831,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
       {saveError && (
         <div className="no-print flex items-center gap-3 px-4 py-2 text-[12px] bg-red-500/15 border-b border-red-500/40 text-[var(--text-primary)]">
           <AlertTriangle size={14} className="shrink-0 text-red-600 dark:text-red-400" />
-          <span className="flex-1">Could not save this note: {saveError}</span>
+          <span className="flex-1">Could not save: {saveError}</span>
           <button
             onClick={() => void performSaveRef.current()}
             className="px-2 py-1 rounded font-medium hover:bg-black/10 dark:hover:bg-white/10 transition-colors"

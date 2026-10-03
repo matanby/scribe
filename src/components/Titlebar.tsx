@@ -14,7 +14,8 @@ import {
   ChevronRight,
   FileDown,
   Printer,
-  NotebookPen
+  NotebookPen,
+  AlertTriangle
 } from 'lucide-react';
 
 interface TitlebarProps {
@@ -93,6 +94,8 @@ export const Titlebar: React.FC<TitlebarProps> = ({
     };
   }, [showActions]);
   const secondaryActions = documentTitle ? [
+    { label: 'Find…', icon: Search, action: () => window.dispatchEvent(new CustomEvent('scribe:find', { detail: false })) },
+    { label: 'Find and Replace…', icon: Search, action: () => window.dispatchEvent(new CustomEvent('scribe:find', { detail: true })) },
     ...(onRenameDocument ? [{ label: 'Rename File…', icon: SquarePen, action: onRenameDocument }] : []),
     ...(onDocumentHistory ? [{ label: 'Version History…', icon: RefreshCw, action: onDocumentHistory }] : []),
     ...(onRevealDocument ? [{ label: 'Reveal in Finder', icon: FolderOpen, action: onRevealDocument }] : []),
@@ -146,7 +149,7 @@ export const Titlebar: React.FC<TitlebarProps> = ({
       </div>
 
       {/* Center section: Search input */}
-      <div className={documentTitle ? "absolute left-1/2 -translate-x-1/2 max-w-[calc(100%-240px)] pointer-events-none" : "titlebar-no-drag flex-1 max-w-xs mx-4"}>
+      <div className={documentTitle ? "absolute left-1/2 -translate-x-1/2 max-w-[calc(100%-340px)] pointer-events-none" : "titlebar-no-drag flex-1 max-w-xs mx-4"}>
         {documentTitle ? <span dir="auto" className="block truncate text-center text-xs font-medium text-[var(--text-primary)]" title={documentPath || documentTitle}>{documentTitle}</span> : <div className="relative flex items-center">
           <Search size={13} className="absolute left-2.5 text-[var(--text-secondary)] pointer-events-none opacity-60" />
           <input
@@ -176,16 +179,13 @@ export const Titlebar: React.FC<TitlebarProps> = ({
       {/* Save status, secondary actions, and New Note */}
       <div className="titlebar-no-drag flex items-center gap-1.5">
         {/* Auto-save status */}
-        <div role="status" className="flex items-center gap-1 text-[10.5px] text-[var(--text-secondary)] mr-2">
+        <div role="status" aria-live="polite" title={lastSavedText || undefined} className="flex items-center gap-1 text-[10.5px] text-[var(--text-secondary)] mr-2">
           {isSaving ? (
-            <>
-              <RefreshCw size={11} className="animate-spin text-[var(--accent-color)]" />
-              <span>Saving</span>
-            </>
+            <><RefreshCw size={11} className="animate-spin text-[var(--accent-color)]" /><span>Saving…</span></>
+          ) : lastSavedText === "Couldn't save" || lastSavedText === 'Review changes' ? (
+            <><AlertTriangle size={11} className="text-amber-600 dark:text-amber-400" /><span>{lastSavedText}</span></>
           ) : lastSavedText ? (
-            <>
-              <span role="img" title={lastSavedText} aria-label={lastSavedText}><Check size={11} className="text-[var(--text-secondary)]" /></span>
-            </>
+            <><Check size={11} /><span>{lastSavedText.startsWith('Saved') ? 'Saved' : lastSavedText}</span></>
           ) : null}
         </div>
 

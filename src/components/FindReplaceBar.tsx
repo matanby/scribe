@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Editor } from '@tiptap/react';
+import { closeHistory } from '@tiptap/pm/history';
 import { 
   ChevronUp, 
   ChevronDown, 
@@ -24,9 +25,13 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
   onClose
 }) => {
   const [, refresh] = useState(0);
+  const [replacementCount, setReplacementCount] = useState<number | null>(null);
   useEffect(() => {
     if (!editor || !isOpen) return;
-    const update = () => refresh(value => value + 1);
+    const update = ({ transaction }: any) => {
+      refresh(value => value + 1);
+      if (transaction.docChanged) setReplacementCount(null);
+    };
     editor.on('transaction', update);
     return () => { editor.off('transaction', update); };
   }, [editor, isOpen]);
@@ -114,16 +119,23 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
   };
 
   const handleReplace = () => {
-    if (editor && !editor.isDestroyed) editor.commands.replaceCurrent();
+    if (editor && !editor.isDestroyed && editor.commands.replaceCurrent()) {
+      editor.commands.command(({ tr }) => { closeHistory(tr); return true; });
+      setReplacementCount(1);
+    }
   };
 
   const handleReplaceAll = () => {
-    if (editor && !editor.isDestroyed) editor.commands.replaceAll();
+    if (editor && !editor.isDestroyed && editor.commands.replaceAll()) {
+      editor.commands.command(({ tr }) => { closeHistory(tr); return true; });
+      setReplacementCount(resultsCount);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       e.preventDefault();
+      e.stopPropagation();
       onClose();
       editor?.commands.focus(undefined, { scrollIntoView: false });
     } else if (e.key === 'Enter') {
@@ -138,14 +150,15 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
 
   return (
     <div 
-      className={`no-print absolute top-3 right-6 z-30 flex flex-col bg-white/95 dark:bg-[#222226]/95 backdrop-blur-2xl border border-[var(--border-color)] shadow-2xl rounded-2xl p-1.5 transition-all text-xs select-none ${
+      className={`no-print absolute top-12 right-3 max-w-[calc(100%-24px)] z-30 flex flex-col bg-white/95 dark:bg-[#222226]/95 backdrop-blur-2xl border border-[var(--border-color)] shadow-2xl rounded-2xl p-1.5 transition-all text-xs select-none ${
         isOpen ? 'block animate-in fade-in duration-100' : 'hidden'
       }`}
     >
       {/* Top Search Row */}
       <div className="flex items-center gap-1.5">
         <button
-          onClick={() => setShowReplace(!showReplace)}
+          onClick={() => { setShowReplace(!showReplace); if (!showReplace) setTimeout(() => replaceInputRef.current?.focus(), 0); }}
+          aria-label="Show replacement controls" aria-expanded={showReplace}
           className={`p-1 rounded-md transition-colors ${
             showReplace 
               ? 'bg-[var(--accent-color)]/20 text-[var(--accent-color)]' 
@@ -153,7 +166,7 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
           }`}
           title="Toggle Replace (⌘⇧F)"
         >
-          <ChevronRight size={13} className={`transition-transform duration-150 ${showReplace ? 'rotate-90' : ''}`} />
+          <span className="flex items-center gap-1"><ChevronRight size={13} className={`transition-transform duration-150 ${showReplace ? 'rotate-90' : ''}`} /><span>Replace</span></span>
         </button>
 
         <div className="relative flex items-center">
@@ -164,7 +177,7 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
             onChange={(e) => handleSearchChange(e.target.value)}
             onKeyDown={handleKeyDown}
             aria-label="Find in note" placeholder="Find in note (⌘F)…"
-            className="w-52 pl-2 pr-14 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-transparent focus:border-[var(--accent-color)] focus:bg-transparent text-[var(--text-primary)] placeholder-[var(--text-tertiary)] outline-none text-xs"
+            className="w-40 min-w-0 pl-2 pr-14 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-transparent focus:border-[var(--accent-color)] focus:bg-transparent text-[var(--text-primary)] placeholder-[var(--text-tertiary)] outline-none text-xs"
           />
           {searchTerm && (
             <span className="absolute right-2 text-[10px] text-[var(--text-secondary)] pointer-events-none">
@@ -180,7 +193,7 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
               ? 'bg-[var(--accent-color)] text-white shadow-xs' 
               : 'text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/10'
           }`}
-          title="Match Case"
+          title="Match Case" aria-label="Match case" aria-pressed={caseSensitive}
         >
           <CaseSensitive size={14} />
         </button>
@@ -189,7 +202,7 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
           onClick={handlePrevious}
           disabled={resultsCount === 0}
           className="p-1 rounded-md text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30 disabled:pointer-events-none transition-colors"
-          title="Previous Match (Shift+Enter)"
+          title="Previous Match (Shift+Enter)" aria-label="Previous match"
         >
           <ChevronUp size={14} />
         </button>
@@ -198,7 +211,7 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
           onClick={handleNext}
           disabled={resultsCount === 0}
           className="p-1 rounded-md text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30 disabled:pointer-events-none transition-colors"
-          title="Next Match (Enter)"
+          title="Next Match (Enter)" aria-label="Next match"
         >
           <ChevronDown size={14} />
         </button>
@@ -206,9 +219,9 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
         <div className="w-[1px] h-3.5 bg-[var(--border-color)] mx-0.5" />
 
         <button
-          onClick={onClose}
+          onClick={() => { onClose(); editor?.commands.focus(undefined, { scrollIntoView: false }); }}
           className="p-1 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-          title="Close (Esc)"
+          title="Close (Esc)" aria-label="Close find"
         >
           <X size={14} />
         </button>
@@ -236,8 +249,8 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
       editor?.commands.focus(undefined, { scrollIntoView: false });
               }
             }}
-            placeholder="Replace with..."
-            className="w-52 pl-2 pr-14 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-transparent focus:border-[var(--accent-color)] focus:bg-transparent text-[var(--text-primary)] placeholder-[var(--text-tertiary)] outline-none text-xs"
+            aria-label="Replace with" placeholder="Replace with…"
+            className="w-40 min-w-0 pl-2 pr-14 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-transparent focus:border-[var(--accent-color)] focus:bg-transparent text-[var(--text-primary)] placeholder-[var(--text-tertiary)] outline-none text-xs"
           />
 
           <button
@@ -253,10 +266,14 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
             disabled={resultsCount === 0}
             className="px-2 py-1 rounded-lg bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15 text-[var(--text-primary)] disabled:opacity-30 disabled:pointer-events-none text-[11px] font-medium transition-colors"
           >
-            All
+            Replace All
           </button>
         </div>
       )}
+      {replacementCount !== null && <div role="status" className="flex items-center justify-between gap-4 px-2 pt-2 pb-1 text-[var(--text-secondary)]">
+        <span>Replaced {replacementCount} {replacementCount === 1 ? 'match' : 'matches'}</span>
+        <button className="text-[var(--accent-color)] hover:underline" onClick={() => { editor?.commands.undo(); setReplacementCount(null); }}>Undo</button>
+      </div>}
     </div>
   );
 };

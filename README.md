@@ -230,3 +230,11 @@ To make double-clicking `.md` files open Scribe, select an `.md` file in Finder,
 The document window shows the filename in the titlebar and edits only the Markdown body. Formatting, tables, attachments, Find, and version history are available. Its More actions menu offers Rename File, Version History, Reveal in Finder, and Open Notes Library. The library opens separately, keeping the document in its own window. New Note, Duplicate, Trash, and library navigation are removed from this mode, including their native menu shortcuts. File renaming is explicit, rather than tied to an editable title above the document.
 
 Single-file document windows remember their size, position, and maximized state separately from the notes library. Resize once to choose your preferred layout; subsequent document windows reuse it across restarts. Saved placement is adjusted to the current displays when a monitor is removed.
+
+### Editing files alongside other apps
+
+Scribe reloads external edits when the editor has no pending changes, keeping your cursor and scroll position. If both versions have changes, autosave pauses and offers **Use version on disk** or **Keep my edits**. Saves also check the last known file contents so delayed file notifications cannot silently overwrite changes. Single-file windows wait for pending saves before closing, and stay open if a conflict or save failure needs attention.
+
+The title bar shows **Saving…**, **Saved**, **Review changes**, or **Couldn't save**. Save failures keep your content in the editor and offer Retry. If a standalone file is removed or becomes unavailable, its open buffer remains available to copy.
+
+Use **⌘F** to find or **⌘⇧F** to find and replace. Standalone file windows also offer both actions in the More menu. Expand **Replace** for a replacement field, **Replace** and **Replace All**; replacement feedback includes an Undo button. Each replacement operation can also be undone with the Edit menu.

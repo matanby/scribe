@@ -43,3 +43,5 @@ export type SortMode =
   | 'date-created-asc'
   | 'title-asc'
   | 'title-desc';
+
+export type SaveResult = { conflict: false; markdown: string } | { conflict: true; markdown: string };

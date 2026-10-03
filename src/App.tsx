@@ -267,6 +267,8 @@ export const App: React.FC = () => {
         const match = [...data.allNotes, ...data.trashNotes].find(
           (n: NoteMeta) => n.filePath === prev.filePath
         );
+        // Keep the document buffer available if the file disappears on disk.
+        if (documentMode && !match) return prev;
         return match || (data.allNotes.length > 0 ? data.allNotes[0] : null);
       });
       return data as NotesTree;
@@ -567,7 +569,7 @@ export const App: React.FC = () => {
     const unsubscribe = window.scribeAPI.onNotesChanged(async (data) => {
       const activePath = selectedNoteRef.current?.filePath;
       if (activePath && data.changedPaths.includes(activePath)) {
-        setExternalChangeToken(Date.now());
+        setExternalChangeToken(value => value + 1);
       }
       await loadTree();
     });
@@ -711,8 +713,9 @@ export const App: React.FC = () => {
   }, [loadTree]);
 
   // Save Note Content
-  const handleSaveNote = useCallback(async (filePath: string, markdown: string) => {
-    await window.scribeAPI.saveNote({ filePath, markdown });
+  const handleSaveNote = useCallback(async (filePath: string, markdown: string, expectedMarkdown: string) => {
+    const result = await window.scribeAPI.saveNote({ filePath, markdown, expectedMarkdown });
+    if (result.conflict) return result;
     const modifiedAt = Date.now();
     setSelectedNote(prev => prev?.filePath === filePath ? { ...prev, modifiedAt } : prev);
     setTree(prev => {
@@ -730,6 +733,7 @@ export const App: React.FC = () => {
         })
       };
     });
+    return result;
   }, []);
 
   // Rename Note

@@ -2,6 +2,7 @@ import type { CaptureShortcut, CaptureShortcutState } from './shortcuts';
 import { contextBridge, ipcRenderer } from 'electron';
 
 export const scribeAPI = {
+  closeEditorWindow: () => ipcRenderer.invoke('windows:closeEditor') as Promise<void>,
   openLibraryWindow: () => ipcRenderer.invoke('windows:openLibrary') as Promise<void>,
   getShortcutSettings: () => ipcRenderer.invoke('shortcuts:get') as Promise<CaptureShortcutState>,
   setCaptureShortcut: (config: CaptureShortcut) => ipcRenderer.invoke('shortcuts:setCapture', config) as Promise<CaptureShortcutState>,
@@ -20,8 +21,8 @@ export const scribeAPI = {
   openCapture: () => ipcRenderer.invoke('capture:open'),
   listNotesTree: () => ipcRenderer.invoke('notes:listTree'),
   readNote: (filePath: string) => ipcRenderer.invoke('notes:read', filePath),
-  saveNote: (payload: { filePath: string; markdown: string }) =>
-    ipcRenderer.invoke('notes:save', payload),
+  saveNote: (payload: { filePath: string; markdown: string; expectedMarkdown?: string }) =>
+    ipcRenderer.invoke('notes:save', payload) as Promise<import('../src/types').SaveResult>,
   createNote: (payload: { folderPath?: string; title?: string; content?: string }) => 
     ipcRenderer.invoke('notes:create', payload),
   renameNote: (payload: { filePath: string; newTitle: string }) => 

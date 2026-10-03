@@ -800,7 +800,7 @@ export async function readNoteContent(filePath: string): Promise<{ markdown: str
   };
 }
 
-export async function saveNoteContent(filePath: string, markdown: string, originId?: number): Promise<void> {
+export async function saveNoteContent(filePath: string, markdown: string, originId?: number, expectedMarkdown?: string): Promise<{ conflict: boolean; markdown: string }> {
   // A save aimed at a path that no longer exists means the note was renamed, moved or
   // deleted while the write was queued. Writing would resurrect it as a duplicate.
   if (!fsSync.existsSync(filePath)) {
@@ -810,14 +810,22 @@ export async function saveNoteContent(filePath: string, markdown: string, origin
   // Re-attach whatever frontmatter is currently on disk, verbatim. The editor never owns
   // frontmatter, so round-tripping it through YAML would only lose comments and ordering.
   const existing = await fs.readFile(filePath, 'utf-8');
+  const currentMarkdown = toDisplayMarkdown(safeParseFrontmatter(existing).content, filePath);
+  if (expectedMarkdown !== undefined && currentMarkdown !== expectedMarkdown) {
+    return { conflict: true, markdown: currentMarkdown };
+  }
   const block = splitFrontmatter(existing).block;
   const body = toDiskMarkdown(markdown, filePath);
   const fileContent = block ? `${block}${body}` : body;
-  if (existing === fileContent) return;
+  if (existing === fileContent) return { conflict: false, markdown: currentMarkdown };
   await checkpoint(filePath, existing, (await fs.stat(filePath)).mtimeMs);
+  // Check again after making the history checkpoint, which can yield to another app.
+  const latest = await fs.readFile(filePath, 'utf-8');
+  if (latest !== existing) return { conflict: true, markdown: toDisplayMarkdown(safeParseFrontmatter(latest).content, filePath) };
   markSelfWrite(filePath, fileContent, originId);
   await fs.writeFile(filePath, fileContent, 'utf-8');
   invalidateDerived(filePath);
+  return { conflict: false, markdown: toDisplayMarkdown(safeParseFrontmatter(fileContent).content, filePath) };
 }
 
 export async function createNote(
