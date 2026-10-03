@@ -220,3 +220,13 @@ The table button opens a size picker: hover or use arrow keys over the grid, or 
 Click a cell to reveal a small row menu at the left and a column menu above the table. These menus insert before/after, move, or delete the corresponding row or column. The **+** at the bottom appends a row; the **+** at the right appends a column. New rows and columns are ready for typing. The toolbar’s **Table options** menu provides the same insert/delete actions and header, clear, and delete-table controls. Menus stay within the window when working near its edges.
 
 **Tab / Shift+Tab** navigate cells; Tab from the last cell adds a row. Row/column deletion is undoable with **⌘Z**. Deleting the entire table (including its last row or column) asks for confirmation. Moving rows/columns is disabled for merged tables to preserve their structure.
+
+### Open individual Markdown documents
+
+Scribe registers as a macOS editor for `.md` and `.markdown` files. In Finder, choose **Open With → Scribe**, drag a Markdown file onto Scribe’s Dock icon, or use **File → Open Markdown File…** (**⌘⌥O**). Files open in focused document windows and edits are saved to the original file. Reopening the same document focuses its existing window. Opening a document does not switch the default notes library or scan its parent folder.
+
+To make double-clicking `.md` files open Scribe, select an `.md` file in Finder, press **⌘I**, choose **Scribe** under **Open with**, then click **Change All…**. Repeat for `.markdown` if desired. You can also change just one file’s Open with setting without using Change All.
+
+The document window shows the filename in the titlebar and edits only the Markdown body. Formatting, tables, attachments, Find, and version history are available. Its More actions menu offers Rename File, Version History, Reveal in Finder, and Open Notes Library. The library opens separately, keeping the document in its own window. New Note, Duplicate, Trash, and library navigation are removed from this mode, including their native menu shortcuts. File renaming is explicit, rather than tied to an editable title above the document.
+
+Single-file document windows remember their size, position, and maximized state separately from the notes library. Resize once to choose your preferred layout; subsequent document windows reuse it across restarts. Saved placement is adjusted to the current displays when a monitor is removed.

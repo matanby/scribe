@@ -11,7 +11,7 @@ import { TableButton } from './TableButton';
 import { NoteOutline } from './NoteOutline';
 import { Popover } from './Popover';
 
-interface FormattingBarProps { editor: Editor | null; onAttach: () => void; noteFilePath: string; tableInsertTrigger: number; }
+interface FormattingBarProps { editor: Editor | null; onAttach: () => void; noteFilePath: string; tableInsertTrigger: number; documentMode?: boolean; }
 interface Action {
   label: string;
   icon?: LucideIcon;
@@ -40,7 +40,7 @@ const Actions: React.FC<{ actions: Action[]; close: () => void }> = ({ actions, 
   </>
 );
 
-export const FormattingBar: React.FC<FormattingBarProps> = ({ editor, onAttach, noteFilePath, tableInsertTrigger }) => {
+export const FormattingBar: React.FC<FormattingBarProps> = ({ editor, onAttach, noteFilePath, tableInsertTrigger, documentMode = false }) => {
   if (!editor) return null;
 
   const paragraphStyles: Action[] = [
@@ -114,8 +114,8 @@ export const FormattingBar: React.FC<FormattingBarProps> = ({ editor, onAttach, 
           {close => <Actions actions={inserts} close={close} />}
         </Popover>
       </div>
-      <div className="flex items-center gap-1"><NoteOutline editor={editor} />
-      <Popover label="Export note" align="right" triggerClassName={`${toolbarButton} text-[var(--text-secondary)]`} trigger={<><Share size={15} /><span>Export</span></>}>
+      <div className="flex items-center gap-1"><NoteOutline editor={editor} documentMode={documentMode} />
+      <Popover label={documentMode ? "Export file" : "Export note"} align="right" triggerClassName={`${toolbarButton} text-[var(--text-secondary)]`} trigger={<><Share size={15} /><span>Export</span></>}>
         {close => <Actions actions={exports} close={close} />}
       </Popover></div>
     </div>

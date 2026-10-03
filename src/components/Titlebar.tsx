@@ -19,6 +19,12 @@ import {
 
 interface TitlebarProps {
   currentFolder: string;
+  documentTitle?: string;
+  documentPath?: string;
+  onRenameDocument?: () => void;
+  onDocumentHistory?: () => void;
+  onRevealDocument?: () => void;
+  onOpenLibrary?: () => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
   onNewNote: () => void;
@@ -41,6 +47,12 @@ interface TitlebarProps {
 
 export const Titlebar: React.FC<TitlebarProps> = ({
   currentFolder,
+  documentTitle,
+  documentPath,
+  onRenameDocument,
+  onDocumentHistory,
+  onRevealDocument,
+  onOpenLibrary,
   searchQuery,
   onSearchChange,
   onNewNote,
@@ -80,7 +92,13 @@ export const Titlebar: React.FC<TitlebarProps> = ({
       document.removeEventListener('keydown', closeOnEscape);
     };
   }, [showActions]);
-  const secondaryActions = [
+  const secondaryActions = documentTitle ? [
+    ...(onRenameDocument ? [{ label: 'Rename File…', icon: SquarePen, action: onRenameDocument }] : []),
+    ...(onDocumentHistory ? [{ label: 'Version History…', icon: RefreshCw, action: onDocumentHistory }] : []),
+    ...(onRevealDocument ? [{ label: 'Reveal in Finder', icon: FolderOpen, action: onRevealDocument }] : []),
+    ...(onOpenLibrary ? [{ label: 'Open Notes Library', icon: NotebookPen, action: onOpenLibrary }] : []),
+    { label: isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode', icon: isDark ? Sun : Moon, action: onToggleTheme }
+  ] : [
     ...(onQuickCapture ? [{ label: 'Quick Capture…', icon: NotebookPen, action: onQuickCapture }] : []),
     ...(onExportPDF ? [{ label: 'Export PDF…', icon: FileDown, action: onExportPDF }] : []),
     ...(onPrint ? [{ label: 'Print…', icon: Printer, action: onPrint }] : []),
@@ -88,9 +106,10 @@ export const Titlebar: React.FC<TitlebarProps> = ({
     { label: isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode', icon: isDark ? Sun : Moon, action: onToggleTheme }
   ];
   return (
-    <header className="titlebar-drag-region no-print h-11 border-b border-[var(--border-color)] flex items-center justify-between px-3 select-none bg-[var(--sidebar-bg)] backdrop-blur-2xl shrink-0 z-30">
+    <header className="titlebar-drag-region no-print h-11 border-b border-[var(--border-color)] flex items-center justify-between px-3 select-none bg-[var(--sidebar-bg)] backdrop-blur-2xl shrink-0 z-30 relative">
       {/* Left section: traffic lights spacing, history arrows & sidebar toggle */}
       <div className="flex items-center gap-1.5 pl-[72px] titlebar-no-drag">
+        {!documentTitle && <>
         {/* Navigation History */}
         <div className="flex items-center gap-0.5 mr-1">
           <button
@@ -123,11 +142,12 @@ export const Titlebar: React.FC<TitlebarProps> = ({
         <div className="text-[13px] text-[var(--text-primary)] min-w-0">
           <span className="block truncate max-w-[180px] font-medium" dir="auto">{currentFolder || 'All Notes'}</span>
         </div>
+        </>}
       </div>
 
       {/* Center section: Search input */}
-      <div className="titlebar-no-drag flex-1 max-w-xs mx-4">
-        <div className="relative flex items-center">
+      <div className={documentTitle ? "absolute left-1/2 -translate-x-1/2 max-w-[calc(100%-240px)] pointer-events-none" : "titlebar-no-drag flex-1 max-w-xs mx-4"}>
+        {documentTitle ? <span dir="auto" className="block truncate text-center text-xs font-medium text-[var(--text-primary)]" title={documentPath || documentTitle}>{documentTitle}</span> : <div className="relative flex items-center">
           <Search size={13} className="absolute left-2.5 text-[var(--text-secondary)] pointer-events-none opacity-60" />
           <input
             ref={searchInputRef}
@@ -150,7 +170,7 @@ export const Titlebar: React.FC<TitlebarProps> = ({
               ⌘F
             </span>
           )}
-        </div>
+        </div>}
       </div>
 
       {/* Save status, secondary actions, and New Note */}
@@ -200,14 +220,14 @@ export const Titlebar: React.FC<TitlebarProps> = ({
         </div>
 
         {/* New Note Button */}
-        <button
+        {!documentTitle && <button
           onClick={onNewNote}
           title="New Note (⌘N)"
           aria-label="New note"
           className="p-1.5 rounded-md text-[var(--accent-color)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors ml-1"
         >
           <SquarePen size={18} />
-        </button>
+        </button>}
       </div>
     </header>
   );

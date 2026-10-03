@@ -9,7 +9,8 @@ import {
   setWindowRoot,
   removeWindowTracking,
   loadSavedRoot,
-  readAllNotesTree, 
+  readAllNotesTree,
+  readSingleNoteTree,
   readNoteContent, 
   saveNoteContent, 
   createNote, 
@@ -47,6 +48,48 @@ process.env.DIST = path.join(__dirname, '../dist');
 process.env.VITE_PUBLIC = app.isPackaged ? process.env.DIST : path.join(process.env.DIST, '../public');
 
 const allWindows = new Set<BrowserWindow>();
+const documentFiles = new Map<number, string>();
+const pendingFiles = new Set<string>();
+const openingFiles = new Set<string>();
+let fileOpeningReady = false;
+
+// Finder may deliver documents before Electron is ready.
+app.on('open-file', (event, filePath) => {
+  event.preventDefault();
+  if (!fileOpeningReady) pendingFiles.add(filePath);
+  else void openMarkdownFile(filePath);
+});
+
+async function openMarkdownFile(filePath: string) {
+  const key = path.resolve(filePath);
+  if (openingFiles.has(key)) return;
+  openingFiles.add(key);
+  try {
+    if (!/\.(md|markdown)$/i.test(filePath)) throw new Error('Choose a Markdown (.md or .markdown) file.');
+    const resolved = await fsSync.promises.realpath(path.resolve(filePath));
+    if (!(await fsSync.promises.stat(resolved)).isFile()) throw new Error('This is not a file.');
+    await fsSync.promises.access(resolved, fsSync.constants.R_OK);
+    const existing = Array.from(allWindows).find(win => !win.isDestroyed() && documentFiles.get(win.webContents.id) === resolved);
+    if (existing) { if (existing.isMinimized()) existing.restore(); existing.show(); existing.focus(); return; }
+    const win = createWindow(path.dirname(resolved), false, false, resolved);
+    win.setRepresentedFilename(resolved);
+    win.setTitle(path.basename(resolved));
+    app.addRecentDocument(resolved);
+  } catch (error: any) {
+    await dialog.showMessageBox({ type: 'error', message: 'Could not open Markdown file', detail: error.message || 'The file is unavailable.' });
+  } finally { openingFiles.delete(key); }
+}
+
+function trackDocument(winId: number, filePath: string) {
+  if (!documentFiles.has(winId)) return;
+  documentFiles.set(winId, filePath);
+  const win = Array.from(allWindows).find(win => win.webContents.id === winId);
+  if (win) {
+    win.setRepresentedFilename(filePath); win.setTitle(path.basename(filePath));
+    attachWatcher(win, winId, getWindowRoot(winId));
+    app.addRecentDocument(filePath);
+  }
+}
 
 function getAppIconPath(): string {
   const possiblePaths = [
@@ -69,26 +112,33 @@ interface WindowState {
   isMaximized?: boolean;
 }
 
-function getWindowStateConfigPath(): string {
+function getWindowStateConfigPath(documentMode = false): string {
   try {
     if (app && app.getPath) {
-      return path.join(app.getPath('userData'), 'scribe-window-state.json');
+      return path.join(app.getPath('userData'), documentMode ? 'scribe-document-window-state.json' : 'scribe-window-state.json');
     }
   } catch {}
-  return path.join(process.env.HOME || '', '.scribe-window-state.json');
+  return path.join(process.env.HOME || '', documentMode ? '.scribe-document-window-state.json' : '.scribe-window-state.json');
 }
 
-function loadWindowState(): WindowState {
+function loadWindowState(documentMode = false): WindowState {
   const defaultState: WindowState = {
-    width: 1240,
+    width: documentMode ? 980 : 1240,
     height: 820,
   };
 
   try {
-    const configPath = getWindowStateConfigPath();
+    const configPath = getWindowStateConfigPath(documentMode);
     if (fsSync.existsSync(configPath)) {
       const data = JSON.parse(fsSync.readFileSync(configPath, 'utf-8'));
-      if (typeof data.width === 'number' && typeof data.height === 'number') {
+      if (Number.isFinite(data.width) && Number.isFinite(data.height)) {
+        if (documentMode) {
+          const hasPosition = Number.isFinite(data.x) && Number.isFinite(data.y);
+          const area = (hasPosition ? screen.getDisplayMatching({ x: data.x, y: data.y, width: Math.max(1, data.width), height: Math.max(1, data.height) }) : screen.getPrimaryDisplay()).workArea;
+          const width = Math.min(area.width, Math.max(620, data.width));
+          const height = Math.min(area.height, Math.max(520, data.height));
+          return { width, height, isMaximized: !!data.isMaximized, ...(hasPosition ? { x: Math.max(area.x, Math.min(data.x, area.x + area.width - width)), y: Math.max(area.y, Math.min(data.y, area.y + area.height - height)) } : {}) };
+        }
         if (typeof data.x === 'number' && typeof data.y === 'number') {
           const visible = screen.getAllDisplays().some(display => {
             const { x, y, width, height } = display.bounds;
@@ -123,25 +173,27 @@ function loadWindowState(): WindowState {
   return defaultState;
 }
 
-function saveWindowState(state: WindowState) {
+function saveWindowState(state: WindowState, documentMode = false) {
   try {
-    const configPath = getWindowStateConfigPath();
+    const configPath = getWindowStateConfigPath(documentMode);
     fsSync.writeFileSync(configPath, JSON.stringify(state, null, 2), 'utf-8');
   } catch (e) {
     console.error('Failed to save window state:', e);
   }
 }
 
-export function createWindow(targetFolderPath?: string, openSettings = false, openShortcuts = false): BrowserWindow {
-  const windowState = loadWindowState();
-  const cascadeOffset = (allWindows.size * 25) % 150;
+export function createWindow(targetFolderPath?: string, openSettings = false, openShortcuts = false, documentFile?: string): BrowserWindow {
+  const documentMode = !!documentFile;
+  const windowState = loadWindowState(documentMode);
+  const similarWindows = Array.from(allWindows).filter(window => documentFiles.has(window.webContents.id) === documentMode).length;
+  const cascadeOffset = (similarWindows * 25) % 150;
 
   const win = new BrowserWindow({
     x: windowState.x !== undefined ? windowState.x + cascadeOffset : undefined,
     y: windowState.y !== undefined ? windowState.y + cascadeOffset : undefined,
     width: windowState.width,
     height: windowState.height,
-    minWidth: 860,
+    minWidth: documentFile ? 620 : 860,
     minHeight: 520,
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 18, y: 18 },
@@ -157,47 +209,45 @@ export function createWindow(targetFolderPath?: string, openSettings = false, op
     }
   });
 
+  win.on('page-title-updated', event => {
+    const file = documentFiles.get(win.webContents.id);
+    if (file) { event.preventDefault(); win.setTitle(path.basename(file)); }
+  });
   allWindows.add(win);
   const webContentsId = win.webContents.id;
 
   // Set the folder path for this window
   const rootPath = targetFolderPath || loadSavedRoot();
-  setWindowRoot(webContentsId, rootPath);
+  setWindowRoot(webContentsId, rootPath, !documentFile);
+  if (documentFile) documentFiles.set(webContentsId, documentFile);
 
-  if (windowState.isMaximized && allWindows.size === 1) {
+  if (windowState.isMaximized && (documentMode || allWindows.size === 1)) {
     win.maximize();
   }
 
-  // Persist window position, size, and scale
+  // Each window type has its own preferences; closing flushes the resize debounce.
   let saveTimeout: NodeJS.Timeout | null = null;
-  const trackWindowState = () => {
-    if (!win || win.isDestroyed()) return;
-    if (saveTimeout) clearTimeout(saveTimeout);
-    saveTimeout = setTimeout(() => {
-      if (!win || win.isDestroyed()) return;
-      try {
-        const isMax = win.isMaximized();
-        if (isMax) {
-          saveWindowState({ width: windowState.width, height: windowState.height, isMaximized: true });
-        } else if (!win.isFullScreen() && !win.isMinimized()) {
-          const bounds = win.getBounds();
-          saveWindowState({
-            x: bounds.x,
-            y: bounds.y,
-            width: bounds.width,
-            height: bounds.height,
-            isMaximized: false
-          });
-        }
-      } catch {}
-    }, 250);
+  const persistWindowState = () => {
+    if (win.isDestroyed() || win.isFullScreen() || win.isMinimized()) return;
+    try { saveWindowState({ ...win.getNormalBounds(), isMaximized: win.isMaximized() }, documentMode); }
+    catch (error) { console.error('Could not remember window placement:', error); }
   };
-
+  const trackWindowState = () => {
+    if (saveTimeout) clearTimeout(saveTimeout);
+    saveTimeout = setTimeout(persistWindowState, 250);
+  };
   win.on('resize', trackWindowState);
   win.on('move', trackWindowState);
+  win.on('maximize', trackWindowState);
+  win.on('unmaximize', trackWindowState);
+  win.on('close', () => {
+    if (saveTimeout) clearTimeout(saveTimeout);
+    persistWindowState();
+  });
   win.on('closed', () => {
     if (saveTimeout) clearTimeout(saveTimeout);
     allWindows.delete(win);
+    documentFiles.delete(webContentsId);
     removeWindowTracking(webContentsId);
   });
 
@@ -228,13 +278,14 @@ export function createWindow(targetFolderPath?: string, openSettings = false, op
   });
 
   if (process.env.VITE_DEV_SERVER_URL) {
-    win.loadURL(`${process.env.VITE_DEV_SERVER_URL}${openSettings ? '?settings=1' : openShortcuts ? '?shortcuts=1' : ''}`);
+    win.loadURL(`${process.env.VITE_DEV_SERVER_URL}${documentFile ? '?document=1' : openSettings ? '?settings=1' : openShortcuts ? '?shortcuts=1' : ''}`);
   } else {
-    win.loadFile(path.join(process.env.DIST || path.join(__dirname, '../dist'), 'index.html'), { query: openSettings ? { settings: '1' } : openShortcuts ? { shortcuts: '1' } : {} });
+    win.loadFile(path.join(process.env.DIST || path.join(__dirname, '../dist'), 'index.html'), { query: documentFile ? { document: '1' } : openSettings ? { settings: '1' } : openShortcuts ? { shortcuts: '1' } : {} });
   }
 
   // Watch for external file changes in this window's workspace folder
   attachWatcher(win, webContentsId, rootPath);
+  syncDocumentMenu(win);
 
   return win;
 }
@@ -246,7 +297,7 @@ function attachWatcher(win: BrowserWindow, webContentsId: number, rootPath: stri
         win.webContents.send('notes:changed', data);
       } catch {}
     }
-  });
+  }, documentFiles.get(webContentsId) || rootPath);
 }
 
 function sendToFocusedWindow(channel: string, focusedWin?: BrowserWindow) {
@@ -257,6 +308,31 @@ function sendToFocusedWindow(channel: string, focusedWin?: BrowserWindow) {
     } catch {}
   }
 }
+
+function openLibraryWindow() {
+  const root = loadSavedRoot();
+  const existing = Array.from(allWindows).find(win => !win.isDestroyed() && !documentFiles.has(win.webContents.id) && getWindowRoot(win.webContents.id) === root);
+  if (existing) { if (existing.isMinimized()) existing.restore(); existing.show(); existing.focus(); }
+  else createWindow(root);
+}
+
+function syncDocumentMenu(win: BrowserWindow | null) {
+  const menu = Menu.getApplicationMenu();
+  if (!menu) return;
+  const documentMode = !!win && documentFiles.has(win.webContents.id);
+  for (const id of ['new-note', 'quick-switcher', 'trash-note', 'duplicate-note', 'history-back', 'history-forward']) {
+    const item = menu.getMenuItemById(id);
+    if (item) { item.visible = !documentMode; item.enabled = !documentMode; }
+  }
+  for (const id of ['open-library', 'rename-document', 'document-history']) {
+    const item = menu.getMenuItemById(id);
+    if (item) { item.visible = documentMode; item.enabled = documentMode; }
+  }
+  const save = menu.getMenuItemById('save-note');
+  if (save) save.label = documentMode ? 'Save File' : 'Save Note';
+}
+
+app.on('browser-window-focus', (_event, win) => syncDocumentMenu(win));
 
 function setupMenu() {
   const isMac = process.platform === 'darwin';
@@ -287,16 +363,27 @@ function setupMenu() {
       label: 'File',
       submenu: [
         {
-          label: 'New Note',
+          id: 'new-note', label: 'New Note',
           accelerator: 'CmdOrCtrl+N',
           click: (_item, focusedWin) => sendToFocusedWindow('menu:newNote', focusedWin as BrowserWindow)
         },
         {
-          label: 'Quick Switcher...',
+          id: 'quick-switcher', label: 'Quick Switcher...',
           accelerator: 'CmdOrCtrl+Shift+O',
           click: (_item, focusedWin) => sendToFocusedWindow('menu:quickSwitcher', focusedWin as BrowserWindow)
         },
         { type: 'separator' as const },
+        {
+          label: 'Open Markdown File…', accelerator: 'CmdOrCtrl+Alt+O',
+          click: async (_item, focusedWin) => {
+            const options: Electron.OpenDialogOptions = { properties: ['openFile', 'multiSelections'], filters: [{ name: 'Markdown', extensions: ['md', 'markdown'] }] };
+            const result = focusedWin ? await dialog.showOpenDialog(focusedWin as BrowserWindow, options) : await dialog.showOpenDialog(options);
+            for (const file of result.filePaths) await openMarkdownFile(file);
+          }
+        },
+        { id: 'open-library', label: 'Open Notes Library', visible: false, click: () => openLibraryWindow() },
+        { id: 'rename-document', label: 'Rename File…', visible: false, click: (_item, focusedWin) => sendToFocusedWindow('menu:renameFile', focusedWin as BrowserWindow) },
+        { id: 'document-history', label: 'Version History…', visible: false, click: (_item, focusedWin) => sendToFocusedWindow('menu:documentHistory', focusedWin as BrowserWindow) },
         {
           label: 'Open Folder in New Window...',
           accelerator: 'CmdOrCtrl+O',
@@ -318,19 +405,19 @@ function setupMenu() {
           click: () => openCapture()
         },
         {
-          label: 'Save Note',
+          id: 'save-note', label: 'Save Note',
           accelerator: 'CmdOrCtrl+S',
           click: (_item, focusedWin) => sendToFocusedWindow('menu:saveNote', focusedWin as BrowserWindow)
         },
         {
-          label: 'Move Note to Trash',
+          id: 'trash-note', label: 'Move Note to Trash',
           accelerator: 'CmdOrCtrl+Backspace',
           click: (_item, focusedWin) => {
             if (focusedWin && allWindows.has(focusedWin as BrowserWindow)) sendToFocusedWindow('menu:trashNote', focusedWin as BrowserWindow);
           }
         },
         {
-          label: 'Duplicate Note',
+          id: 'duplicate-note', label: 'Duplicate Note',
           accelerator: 'CmdOrCtrl+D',
           click: (_item, focusedWin) => sendToFocusedWindow('menu:duplicateNote', focusedWin as BrowserWindow)
         },
@@ -351,12 +438,12 @@ function setupMenu() {
         },
         { type: 'separator' as const },
         {
-          label: 'Back in History',
+          id: 'history-back', label: 'Back in History',
           accelerator: 'CmdOrCtrl+[',
           click: (_item, focusedWin) => sendToFocusedWindow('menu:goBack', focusedWin as BrowserWindow)
         },
         {
-          label: 'Forward in History',
+          id: 'history-forward', label: 'Forward in History',
           accelerator: 'CmdOrCtrl+]',
           click: (_item, focusedWin) => sendToFocusedWindow('menu:goForward', focusedWin as BrowserWindow)
         },
@@ -442,6 +529,7 @@ function setupMenu() {
 
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
+  syncDocumentMenu(BrowserWindow.getFocusedWindow());
 }
 
 app.whenReady().then(() => {
@@ -466,11 +554,18 @@ app.whenReady().then(() => {
 
   loadCaptureShortcut();
   setupMenu();
-  createWindow();
+  fileOpeningReady = true;
+  const files = Array.from(pendingFiles);
+  pendingFiles.clear();
+  // Command-line file opening complements Finder's open-file event.
+  const argumentsToCheck = process.argv.slice(app.isPackaged ? 1 : 2);
+  for (const argument of argumentsToCheck) if (!argument.startsWith('-') && /\.(md|markdown)$/i.test(argument)) files.push(argument);
+  if (files.length) { for (const file of new Set(files)) void openMarkdownFile(file); }
+  else createWindow();
   registerCaptureShortcut(() => openCapture());
 
   app.on('activate', () => {
-    if (allWindows.size === 0) createWindow();
+    if (allWindows.size === 0 && pendingFiles.size === 0 && openingFiles.size === 0) createWindow();
   });
 });
 
@@ -483,9 +578,11 @@ app.on('window-all-closed', () => {
 });
 
 // IPC Handlers scoped per window
+ipcMain.handle('windows:openLibrary', () => openLibraryWindow());
 ipcMain.handle('notes:listTree', async (event) => {
   const root = getWindowRoot(event.sender.id);
-  return await readAllNotesTree(root);
+  const document = documentFiles.get(event.sender.id);
+  return document ? await readSingleNoteTree(document, root) : await readAllNotesTree(root);
 });
 
 ipcMain.handle('notes:read', async (event, filePath: string) => {
@@ -501,16 +598,21 @@ ipcMain.handle('notes:save', async (event, { filePath, markdown }) => {
 });
 
 ipcMain.handle('notes:create', async (event, { folderPath, title, content }) => {
+  if (documentFiles.has(event.sender.id)) throw new Error('Create new notes from the notes library.');
   const root = getWindowRoot(event.sender.id);
   const targetFolder = folderPath || root;
   assertInsideRoot(root, targetFolder);
-  return await createNote(root, targetFolder, title, content, event.sender.id);
+  const note = await createNote(root, targetFolder, title, content, event.sender.id);
+  trackDocument(event.sender.id, note.filePath);
+  return note;
 });
 
 ipcMain.handle('notes:rename', async (event, { filePath, newTitle }) => {
   const root = getWindowRoot(event.sender.id);
   assertInsideRoot(root, filePath);
-  return await renameNote(root, filePath, newTitle, event.sender.id);
+  const note = await withFileLock(filePath, () => renameNote(root, filePath, newTitle, event.sender.id));
+  trackDocument(event.sender.id, note.filePath);
+  return note;
 });
 
 ipcMain.handle('notes:move', async (event, { filePath, targetFolderPath }) => {
@@ -565,6 +667,7 @@ ipcMain.handle('notes:delete', async (event, filePath: string) => {
 });
 
 ipcMain.handle('notes:trash', async (event, filePath: string) => {
+  if (documentFiles.has(event.sender.id)) throw new Error('Manage standalone files in Finder.');
   const root = getWindowRoot(event.sender.id);
   assertInsideRoot(root, filePath);
   return await withFileLock(filePath, () => moveToTrash(filePath, root, event.sender.id));
@@ -592,10 +695,12 @@ ipcMain.handle('notes:getPath', (event) => {
 });
 
 ipcMain.handle('notes:setPath', (event, newPath: string) => {
+  documentFiles.delete(event.sender.id);
   setWindowRoot(event.sender.id, newPath);
   try {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win && !win.isDestroyed()) {
+      syncDocumentMenu(win);
       attachWatcher(win, event.sender.id, newPath);
       win.webContents.send('notes:rootChanged', getWindowRoot(event.sender.id));
     }
@@ -612,8 +717,10 @@ ipcMain.handle('dialog:selectFolder', async (event) => {
       
     if (!res.canceled && res.filePaths.length > 0) {
       const selected = res.filePaths[0];
+      documentFiles.delete(event.sender.id);
       setWindowRoot(event.sender.id, selected);
       if (win && !win.isDestroyed()) {
+        syncDocumentMenu(win);
         attachWatcher(win, event.sender.id, selected);
       }
       return selected;
@@ -737,9 +844,12 @@ ipcMain.handle('shell:showInFinder', async (_, filePath: string) => {
 });
 
 ipcMain.handle('notes:duplicate', async (event, filePath: string) => {
+  if (documentFiles.has(event.sender.id)) throw new Error('Duplicate notes from the notes library.');
   const root = getWindowRoot(event.sender.id);
   assertInsideRoot(root, filePath);
-  return await duplicateNote(root, filePath, event.sender.id);
+  const note = await duplicateNote(root, filePath, event.sender.id);
+  trackDocument(event.sender.id, note.filePath);
+  return note;
 });
 
 ipcMain.handle('folders:create', async (event, { parentPath, name }: { parentPath: string; name: string }) => {
@@ -782,7 +892,7 @@ ipcMain.handle('contextMenu:note', async (event, { note, isPinned, isTrash, fold
           click: () => resolve({ action: 'togglePin', filePath: note.filePath })
         },
         {
-          label: 'Duplicate Note',
+          id: 'duplicate-note', label: 'Duplicate Note',
           accelerator: 'CmdOrCtrl+D',
           click: () => resolve({ action: 'duplicate', filePath: note.filePath })
         },
@@ -952,7 +1062,7 @@ let captureSaving = false;
 function openCapture() {
   if (captureWindow && !captureWindow.isDestroyed()) { captureWindow.show(); captureWindow.focus(); return; }
   const focused = BrowserWindow.getFocusedWindow();
-  captureRoot = focused && allWindows.has(focused) ? getWindowRoot(focused.webContents.id) : loadSavedRoot();
+  captureRoot = focused && allWindows.has(focused) && !documentFiles.has(focused.webContents.id) ? getWindowRoot(focused.webContents.id) : loadSavedRoot();
   const boundsFile = path.join(app.getPath('userData'), 'scribe-capture-bounds.json');
   let placement: Partial<Electron.Rectangle> = {};
   try {

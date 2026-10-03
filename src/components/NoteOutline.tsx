@@ -5,7 +5,7 @@ import { Popover } from './Popover';
 import { CollapsibleHeadingsKey } from '../extensions/CollapsibleHeadingsExtension';
 
 interface Heading { position: number; level: number; title: string }
-export const NoteOutline: React.FC<{ editor: Editor }> = ({ editor }) => {
+export const NoteOutline: React.FC<{ editor: Editor; documentMode?: boolean }> = ({ editor, documentMode = false }) => {
   const [headings, setHeadings] = useState<Heading[]>([]);
   useEffect(() => {
     const refresh = () => {
@@ -18,7 +18,7 @@ export const NoteOutline: React.FC<{ editor: Editor }> = ({ editor }) => {
     refresh(); editor.on('update', refresh);
     return () => { editor.off('update', refresh); };
   }, [editor]);
-  return <Popover label="Note outline" align="right" triggerClassName="flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/10"
+  return <Popover label={documentMode ? "Document outline" : "Note outline"} align="right" triggerClassName="flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/10"
     trigger={<ListTree size={16} />}>
     {close => <>
       <p className="px-2.5 py-2 text-xs font-medium text-[var(--text-secondary)]">Outline</p>
@@ -41,7 +41,7 @@ export const NoteOutline: React.FC<{ editor: Editor }> = ({ editor }) => {
           editor.commands.setTextSelection(heading.position + 1);
           editor.commands.focus(undefined, { scrollIntoView: false });
           requestAnimationFrame(() => (editor.view.nodeDOM(heading.position) as HTMLElement | null)?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
-        }}>{heading.title}</button>) : <p className="px-2.5 pb-3 text-xs text-[var(--text-secondary)]">Add headings with the Aa menu to navigate this note.</p>}
+        }}>{heading.title}</button>) : <p className="px-2.5 pb-3 text-xs text-[var(--text-secondary)]">Add headings with the Aa menu to navigate this document.</p>}
     </>}
   </Popover>;
 };

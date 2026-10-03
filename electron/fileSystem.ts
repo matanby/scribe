@@ -316,10 +316,10 @@ export function getWindowRoot(webContentsId?: number): string {
   return loadSavedRoot();
 }
 
-export function setWindowRoot(webContentsId: number, newPath: string) {
+export function setWindowRoot(webContentsId: number, newPath: string, persist = true) {
   if (fsSync.existsSync(newPath)) {
     windowRoots.set(webContentsId, newPath);
-    saveSavedRoot(newPath);
+    if (persist) saveSavedRoot(newPath);
   }
 }
 
@@ -371,7 +371,7 @@ function cleanMarkdownSnippet(raw: string): string {
 }
 
 function extractTitleFromContent(fileName: string): string {
-  return fileName.replace(/\.md$/i, '');
+  return fileName.replace(/\.(md|markdown)$/i, '');
 }
 
 function getTrashDir(rootDir: string): string {
@@ -778,6 +778,19 @@ export async function readAllNotesTree(rootDir: string): Promise<NotesTree> {
   };
 }
 
+/** A document window indexes exactly one file, including hidden Markdown files. */
+export async function readSingleNoteTree(filePath: string, rootPath: string): Promise<NotesTree> {
+  const tree: NotesTree = { rootPath, folders: [], allNotes: [], trashNotes: [], trashCount: 0 };
+  try {
+    const stats = await fs.stat(filePath);
+    const derived = await getDerivedNoteData(filePath, stats);
+    const fileName = path.basename(filePath);
+    tree.allNotes.push({ id: filePath, filePath, fileName, title: fileName.replace(/\.(md|markdown)$/i, ''),
+      snippet: derived.snippet, folder: '/', modifiedAt: stats.mtimeMs, createdAt: stats.birthtimeMs || stats.mtimeMs, frontmatter: derived.frontmatter });
+  } catch (error: any) { if (error.code !== 'ENOENT') throw error; }
+  return tree;
+}
+
 export async function readNoteContent(filePath: string): Promise<{ markdown: string; frontmatter: Record<string, any> }> {
   const raw = await fs.readFile(filePath, 'utf-8');
   const parsed = safeParseFrontmatter(raw);
@@ -1067,17 +1080,18 @@ const WATCH_DEBOUNCE_MS = 180;
 export function startWatchingWindow(
   webContentsId: number,
   rootDir: string,
-  onChange: (data: NotesChangedPayload) => void
+  onChange: (data: NotesChangedPayload) => void,
+  watchTarget = rootDir
 ) {
   if (windowWatchers.has(webContentsId)) {
     windowWatchers.get(webContentsId)?.close();
   }
 
-  const watcher = chokidar.watch(rootDir, {
+  const watcher = chokidar.watch(watchTarget, {
     // A predicate works across chokidar 3 and 4; the regex form was glob-based and
     // silently stopped matching in v4.
     ignored: (target: string) =>
-      path
+      watchTarget !== rootDir ? false : path
         .relative(rootDir, target)
         .split(path.sep)
         .some(segment => segment.startsWith('.') || segment === 'node_modules'),

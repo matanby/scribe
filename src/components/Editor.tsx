@@ -46,6 +46,7 @@ const lowlight = createLowlight(common);
 const AUTOSAVE_DEBOUNCE_MS = 400;
 
 interface EditorProps {
+  documentMode?: boolean;
   note: NoteMeta | null;
   onSave: (filePath: string, markdown: string) => Promise<void>;
   onRename: (filePath: string, newTitle: string, focusBody?: boolean) => Promise<void>;
@@ -61,6 +62,7 @@ interface EditorProps {
 }
 
 interface TipTapNoteEditorProps {
+  documentMode?: boolean;
   note: NoteMeta;
   initialMarkdown: string;
   onSave: (filePath: string, markdown: string) => Promise<void>;
@@ -141,6 +143,7 @@ function applyExternalContent(editor: any, markdown: string) {
 
 const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   note,
+  documentMode = false,
   initialMarkdown,
   onSave,
   onRename,
@@ -240,6 +243,17 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
     };
     window.addEventListener(FLUSH_NOTE_EVENT, handler);
     return () => window.removeEventListener(FLUSH_NOTE_EVENT, handler);
+  }, []);
+
+  useEffect(() => {
+    const open = async () => {
+      if (document.querySelector('[aria-modal="true"]')) return;
+      await performSaveRef.current();
+      if (!isDirtyRef.current) setHistoryOpen(true);
+    };
+    window.addEventListener('scribe:open-history', open);
+    const unsubscribe = window.scribeAPI.onMenuEvent('menu:documentHistory', () => { void open(); });
+    return () => { window.removeEventListener('scribe:open-history', open); unsubscribe(); };
   }, []);
 
   const scheduleSave = useCallback(() => {
@@ -550,7 +564,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
 
   useEffect(() => {
     if (!editor || editor.isDestroyed || focusRequest?.filePath !== note.filePath) return;
-    if (focusRequest.target === 'title') {
+    if (!documentMode && focusRequest.target === 'title') {
       if (!titleInputRef.current) return;
       titleInputRef.current.focus();
       titleInputRef.current.select();
@@ -561,7 +575,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
       if (focusRequest.focus) editor.commands.focus();
     } else editor.commands.focus();
     onFocusRequestHandled?.(focusRequest.requestId);
-  }, [editor, focusRequest, note.filePath, onFocusRequestHandled]);
+  }, [editor, focusRequest, note.filePath, onFocusRequestHandled, documentMode]);
 
   /**
    * Renaming rewrites the file on disk, which changes the note's identity. Doing that on
@@ -695,7 +709,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   return (
     <div className="flex-1 h-full bg-[var(--editor-bg)] flex flex-col relative overflow-hidden">
       {/* Top Pinned Formatting & Search/Replace Bars */}
-      <FormattingBar editor={editor} noteFilePath={note.filePath} tableInsertTrigger={tableInsertTrigger} onAttach={() => attachmentInput.current?.click()} />
+      <FormattingBar editor={editor} documentMode={documentMode} noteFilePath={note.filePath} tableInsertTrigger={tableInsertTrigger} onAttach={() => attachmentInput.current?.click()} />
       <input ref={attachmentInput} type="file" multiple className="hidden" aria-label="Attach images or files" onChange={event => {
         const files = Array.from(event.target.files || []);
         event.target.value = '';
@@ -760,7 +774,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
 
       {/* Scrollable Note Content Container */}
       <div ref={scrollerRef} className="flex-1 overflow-y-auto relative">
-        <div className="w-full max-w-[900px] mx-auto px-8 pt-7 pb-2 print:max-w-full print:p-0 print:m-0">
+        {!documentMode && <div className="w-full max-w-[900px] mx-auto px-8 pt-7 pb-2 print:max-w-full print:p-0 print:m-0">
           <NoteInfo note={note} wordCount={wordCount} onSelectFolder={onSelectFolder} onHistory={async () => {
             await performSaveRef.current();
             if (!isDirtyRef.current) setHistoryOpen(true);
@@ -789,10 +803,10 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
             className="w-full text-2xl font-bold bg-transparent text-[var(--text-primary)] placeholder-[var(--text-tertiary)] border-none focus:outline-none focus:ring-0 mb-3 px-0 tracking-tight"
           />
 
-        </div>
+        </div>}
 
         {/* TipTap Document Area */}
-        <div className="flex-1 pb-28 cursor-text" onClick={() => editor?.commands.focus()}>
+        <div className={`flex-1 pb-28 cursor-text ${documentMode ? 'pt-7' : ''}`} onClick={() => editor?.commands.focus()}>
           <EditorContent editor={editor} />
         </div>
       </div>
@@ -802,6 +816,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
 
 export const Editor: React.FC<EditorProps> = ({
   note,
+  documentMode = false,
   onSave,
   onRename,
   onSelectFolder,
@@ -853,10 +868,10 @@ export const Editor: React.FC<EditorProps> = ({
       <div className="flex-1 h-full bg-[var(--editor-bg)] flex flex-col items-center justify-center p-8 text-center text-[var(--text-secondary)] select-none">
         <FileText size={48} className="opacity-20 mb-3" />
         <h2 className="text-sm font-semibold text-[var(--text-primary)] opacity-70">
-          No Note Selected
+          {documentMode ? 'File unavailable' : 'No Note Selected'}
         </h2>
         <p className="text-xs opacity-50 mt-1">
-          Select a note from the list or press ⌘N to create a new note
+          {documentMode ? 'Reopen the file from Finder or the File menu.' : 'Select a note from the list or press ⌘N to create a new note'}
         </p>
       </div>
     );
@@ -878,6 +893,7 @@ export const Editor: React.FC<EditorProps> = ({
     <TipTapNoteEditor
       key={`${note.filePath}_${variant}`}
       note={note}
+      documentMode={documentMode}
       initialMarkdown={loadedData.markdown}
       onSave={onSave}
       onRename={onRename}

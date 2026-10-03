@@ -15,9 +15,12 @@ const Editor = lazy(() => editorModule.then(module => ({ default: module.Editor 
 const QuickSwitcher = lazy(() => import('./components/QuickSwitcher').then(module => ({ default: module.QuickSwitcher })));
 const AppearanceModal = lazy(() => import('./components/AppearanceModal').then(module => ({ default: module.AppearanceModal })));
 
+const RenameDocument = lazy(() => import('./components/RenameDocument').then(module => ({ default: module.RenameDocument })));
 const ShortcutsReference = lazy(() => import('./components/ShortcutsReference').then(module => ({ default: module.ShortcutsReference })));
 
 export const App: React.FC = () => {
+  const [renameDocumentOpen, setRenameDocumentOpen] = useState(false);
+  const [documentMode, setDocumentMode] = useState(() => new URLSearchParams(window.location.search).has('document'));
   const [tree, setTree] = useState<NotesTree | null>(null);
   const [selectedFolder, setSelectedFolder] = useState<string>('');
   const [selectedNote, setSelectedNote] = useState<NoteMeta | null>(null);
@@ -230,10 +233,10 @@ export const App: React.FC = () => {
 
   const restoredRoot = useRef('');
   useEffect(() => {
-    if (!tree || restoredRoot.current !== tree.rootPath) return;
+    if (documentMode || !tree || restoredRoot.current !== tree.rootPath) return;
     if (selectedNote && ![...tree.allNotes, ...tree.trashNotes].some(note => note.filePath === selectedNote.filePath)) return;
     writeStored(`scribe_session:${tree.rootPath}`, { folder: selectedFolder, note: selectedNote?.filePath || null });
-  }, [tree, selectedNote, selectedFolder]);
+  }, [tree, selectedNote, selectedFolder, documentMode]);
 
   // Load / Refresh Notes Tree
   const loadTree = useCallback(async (preferredSelectPath?: string) => {
@@ -242,7 +245,7 @@ export const App: React.FC = () => {
       let restoredPath: string | undefined;
       if (restoredRoot.current !== data.rootPath) {
         restoredRoot.current = data.rootPath;
-        const session = readStored<{ folder: string; note: string | null } | null>(`scribe_session:${data.rootPath}`, null);
+        const session = documentMode ? null : readStored<{ folder: string; note: string | null } | null>(`scribe_session:${data.rootPath}`, null);
         if (session) {
           restoredPath = session.note || undefined;
           const folders = (nodes: FolderNode[]): string[] => nodes.flatMap(node => [node.relativePath, ...folders(node.children)]);
@@ -270,7 +273,7 @@ export const App: React.FC = () => {
     } catch (err) {
       console.error('Failed to load notes tree:', err);
     }
-  }, []);
+  }, [documentMode]);
 
   const rootRef = useRef(tree?.rootPath || '');
   rootRef.current = tree?.rootPath || '';
@@ -504,6 +507,7 @@ export const App: React.FC = () => {
     try {
       const selected = await window.scribeAPI.selectFolder();
       if (selected) {
+        setDocumentMode(false);
         setSelectedFolder('');
         setSelectedNote(null);
         await loadTree();
@@ -515,6 +519,7 @@ export const App: React.FC = () => {
 
   // Create Note
   const handleNewNote = useCallback(async () => {
+    if (documentMode) return;
     try {
       const root = tree?.rootPath || '';
       const folderPath = selectedFolder && selectedFolder !== '__TRASH__' ? `${root}/${selectedFolder}` : root;
@@ -533,7 +538,7 @@ export const App: React.FC = () => {
     } catch (err) {
       console.error('Failed to create note:', err);
     }
-  }, [tree, selectedFolder, loadTree, selectNoteWithHistory]);
+  }, [tree, selectedFolder, loadTree, selectNoteWithHistory, documentMode]);
 
   const handleNewNoteRef = useRef(handleNewNote);
   handleNewNoteRef.current = handleNewNote;
@@ -568,16 +573,18 @@ export const App: React.FC = () => {
     });
 
     const unsubscribeRoot = window.scribeAPI.onRootChanged?.(() => {
+      setDocumentMode(false);
       setSelectedFolder('');
       setSelectedNote(null);
       loadTree();
     });
 
     const unsubscribeShortcuts = window.scribeAPI.onMenuEvent('menu:shortcuts', () => setShortcutsOpen(true));
+    const unsubscribeRenameFile = window.scribeAPI.onMenuEvent('menu:renameFile', () => { if (documentMode && selectedNoteRef.current) setRenameDocumentOpen(true); });
     const unsubscribeSettings = window.scribeAPI.onMenuEvent('menu:settings', () => setIsAppearanceOpen(true));
 
     const unsubscribeQuickSwitcher = window.scribeAPI.onMenuEvent?.('menu:quickSwitcher', () => {
-      setIsQuickSwitcherOpen(true);
+      if (!documentMode) setIsQuickSwitcherOpen(true);
     });
 
     const unsubscribeNewNote = window.scribeAPI.onMenuEvent?.('menu:newNote', () => {
@@ -585,7 +592,7 @@ export const App: React.FC = () => {
     });
 
     const unsubscribeDuplicateNote = window.scribeAPI.onMenuEvent?.('menu:duplicateNote', () => {
-      handleDuplicateNoteRef.current();
+      if (!documentMode) handleDuplicateNoteRef.current();
     });
 
     const unsubscribeRevealInFinder = window.scribeAPI.onMenuEvent?.('menu:revealInFinder', () => {
@@ -593,11 +600,11 @@ export const App: React.FC = () => {
     });
 
     const unsubscribeGoBack = window.scribeAPI.onMenuEvent?.('menu:goBack', () => {
-      handleGoBackRef.current();
+      if (!documentMode) handleGoBackRef.current();
     });
 
     const unsubscribeGoForward = window.scribeAPI.onMenuEvent?.('menu:goForward', () => {
-      handleGoForwardRef.current();
+      if (!documentMode) handleGoForwardRef.current();
     });
 
     const unsubscribeExportPDF = window.scribeAPI.onMenuEvent?.('menu:exportPDF', () => {
@@ -612,7 +619,7 @@ export const App: React.FC = () => {
     // before the renderer and never fights text inputs. Only shortcuts without a menu
     // entry are bound here.
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && (e.key === '\\' || e.code === 'Backslash')) {
+      if (!documentMode && (e.metaKey || e.ctrlKey) && (e.key === '\\' || e.code === 'Backslash')) {
         e.preventDefault();
         setShowSidebar(prev => !prev);
       }
@@ -628,6 +635,7 @@ export const App: React.FC = () => {
       unsubscribe();
       unsubscribeRoot?.();
       unsubscribeSettings();
+      unsubscribeRenameFile();
       unsubscribeShortcuts();
       unsubscribeQuickSwitcher?.();
       unsubscribeNewNote?.();
@@ -639,7 +647,7 @@ export const App: React.FC = () => {
       unsubscribePrintNote?.();
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [loadTree]);
+  }, [loadTree, documentMode]);
 
   // Delete / Trash Note
   const handleDeleteNote = useCallback(async (note: NoteMeta, e?: React.MouseEvent) => {
@@ -668,12 +676,12 @@ export const App: React.FC = () => {
   }, [selectedFolder, loadTree, trashNoteWithUndo]);
 
   useEffect(() => window.scribeAPI.onMenuEvent('menu:trashNote', () => {
-    if (isQuickSwitcherOpen || isAppearanceOpen || document.querySelector('[aria-modal="true"]') || selectedFolder === '__TRASH__') return;
+    if (documentMode || isQuickSwitcherOpen || isAppearanceOpen || document.querySelector('[aria-modal="true"]') || selectedFolder === '__TRASH__') return;
     const note = selectedNoteRef.current;
     if (note && !note.isFolder) void handleDeleteNote(note).then(() => {
       requestAnimationFrame(() => document.querySelector<HTMLElement>('.note-list-row[aria-current="true"]')?.focus());
     });
-  }), [handleDeleteNote, selectedFolder, isQuickSwitcherOpen, isAppearanceOpen]);
+  }), [handleDeleteNote, selectedFolder, isQuickSwitcherOpen, isAppearanceOpen, documentMode]);
 
   // Restore note from trash
   const handleRestoreNote = useCallback(async (note: NoteMeta, e: React.MouseEvent) => {
@@ -848,6 +856,12 @@ export const App: React.FC = () => {
     <div className={`h-screen w-screen flex flex-col overflow-hidden bg-[var(--app-bg)] text-[var(--text-primary)] ${isDark ? 'dark' : ''} font-${appearance.fontFamily}-mode`}>
       {/* Native macOS Titlebar */}
       <Titlebar
+        documentTitle={documentMode ? (selectedNote?.fileName || 'Markdown Document') : undefined}
+        documentPath={documentMode ? selectedNote?.filePath : undefined}
+        onRenameDocument={documentMode && selectedNote ? () => setRenameDocumentOpen(true) : undefined}
+        onDocumentHistory={documentMode && selectedNote ? () => window.dispatchEvent(new Event('scribe:open-history')) : undefined}
+        onRevealDocument={documentMode && selectedNote ? () => handleRevealInFinder() : undefined}
+        onOpenLibrary={documentMode ? () => { void window.scribeAPI.openLibraryWindow(); } : undefined}
         currentFolder={isTrashView ? 'Recently Deleted' : (selectedFolder || 'All Notes')}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
@@ -871,6 +885,7 @@ export const App: React.FC = () => {
 
       {/* 3-Pane Resizable Layout */}
       <main className="flex-1 flex overflow-hidden relative">
+        {!documentMode && <>
         {/* Pane 1: Sidebar Folders (Resizable & Foldable with smooth animation) */}
         <div 
           style={{ 
@@ -953,15 +968,17 @@ export const App: React.FC = () => {
           title="Drag to resize note list"
         />
 
+        </>}
         {/* Pane 3: WYSIWYG Editor (Takes remaining space) */}
         <div className="flex-1 h-full min-w-0 overflow-hidden">
           <Suspense fallback={<div className="h-full bg-[var(--editor-bg)]" />}><Editor
             note={selectedNote}
+            documentMode={documentMode}
             focusRequest={editorFocusRequest}
             onFocusRequestHandled={handleEditorFocused}
             onSave={handleSaveNote}
             onRename={handleRenameNote}
-            onSelectFolder={setSelectedFolder}
+            onSelectFolder={documentMode ? undefined : setSelectedFolder}
             setIsSaving={setIsSaving}
             setLastSavedText={setLastSavedText}
             externalChangeToken={externalChangeToken}
@@ -987,7 +1004,8 @@ export const App: React.FC = () => {
       {trashToast}
 
       {/* Appearance & Typography Settings Modal */}
-      {shortcutsOpen && <Suspense fallback={null}><ShortcutsReference onClose={() => setShortcutsOpen(false)} /></Suspense>}
+      {renameDocumentOpen && selectedNote && <Suspense fallback={null}><RenameDocument note={selectedNote} onRename={handleRenameNote} onClose={() => setRenameDocumentOpen(false)} /></Suspense>}
+      {shortcutsOpen && <Suspense fallback={null}><ShortcutsReference documentMode={documentMode} onClose={() => setShortcutsOpen(false)} /></Suspense>}
       {isAppearanceOpen && <Suspense fallback={null}><AppearanceModal
         isOpen={isAppearanceOpen}
         onClose={() => setIsAppearanceOpen(false)}
