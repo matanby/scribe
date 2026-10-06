@@ -32,4 +32,5 @@ jobs:
           name: Scribe ${{ github.ref_name }}
           body_path: release-notes/${{ github.ref_name }}.md
           generate_release_notes: false
+          overwrite_files: true
           files: release/*.dmg
