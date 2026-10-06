@@ -29,5 +29,7 @@ jobs:
       - name: Upload GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          name: Scribe ${{ github.ref_name }}
+          body_path: release-notes/${{ github.ref_name }}.md
+          generate_release_notes: false
           files: release/*.dmg
