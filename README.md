@@ -6,6 +6,10 @@
   <p><a href="https://github.com/matanby/scribe/releases/tag/v1.0.0"><img src="https://img.shields.io/badge/Download-v1.0.0-7157D9?style=flat-square" alt="Download Scribe 1.0.0" /></a> &nbsp; <a href="https://github.com/matanby/scribe/releases">All releases</a></p>
 </div>
 
+<p align="center">
+  <img src="docs/images/scribe-preview.png" alt="Scribe open to a sample note, with folders, a note list, formatting controls, and Hebrew and English text in the editor" width="960" />
+</p>
+
 ## Why Scribe?
 
 Markdown is a great way to keep notes portable, but writing around markup can interrupt your train of thought. Many visual note apps make writing feel effortless, then keep your notes in a format tied to that app.
@@ -52,3 +56,7 @@ On a Mac with Node.js 22 or later:
     npm run dist
 
 The DMGs are written to release/. GitHub Actions builds Apple silicon and Intel versions when a version tag is pushed.
+
+## License
+
+Scribe is available under the [MIT License](LICENSE).
