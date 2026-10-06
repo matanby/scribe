@@ -7,8 +7,9 @@
 </div>
 
 <p align="center">
-  <img src="docs/images/scribe-preview.png" alt="Scribe open to a sample note, with folders, a note list, formatting controls, and Hebrew and English text in the editor" width="960" />
+  <img src="docs/images/scribe-light-dark.png" alt="Scribe shown side by side in light and dark modes, editing the same sample note in Hebrew and English" width="960" />
 </p>
+<p align="center"><sub>View the <a href="docs/images/scribe-preview.png">light</a> and <a href="docs/images/scribe-preview-dark.png">dark</a> screenshots at full size.</sub></p>
 
 ## Why Scribe?
 
