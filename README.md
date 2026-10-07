@@ -1,30 +1,17 @@
-<div align="center">
-  <img src="public/icon.png" alt="Scribe app icon" width="96" />
-  <h1>Scribe</h1>
-  <p><strong>Markdown that feels like a document.</strong><br />
-  A calm, visual writing space for notes that stay yours — including when you write in Hebrew and English.</p>
-  <p><a href="https://github.com/matanby/scribe/releases/tag/v1.0.0"><img src="https://img.shields.io/badge/Download-v1.0.0-7157D9?style=flat-square" alt="Download Scribe 1.0.0" /></a> &nbsp; <a href="https://github.com/matanby/scribe/releases">All releases</a></p>
-</div>
+# Scribe
 
-<p align="center">
-  <img src="docs/images/scribe-light-dark.png" alt="Scribe shown side by side in light and dark modes, editing the same sample note in Hebrew and English" width="960" />
-</p>
-<p align="center"><sub>View the <a href="docs/images/scribe-preview.png">light</a> and <a href="docs/images/scribe-preview-dark.png">dark</a> screenshots at full size.</sub></p>
+A visual Markdown editor for macOS, with support for Hebrew and English. Notes are saved as `.md` files in a folder you choose.
 
-## Why Scribe?
+[Download for macOS](https://github.com/matanby/scribe/releases/tag/v1.0.0)
 
-Markdown is a great way to keep notes portable, but writing around markup can interrupt your train of thought. Many visual note apps make writing feel effortless, then keep your notes in a format tied to that app.
+![Scribe editing an English kitchen renovation note, with a diagonal split showing light mode on the left and dark mode on the right](docs/images/scribe-banner.png)
 
-Scribe brings those two things together: a clean rich-text editor, with every note saved as a standard Markdown file in a folder you choose. Open the same files in another Markdown app whenever you like.
+Full screenshots: [Light](docs/images/scribe-main.png) · [Dark](docs/images/scribe-dark.png)
 
-Scribe supports Hebrew and English side by side: paragraph direction adapts as you write, and lists and checkboxes align with the language in each block.
-
-## Made for everyday notes
-
-- **Write visually.** Format headings, lists, links, tables, checklists, code, and images without staring at Markdown syntax.
-- **Keep your files.** Open existing Markdown notes and save them as ordinary files on your Mac.
-- **Work in your language.** Automatic right-to-left and left-to-right direction, including for lists and tasks.
-- **Find your way back.** Search notes, use Quick Capture, and restore an earlier version.
+- Format text, checklists, tables, code, and images in the editor.
+- Write in Hebrew and English in the same note. Paragraphs, lists, and checkboxes follow each block’s writing direction.
+- Open existing Markdown files, search your notes, and capture a note from another app with Quick Capture.
+- Save automatically and restore earlier versions from local history.
 
 ## Download
 
@@ -47,7 +34,7 @@ Choose **Open Notes Folder…** to pick where your notes live. A folder managed 
 - **⌘⇧F** — Find and replace
 - **⌃⌥⌘N** — Quick Capture (default; change it in Settings)
 
-See **Help → Keyboard Shortcuts** in the app for the full list.
+See **Help → Keyboard Shortcuts** in the app for the full list. For details on editing, attachments, tables, and version history, see the [feature reference](docs/reference.md).
 
 ## Build from source
 
@@ -60,4 +47,4 @@ The DMGs are written to release/. GitHub Actions builds Apple silicon and Intel 
 
 ## License
 
-Scribe is available under the [MIT License](LICENSE).
+Scribe is available under the [MIT License](https://github.com/matanby/scribe/blob/main/LICENSE).
