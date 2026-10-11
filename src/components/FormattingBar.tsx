@@ -62,6 +62,11 @@ export const FormattingBar: React.FC<FormattingBarProps> = ({ editor, onAttach, 
     { label: 'Numbered List', icon: ListOrdered, active: editor.isActive('orderedList'), run: () => { editor.chain().focus().toggleOrderedList().run(); } },
     { label: 'Monospaced', icon: Code, active: editor.isActive('codeBlock'), run: () => { editor.chain().focus().toggleCodeBlock().run(); } }
   ];
+  const directions: Action[] = [
+    { label: 'Automatic', active: editor.isActive('paragraph', { directionOverride: null }) || editor.isActive('heading', { directionOverride: null }), run: () => { editor.chain().focus().setTextDirection('auto').run(); } },
+    { label: 'Right to left', active: editor.isActive({ directionOverride: 'rtl' }), run: () => { editor.chain().focus().setTextDirection('rtl').run(); } },
+    { label: 'Left to right', active: editor.isActive({ directionOverride: 'ltr' }), run: () => { editor.chain().focus().setTextDirection('ltr').run(); } }
+  ];
   const setLink = () => {
     const previousUrl = editor.getAttributes('link').href;
     const url = window.prompt('Enter Link URL:', previousUrl);
@@ -102,7 +107,7 @@ export const FormattingBar: React.FC<FormattingBarProps> = ({ editor, onAttach, 
       <div className="flex items-center gap-1">
         <Popover label="Text style and formatting" triggerClassName={toolbarButton}
           trigger={<><span className="text-[15px] font-medium">Aa</span><ChevronDown size={11} /></>}>
-          {close => <><Actions actions={paragraphStyles} close={close} /><Divider /><Actions actions={inlineStyles} close={close} /><Divider /><Actions actions={listStyles} close={close} />{editor.isActive('taskList') && <><Divider /><Actions close={close} actions={[{ label: 'Check / Uncheck Task', shortcut: '⌘⇧U', run: () => { editor.chain().focus().toggleCurrentTask().run(); } }, { label: 'Move Completed to Bottom', run: () => { editor.chain().focus().sortCompletedTasks().run(); } }]} /></>}</>}
+          {close => <><Actions actions={paragraphStyles} close={close} /><Divider /><Actions actions={inlineStyles} close={close} /><Divider /><Actions actions={listStyles} close={close} /><Divider /><div className="px-2.5 py-1 text-[11px] text-[var(--text-secondary)]">Text direction</div><Actions actions={directions} close={close} />{editor.isActive('taskList') && <><Divider /><Actions close={close} actions={[{ label: 'Check / Uncheck Task', shortcut: '⌘⇧U', run: () => { editor.chain().focus().toggleCurrentTask().run(); } }, { label: 'Move Completed to Bottom', run: () => { editor.chain().focus().sortCompletedTasks().run(); } }]} /></>}</>}
         </Popover>
         <button type="button" aria-label="Checklist" aria-pressed={editor.isActive('taskList')} title="Checklist (⌘⇧C)"
           onClick={() => editor.chain().focus().toggleTaskList().run()}

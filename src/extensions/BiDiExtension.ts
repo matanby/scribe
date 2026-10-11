@@ -1,6 +1,9 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 
+export type TextDirection = 'rtl' | 'ltr' | 'auto';
+const directionTypes = ['paragraph', 'heading', 'bulletList', 'orderedList', 'taskList', 'listItem', 'taskItem', 'blockquote', 'table'];
+
 export const RTL_REGEX = /[\u0590-\u05FF\uFB1D-\uFB4F\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
 export const LTR_REGEX = /[a-zA-Z\u00C0-\u024F\u1E00-\u1EFF]/;
 
@@ -51,6 +54,20 @@ export function updateDocDirection(state: any, tr: any): boolean {
 
   state.doc.descendants((node: any, pos: number) => {
     if (!node.isBlock) return;
+
+    // Explicit choices (including those on an enclosing item) beat detection.
+    let override = node.attrs.directionOverride;
+    const $node = state.doc.resolve(pos);
+    for (let depth = $node.depth; !override && depth > 0; depth--) {
+      override = $node.node(depth).attrs.directionOverride;
+    }
+    if (override === 'rtl' || override === 'ltr') {
+      if (node.type.spec.attrs?.dir && node.attrs.dir !== override) {
+        tr.setNodeMarkup(pos, undefined, { ...node.attrs, dir: override });
+        modified = true;
+      }
+      return;
+    }
 
     if (node.type.name === 'bulletList' || node.type.name === 'orderedList') {
       const $pos = state.doc.resolve(pos);
@@ -124,7 +141,7 @@ export function updateDocDirection(state: any, tr: any): boolean {
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     bidi: {
-      setTextDirection: (dir: 'rtl' | 'ltr' | 'auto') => ReturnType;
+      setTextDirection: (dir: TextDirection) => ReturnType;
     };
   }
 }
@@ -134,6 +151,22 @@ export const BiDiExtension = Extension.create({
 
   addGlobalAttributes() {
     return [
+      {
+        types: directionTypes,
+        attributes: {
+          directionOverride: {
+            default: null,
+            keepOnSplit: true,
+            parseHTML: element => {
+              const value = element.getAttribute('data-direction-override')
+                || (!element.hasAttribute('data-dir') ? element.getAttribute('dir') : null);
+              return value === 'rtl' || value === 'ltr' ? value : null;
+            },
+            renderHTML: attributes => attributes.directionOverride
+              ? { 'data-direction-override': attributes.directionOverride } : {}
+          }
+        }
+      },
       {
         types: [
           'paragraph',
@@ -183,19 +216,34 @@ export const BiDiExtension = Extension.create({
   addCommands() {
     return {
       setTextDirection:
-        (dir: 'rtl' | 'ltr' | 'auto') =>
-        ({ state, tr, dispatch }: any) => {
+        (dir: TextDirection) =>
+        ({ state, tr }: any) => {
           const { from, to } = state.selection;
-          let modified = false;
-
+          const targets = new Set<number>();
+          // Only affect selected text blocks and their nearest list items, never
+          // an entire ancestor list merely because the caret is inside it.
           state.doc.nodesBetween(from, to, (node: any, pos: number) => {
-            if (node.isBlock && node.type.spec.attrs?.dir) {
-              tr.setNodeMarkup(pos, undefined, { ...node.attrs, dir });
-              modified = true;
+            if (!['paragraph', 'heading'].includes(node.type.name)) return;
+            if (from !== to && (pos + 1 >= to || pos + node.nodeSize <= from)) return;
+            targets.add(pos);
+            const $pos = state.doc.resolve(pos);
+            for (let depth = $pos.depth; depth > 0; depth--) {
+              if (['listItem', 'taskItem'].includes($pos.node(depth).type.name)) {
+                targets.add($pos.before(depth));
+                break;
+              }
             }
           });
+          let modified = false;
+          for (const pos of targets) {
+            const node = tr.doc.nodeAt(pos);
+            const directionOverride = dir === 'auto' ? null : dir;
+            if (node.attrs.directionOverride === directionOverride) continue;
+            tr.setNodeMarkup(pos, undefined, { ...node.attrs, directionOverride, dir });
+            modified = true;
+          }
+          // TipTap dispatches the command transaction, including chained commands.
 
-          if (modified && dispatch) dispatch(tr);
           return modified;
         }
     };

@@ -188,6 +188,8 @@ export const CustomTaskItem = TaskItem.extend({
         listItem.setAttribute('dir', resolvedDir);
         listItem.setAttribute('data-dir', resolvedDir);
         content.setAttribute('dir', resolvedDir);
+        if (n.attrs.directionOverride) listItem.setAttribute('data-direction-override', n.attrs.directionOverride);
+        else listItem.removeAttribute('data-direction-override');
       };
 
       setDirection(node);

@@ -1,7 +1,7 @@
 import React from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import { Markdown } from 'tiptap-markdown';
+import { DirectionMarkdown } from '../extensions/DirectionMarkdown';
 import Underline from '@tiptap/extension-underline';
 import Highlight from '@tiptap/extension-highlight';
 import Link from '@tiptap/extension-link';
@@ -34,7 +34,7 @@ export const NotePreview: React.FC<{ markdown: string }> = ({ markdown }) => {
       Link.configure({ openOnClick: false, HTMLAttributes: { class: 'text-[var(--accent-color)] underline' } }),
       Attachment, Image.extend({ addAttributes() { return { ...this.parent?.(), width: { default: null, parseHTML: element => Number(element.getAttribute('width')) || null } }; } }).configure({ inline: true, allowBase64: true }), Table.configure({ resizable: false }), TableRow, TableCell, TableHeader,
       TaskList, TaskItem.configure({ nested: true }), BiDiExtension,
-      Markdown.configure({ html: true, transformPastedText: false, transformCopiedText: false })
+      DirectionMarkdown.configure({ html: true, transformPastedText: false, transformCopiedText: false })
     ],
     editorProps: {
       attributes: { tabindex: '-1', 'aria-label': 'Read-only note preview' },

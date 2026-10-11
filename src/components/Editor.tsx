@@ -19,7 +19,7 @@ import Underline from '@tiptap/extension-underline';
 import { ResizableImage } from '../extensions/ResizableImage';
 import { Attachment } from '../extensions/Attachment';
 import Typography from '@tiptap/extension-typography';
-import { Markdown } from 'tiptap-markdown';
+import { DirectionMarkdown } from '../extensions/DirectionMarkdown';
 import { BiDiExtension } from '../extensions/BiDiExtension';
 import { CleanBackspaceExtension } from '../extensions/CleanBackspaceExtension';
 import { SearchReplaceExtension } from '../extensions/SearchReplaceExtension';
@@ -470,7 +470,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
           class: 'rounded-xl max-w-full my-3 border border-[var(--border-color)] shadow-sm'
         }
       }),
-      Markdown.configure({
+      DirectionMarkdown.configure({
         html: true,
         tightLists: true,
         bulletListMarker: '-'

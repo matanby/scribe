@@ -1,6 +1,6 @@
 {
   "name": "scribe",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Apple Notes style WYSIWYG Markdown Editor with Native Hebrew/English RTL",
   "author": "Matan Ben-Yosef",
   "homepage": "https://github.com/matanby/scribe",
@@ -15,10 +15,11 @@
     "build": "tsc && vite build",
     "dist": "tsc && vite build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --publish never",
     "preview": "vite preview",
-    "test": "npm run test:fs && npm run test:protocol && npm run test:bidi",
+    "test": "npm run test:fs && npm run test:protocol && npm run test:bidi && npm run test:direction",
     "test:fs": "tsx electron/fileSystem.test.ts",
     "test:protocol": "esbuild electron/assetProtocol.test.ts --bundle --platform=node --format=cjs --external:electron --external:chokidar --external:gray-matter --outfile=dist-electron/assetProtocol.test.cjs && electron dist-electron/assetProtocol.test.cjs",
-    "test:bidi": "tsx electron/bidi.test.ts"
+    "test:bidi": "tsx electron/bidi.test.ts",
+    "test:direction": "esbuild electron/direction.renderer.test.ts --bundle --platform=browser --format=iife --outfile=dist-electron/direction.renderer.test.js && esbuild electron/direction.test.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist-electron/direction.test.cjs && electron dist-electron/direction.test.cjs"
   },
   "dependencies": {
     "chokidar": "^4.0.3",
