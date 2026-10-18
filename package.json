@@ -1,6 +1,6 @@
 {
   "name": "scribe",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Apple Notes style WYSIWYG Markdown Editor with Native Hebrew/English RTL",
   "author": "Matan Ben-Yosef",
   "homepage": "https://github.com/matanby/scribe",

@@ -17,4 +17,6 @@ export function savePosition(file: string, position: NotePosition) {
 export function remapPosition(oldPath: string, newPath: string) {
   const positions = readStored<Record<string, NotePosition>>('scribe_note_positions', {});
   if (positions[oldPath]) { positions[newPath] = positions[oldPath]; delete positions[oldPath]; writeStored('scribe_note_positions', positions); }
+  const hidden = readStored<Record<string, boolean>>('scribe_hidden_completed', {});
+  if (oldPath in hidden) { hidden[newPath] = hidden[oldPath]; delete hidden[oldPath]; writeStored('scribe_hidden_completed', hidden); }
 }

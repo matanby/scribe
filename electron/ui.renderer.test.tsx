@@ -8,6 +8,7 @@ import { LinkEditor } from '../src/components/LinkEditor';
 import { NoteList } from '../src/components/NoteList';
 import { Titlebar } from '../src/components/Titlebar';
 import { createPortal } from 'react-dom';
+import { runWritingTests } from './writing.renderer.test';
 
 // Isolated component checks; these never open a visible window or touch user notes.
 (window as any).runUIPolishTests = async () => {
@@ -137,5 +138,6 @@ import { createPortal } from 'react-dom';
   check('Escape dismisses link editing without changing content', closed === beforeEscape + 1 && editor.getText().includes('useful words'));
   await act(async () => { root.unmount(); });
   editor.destroy(); host.remove(); outside.remove(); editorHost.remove();
+  results.push(...await runWritingTests());
   return results;
 };

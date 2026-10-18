@@ -1,5 +1,6 @@
 import TaskItem from '@tiptap/extension-task-item';
-import { TextSelection } from '@tiptap/pm/state';
+import { closeHistory } from '@tiptap/pm/history';
+import { adjacentTask, checklistPlugin, checklistViewKey, sortAllChecklists, sortChecklist, taskAt, reorderTask, TASK_DRAG_TYPE } from './checklist';
 import { getDirection } from './BiDiExtension';
 
 declare module '@tiptap/extension-task-item' {
@@ -13,72 +14,9 @@ declare module '@tiptap/core' {
     checklistActions: {
       toggleCurrentTask: () => ReturnType;
       sortCompletedTasks: () => ReturnType;
+      setCompletedTasksHidden: (hidden: boolean) => ReturnType;
+      moveTask: (direction: 'up' | 'down', position?: number) => ReturnType;
     };
-  }
-}
-
-function reorderTasksInList(editor: any, pos: number) {
-  if (editor.isDestroyed) return false;
-  try {
-    const tr = editor.state.tr;
-    const $pos = tr.doc.resolve(pos);
-    let taskListDepth = -1;
-    for (let d = $pos.depth; d > 0; d--) {
-      if ($pos.node(d).type.name === 'taskList') {
-        taskListDepth = d;
-        break;
-      }
-    }
-    if (taskListDepth === -1) return false;
-
-    const taskListPos = $pos.before(taskListDepth);
-    const taskListNode = $pos.node(taskListDepth);
-
-    const uncheckedItems: any[] = [];
-    const checkedItems: any[] = [];
-
-    taskListNode.forEach((childNode: any) => {
-      if (childNode.attrs.checked) {
-        checkedItems.push(childNode);
-      } else {
-        uncheckedItems.push(childNode);
-      }
-    });
-
-    // If all are checked or none are checked, no reorder needed
-    if (uncheckedItems.length === 0 || checkedItems.length === 0) return true;
-
-    const sortedChildren = [...uncheckedItems, ...checkedItems];
-    let changed = false;
-    taskListNode.forEach((childNode: any, offset: number, index: number) => {
-      if (childNode !== sortedChildren[index]) {
-        changed = true;
-      }
-    });
-
-    if (changed) {
-      const newTaskList = taskListNode.type.create(taskListNode.attrs, sortedChildren);
-      const remap = (position: number) => {
-        let result = position;
-        taskListNode.forEach((child: any, offset: number) => {
-          const start = taskListPos + 1 + offset;
-          if (position > start && position < start + child.nodeSize) {
-            const index = sortedChildren.indexOf(child);
-            const newOffset = sortedChildren.slice(0, index).reduce((sum: number, item: any) => sum + item.nodeSize, 0);
-            result = taskListPos + 1 + newOffset + position - start;
-          }
-        });
-        return result;
-      };
-      const from = remap(editor.state.selection.from), to = remap(editor.state.selection.to);
-      tr.replaceWith(taskListPos, taskListPos + taskListNode.nodeSize, newTaskList);
-      if (editor.state.selection instanceof TextSelection) tr.setSelection(TextSelection.create(tr.doc, from, to));
-      editor.view.dispatch(tr);
-    }
-    return true;
-  } catch (err) {
-    console.error('Error auto-sorting tasks:', err);
-    return false;
   }
 }
 
@@ -87,7 +25,7 @@ export const CustomTaskItem = TaskItem.extend({
     return {
       ...this.parent?.(),
       nested: false,
-      autoSort: true,
+      autoSort: false,
       HTMLAttributes: {}
     };
   },
@@ -103,17 +41,27 @@ export const CustomTaskItem = TaskItem.extend({
           if (dispatch) {
             tr.setNodeMarkup(position, undefined, { ...node.attrs, checked: !node.attrs.checked });
             if (this.storage.autoSort ?? this.options.autoSort) {
-              // Resolve the current selection after the toggle; sorting keeps the caret in its task.
-              queueMicrotask(() => { if (!this.editor.isDestroyed) reorderTasksInList(this.editor, this.editor.state.selection.from); });
+              const task = taskAt(tr.doc, position);
+              if (task) sortChecklist(tr, task.listPos);
             }
+            closeHistory(tr);
           }
           return true;
         }
         return false;
       },
-      sortCompletedTasks: () => ({ state, dispatch }) => {
-        if (!this.editor.isActive('taskList')) return false;
-        if (dispatch) queueMicrotask(() => { if (!this.editor.isDestroyed) reorderTasksInList(this.editor, this.editor.state.selection.from); });
+      sortCompletedTasks: () => ({ tr, dispatch }) => {
+        if (dispatch) { sortAllChecklists(tr); closeHistory(tr); }
+        return true;
+      },
+      setCompletedTasksHidden: hidden => ({ tr, dispatch }) => {
+        if (dispatch) tr.setMeta(checklistViewKey, { hideCompleted: hidden }).setMeta('addToHistory', false);
+        return true;
+      },
+      moveTask: (direction, position) => ({ state, tr, dispatch }) => {
+        const adjacent = adjacentTask(tr.doc, position ?? state.selection.from, direction);
+        if (!adjacent) return false;
+        if (dispatch) { reorderTask(tr, adjacent.sourcePos, adjacent.targetPos, adjacent.after); closeHistory(tr); }
         return true;
       }
     };
@@ -129,9 +77,46 @@ export const CustomTaskItem = TaskItem.extend({
       const checkboxStyler = document.createElement('span');
       const checkbox = document.createElement('input');
       const content = document.createElement('div');
+      const handle = document.createElement('button');
+      handle.type = 'button';
+      handle.className = 'task-drag-handle';
+      handle.contentEditable = 'false';
+      handle.draggable = true;
+      handle.title = 'Drag to reorder within this checklist. Use ↑ / ↓ when focused.';
+      handle.innerHTML = '<svg viewBox="0 0 16 20" width="14" height="18" aria-hidden="true" fill="currentColor"><circle cx="5" cy="5" r="1.2"/><circle cx="11" cy="5" r="1.2"/><circle cx="5" cy="10" r="1.2"/><circle cx="11" cy="10" r="1.2"/><circle cx="5" cy="15" r="1.2"/><circle cx="11" cy="15" r="1.2"/></svg>';
+      // Keep the browser's drag initiation; the node view prevents editor selection changes.
+      handle.addEventListener('mousedown', event => event.stopPropagation());
+      handle.addEventListener('dragstart', event => {
+        const pos = getPos();
+        if (!editor.isEditable || typeof pos !== 'number' || !event.dataTransfer) { event.preventDefault(); return; }
+        event.stopPropagation();
+        event.dataTransfer.setData(TASK_DRAG_TYPE, 'task');
+        event.dataTransfer.setData('text/plain', node.textContent);
+        event.dataTransfer.effectAllowed = 'move';
+        // Drag-image offsets are measured from the physical left edge, even for
+        // RTL text. Anchor at the grabbed handle rather than a fixed left inset.
+        const bounds = listItem.getBoundingClientRect();
+        event.dataTransfer.setDragImage(listItem,
+          Math.round(event.clientX - bounds.left),
+          Math.round(event.clientY - bounds.top));
+        editor.view.dispatch(editor.state.tr.setMeta(checklistViewKey, { draggedPos: pos }).setMeta('addToHistory', false));
+      });
+      handle.addEventListener('keydown', event => {
+        if (!editor.isEditable) return;
+        if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+        event.preventDefault(); event.stopPropagation();
+        const pos = getPos();
+        if (typeof pos !== 'number') return;
+        const direction = event.key === 'ArrowUp' ? 'up' : 'down';
+        const adjacent = adjacentTask(editor.state.doc, pos, direction);
+        if (adjacent && editor.commands.moveTask(direction, pos)) {
+          (editor.view.nodeDOM(adjacent.movedPos) as HTMLElement | null)?.querySelector<HTMLButtonElement>('.task-drag-handle')?.focus({ preventScroll: true });
+        }
+      });
 
       const updateA11Y = () => {
         checkbox.ariaLabel = `Task item checkbox for ${node.textContent || 'empty task item'}`;
+        handle.ariaLabel = `Reorder task: ${node.firstChild?.textContent || 'empty task'}`;
       };
       updateA11Y();
 
@@ -154,20 +139,12 @@ export const CustomTaskItem = TaskItem.extend({
                 ...currentNode.attrs,
                 checked
               });
-              editor.view.dispatch(tr);
-
-              // Auto-sort tasks on check and uncheck (if enabled in storage or options)
-              const autoSortEnabled = (editor.storage?.taskItem as any)?.autoSort ?? (this.options.autoSort !== false);
-              if (autoSortEnabled) {
-                setTimeout(() => {
-                  if (typeof getPos === 'function') {
-                    const currentPos = getPos();
-                    if (typeof currentPos === 'number') {
-                      reorderTasksInList(editor, currentPos);
-                    }
-                  }
-                }, 200);
+              if ((editor.storage.taskItem as any).autoSort ?? this.options.autoSort) {
+                const task = taskAt(tr.doc, pos);
+                if (task) sortChecklist(tr, task.listPos);
               }
+              closeHistory(tr);
+              editor.view.dispatch(tr);
             }
           }
         }
@@ -197,7 +174,7 @@ export const CustomTaskItem = TaskItem.extend({
       listItem.dataset.checked = String(node.attrs.checked);
       checkbox.checked = !!node.attrs.checked;
       checkboxWrapper.append(checkbox, checkboxStyler);
-      listItem.append(checkboxWrapper, content);
+      listItem.append(handle, checkboxWrapper, content);
 
       Object.entries(HTMLAttributes).forEach(([key, value]) => {
         listItem.setAttribute(key, value as string);
@@ -206,6 +183,7 @@ export const CustomTaskItem = TaskItem.extend({
       return {
         dom: listItem,
         contentDOM: content,
+        stopEvent: event => event.target instanceof Node && (checkboxWrapper.contains(event.target) || handle.contains(event.target)) && !['drop', 'dragover', 'dragend'].includes(event.type),
         update: updatedNode => {
           if (updatedNode.type !== this.type) {
             return false;
@@ -223,7 +201,7 @@ export const CustomTaskItem = TaskItem.extend({
 
   addStorage() {
     return {
-      autoSort: true,
+      autoSort: this.options.autoSort ?? false,
       markdown: {
         serialize(state: any, node: any) {
           const check = node.attrs.checked ? '[x]' : '[ ]';
@@ -246,9 +224,17 @@ export const CustomTaskItem = TaskItem.extend({
     };
   },
 
+  addProseMirrorPlugins() { return [...(this.parent?.() || []), checklistPlugin()]; },
+
   addKeyboardShortcuts() {
     return {
       ...this.parent?.(),
+      Enter: () => {
+        const { $from, empty } = this.editor.state.selection;
+        if (!$from.depth || !taskAt(this.editor.state.doc, $from.pos)) return false;
+        if (empty && !$from.parent.content.size) return this.editor.commands.liftListItem(this.name);
+        return this.editor.commands.splitListItem(this.name, { checked: false });
+      },
       'Mod-Shift-u': () => this.editor.commands.toggleCurrentTask(),
       Backspace: () => {
         const { state, dispatch } = this.editor.view;

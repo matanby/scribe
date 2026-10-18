@@ -1,5 +1,5 @@
 import React from 'react';
-import { BubbleMenu as TipTapBubbleMenu, Editor } from '@tiptap/react';
+import { BubbleMenu as TipTapBubbleMenu, Editor, useEditorState } from '@tiptap/react';
 import { 
   Bold, 
   Italic, 
@@ -21,6 +21,7 @@ interface BubbleMenuProps {
 }
 
 export const BubbleMenu: React.FC<BubbleMenuProps> = ({ editor, onEditLink }) => {
+  useEditorState({ editor, selector: ({ editor }) => editor?.state, equalityFn: Object.is });
   if (!editor) return null;
 
 
@@ -38,65 +39,66 @@ export const BubbleMenu: React.FC<BubbleMenuProps> = ({ editor, onEditLink }) =>
         maxWidth: 'none',
         offset: [0, 8]
       }}
-      className="flex flex-nowrap whitespace-nowrap items-center gap-0.5 p-1 rounded-lg bg-[var(--editor-bg)] backdrop-blur-2xl border border-[var(--border-color)] shadow-2xl z-50 select-none shrink-0"
+      className="bubble-formatting-menu flex flex-nowrap whitespace-nowrap items-center gap-0.5 p-1 rounded-lg bg-[var(--editor-bg)] backdrop-blur-2xl border border-[var(--border-color)] shadow-2xl z-50 select-none shrink-0"
     >
+      <div className="contents" onMouseDown={event => { if (event.button === 0) event.preventDefault(); }}>
       {/* Inline Formatting */}
       <button
-        onClick={() => editor.chain().focus().toggleBold().run()}
+        onClick={() => editor.chain().focus(undefined, { scrollIntoView: false }).toggleBold().run()}
         className={`p-1.5 rounded-lg text-xs transition-all shrink-0 ${
           editor.isActive('bold')
             ? 'bg-[var(--accent-color)] text-white shadow-xs'
             : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
         }`}
-        title="Bold (⌘B)"
+        title="Bold (⌘B)" aria-label="Bold" aria-pressed={editor.isActive('bold')}
       >
         <Bold size={13.5} />
       </button>
 
       <button
-        onClick={() => editor.chain().focus().toggleItalic().run()}
+        onClick={() => editor.chain().focus(undefined, { scrollIntoView: false }).toggleItalic().run()}
         className={`p-1.5 rounded-lg text-xs transition-all shrink-0 ${
           editor.isActive('italic')
             ? 'bg-[var(--accent-color)] text-white shadow-xs'
             : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
         }`}
-        title="Italic (⌘I)"
+        title="Italic (⌘I)" aria-label="Italic" aria-pressed={editor.isActive('italic')}
       >
         <Italic size={13.5} />
       </button>
 
       <button
-        onClick={() => (editor.chain().focus() as any).toggleUnderline().run()}
+        onClick={() => (editor.chain().focus(undefined, { scrollIntoView: false }) as any).toggleUnderline().run()}
         className={`p-1.5 rounded-lg text-xs transition-all shrink-0 ${
           editor.isActive('underline')
             ? 'bg-[var(--accent-color)] text-white shadow-xs'
             : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
         }`}
-        title="Underline (⌘U)"
+        title="Underline (⌘U)" aria-label="Underline" aria-pressed={editor.isActive('underline')}
       >
         <UnderlineIcon size={13.5} />
       </button>
 
       <button
-        onClick={() => editor.chain().focus().toggleStrike().run()}
+        onClick={() => editor.chain().focus(undefined, { scrollIntoView: false }).toggleStrike().run()}
         className={`p-1.5 rounded-lg text-xs transition-all shrink-0 ${
           editor.isActive('strike')
             ? 'bg-[var(--accent-color)] text-white shadow-xs'
             : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
         }`}
-        title="Strikethrough"
+        title="Strikethrough" aria-label="Strikethrough" aria-pressed={editor.isActive('strike')}
       >
         <Strikethrough size={13.5} />
       </button>
 
       <button
-        onClick={() => (editor.chain().focus() as any).toggleHighlight({ color: '#fde047' }).run()}
+        onClick={() => (editor.chain().focus(undefined, { scrollIntoView: false }) as any).toggleHighlight({ color: '#fde047' }).run()}
         className={`p-1.5 rounded-lg text-xs transition-all shrink-0 ${
           editor.isActive('highlight')
             ? 'bg-yellow-400 text-black shadow-xs'
             : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
         }`}
-        title="Highlight"
+        title="Highlight" aria-label="Highlight" aria-pressed={editor.isActive('highlight')}
       >
         <Highlighter size={13.5} />
       </button>
@@ -105,73 +107,73 @@ export const BubbleMenu: React.FC<BubbleMenuProps> = ({ editor, onEditLink }) =>
 
       {/* Headings & Lists */}
       <button
-        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+        onClick={() => editor.chain().focus(undefined, { scrollIntoView: false }).toggleHeading({ level: 1 }).run()}
         className={`p-1.5 rounded-lg text-xs transition-all shrink-0 ${
           editor.isActive('heading', { level: 1 })
             ? 'bg-[var(--accent-color)] text-white shadow-xs'
             : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
         }`}
-        title="Title"
+        title="Title" aria-label="Title" aria-pressed={editor.isActive('heading', { level: 1 })}
       >
         <Heading1 size={13.5} />
       </button>
 
       <button
-        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+        onClick={() => editor.chain().focus(undefined, { scrollIntoView: false }).toggleHeading({ level: 2 }).run()}
         className={`p-1.5 rounded-lg text-xs transition-all shrink-0 ${
           editor.isActive('heading', { level: 2 })
             ? 'bg-[var(--accent-color)] text-white shadow-xs'
             : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
         }`}
-        title="Heading"
+        title="Heading" aria-label="Heading" aria-pressed={editor.isActive('heading', { level: 2 })}
       >
         <Heading2 size={13.5} />
       </button>
 
       <button
-        onClick={() => editor.chain().focus().toggleTaskList().run()}
+        onClick={() => editor.chain().focus(undefined, { scrollIntoView: false }).toggleTaskList().run()}
         className={`p-1.5 rounded-lg text-xs transition-all shrink-0 ${
           editor.isActive('taskList')
             ? 'bg-[var(--accent-color)] text-white shadow-xs'
             : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
         }`}
-        title="Checklist"
+        title="Checklist" aria-label="Checklist" aria-pressed={editor.isActive('taskList')}
       >
         <CheckSquare size={13.5} />
       </button>
 
       <button
-        onClick={() => editor.chain().focus().toggleBulletList().run()}
+        onClick={() => editor.chain().focus(undefined, { scrollIntoView: false }).toggleBulletList().run()}
         className={`p-1.5 rounded-lg text-xs transition-all shrink-0 ${
           editor.isActive('bulletList')
             ? 'bg-[var(--accent-color)] text-white shadow-xs'
             : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
         }`}
-        title="Bullet List"
+        title="Bullet List" aria-label="Bullet List" aria-pressed={editor.isActive('bulletList')}
       >
         <List size={13.5} />
       </button>
 
       <button
-        onClick={() => editor.chain().focus().toggleBlockquote().run()}
+        onClick={() => editor.chain().focus(undefined, { scrollIntoView: false }).toggleBlockquote().run()}
         className={`p-1.5 rounded-lg text-xs transition-all shrink-0 ${
           editor.isActive('blockquote')
             ? 'bg-[var(--accent-color)] text-white shadow-xs'
             : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
         }`}
-        title="Quote"
+        title="Quote" aria-label="Quote" aria-pressed={editor.isActive('blockquote')}
       >
         <Quote size={13.5} />
       </button>
 
       <button
-        onClick={() => editor.chain().focus().toggleCode().run()}
+        onClick={() => editor.chain().focus(undefined, { scrollIntoView: false }).toggleCode().run()}
         className={`p-1.5 rounded-lg text-xs transition-all shrink-0 ${
           editor.isActive('code')
             ? 'bg-[var(--accent-color)] text-white shadow-xs'
             : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
         }`}
-        title="Code"
+        title="Code" aria-label="Code" aria-pressed={editor.isActive('code')}
       >
         <Code size={13.5} />
       </button>
@@ -190,6 +192,7 @@ export const BubbleMenu: React.FC<BubbleMenuProps> = ({ editor, onEditLink }) =>
       >
         <LinkIcon size={13.5} />
       </button>
+      </div>
     </TipTapBubbleMenu>
   );
 };

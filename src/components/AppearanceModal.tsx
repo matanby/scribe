@@ -216,22 +216,23 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
                 Auto-Sort Checklists
               </div>
               <div className="text-[11px] text-[var(--text-secondary)] mt-0.5 leading-snug">
-                Automatically slide checked items to the bottom and unchecked items to the top
+                Move completed tasks to the bottom automatically. Off keeps tasks in place.
               </div>
             </div>
 
             <button
               type="button"
               role="switch"
-              aria-checked={settings.autoSortTasks !== false}
-              onClick={() => onUpdateSettings({ autoSortTasks: settings.autoSortTasks === false ? true : false })}
+              aria-checked={settings.autoSortTasks === true}
+              aria-label="Sort completed tasks automatically"
+              onClick={() => onUpdateSettings({ autoSortTasks: settings.autoSortTasks !== true })}
               className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                settings.autoSortTasks !== false ? 'bg-[var(--accent-color)]' : 'bg-black/20 dark:bg-white/20'
+                settings.autoSortTasks === true ? 'bg-[var(--accent-color)]' : 'bg-black/20 dark:bg-white/20'
               }`}
             >
               <span
                 className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                  settings.autoSortTasks !== false ? 'translate-x-4' : 'translate-x-0'
+                  settings.autoSortTasks === true ? 'translate-x-4' : 'translate-x-0'
                 }`}
               />
             </button>

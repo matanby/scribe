@@ -22,6 +22,7 @@ import Typography from '@tiptap/extension-typography';
 import { DirectionMarkdown } from '../extensions/DirectionMarkdown';
 import { BiDiExtension } from '../extensions/BiDiExtension';
 import { CleanBackspaceExtension } from '../extensions/CleanBackspaceExtension';
+import { ListKeyboard } from '../extensions/ListKeyboard';
 import { SearchReplaceExtension } from '../extensions/SearchReplaceExtension';
 import { CalloutExtension } from '../extensions/CalloutExtension';
 import { CollapsibleHeadingsExtension } from '../extensions/CollapsibleHeadingsExtension';
@@ -30,6 +31,7 @@ import { BubbleMenu } from './BubbleMenu';
 import { FormattingBar } from './FormattingBar';
 import { LinkEditor, LinkAnchor } from './LinkEditor';
 import { FLUSH_NOTE_EVENT, FlushNoteRequest } from '../utils/flushNote';
+import { keepCaretComfortable } from '../utils/caretVisibility';
 import { readPosition, savePosition } from '../utils/session';
 import { NoteInfo } from './NoteInfo';
 import { TableControls } from './TableControls';
@@ -157,7 +159,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   externalChangeToken,
   searchQuery,
   smartTypography = true,
-  autoSortTasks = true,
+  autoSortTasks = false,
   focusRequest,
   onFocusRequestHandled
 }) => {
@@ -402,7 +404,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
       }),
       CustomTaskItem.configure({
         nested: true,
-        autoSort: autoSortTasks !== false,
+        autoSort: autoSortTasks === true,
         HTMLAttributes: {
           class: 'task-item'
         }
@@ -491,9 +493,11 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
       }),
       BiDiExtension,
       CleanBackspaceExtension,
+      ListKeyboard,
       SearchReplaceExtension
     ],
     editorProps: {
+      handleScrollToSelection: keepCaretComfortable,
       attributes: {
         class: 'tiptap ProseMirror note-content focus:outline-none',
         role: 'textbox',
@@ -893,7 +897,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
       }} /></Suspense>}
 
       {/* Scrollable Note Content Container */}
-      <div ref={scrollerRef} className="flex-1 overflow-y-auto relative">
+      <div ref={scrollerRef} className="note-scroller flex-1 overflow-y-auto relative">
         {!documentMode && <div className="note-heading print:max-w-full print:p-0 print:m-0">
           <NoteInfo note={note} wordCount={wordCount} onSelectFolder={onSelectFolder} onHistory={async () => {
             await performSaveRef.current();
@@ -926,7 +930,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
         </div>}
 
         {/* TipTap Document Area */}
-        <div className={`flex-1 pb-28 cursor-text ${documentMode ? 'pt-7' : ''}`} onClick={() => editor?.commands.focus()}>
+        <div className={`flex-1 pb-28 cursor-text ${documentMode ? 'pt-7' : ''}`} onClick={event => { if (event.target === event.currentTarget) editor?.commands.focus(undefined, { scrollIntoView: false }); }}>
           <EditorContent editor={editor} />
         </div>
       </div>
@@ -946,7 +950,7 @@ export const Editor: React.FC<EditorProps> = ({
   externalChangeToken,
   searchQuery,
   smartTypography = true,
-  autoSortTasks = true,
+  autoSortTasks = false,
   focusRequest,
   onFocusRequestHandled
 }) => {

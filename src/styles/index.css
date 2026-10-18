@@ -441,10 +441,10 @@ li[data-type="taskItem"] > div > p,
   line-height: inherit !important;
 }
 
-ul.task-list > li[data-checked="true"] > div,
-li.task-item[data-checked="true"] > div,
-li[data-type="taskItem"][data-checked="true"] > div,
-.ProseMirror li[data-type="taskItem"][data-checked="true"] > div {
+ul.task-list > li[data-checked="true"] > div > p,
+li.task-item[data-checked="true"] > div > p,
+li[data-type="taskItem"][data-checked="true"] > div > p,
+.ProseMirror li[data-type="taskItem"][data-checked="true"] > div > p {
   text-decoration: line-through !important;
   color: var(--text-tertiary) !important;
   opacity: 0.75 !important;
@@ -1113,3 +1113,33 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, [role="treeit
 @media(prefers-reduced-motion:reduce) {
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
 }
+
+/* Writing controls stay quiet until needed, with equal access from the keyboard. */
+.formatting-style-label { font-size: 11px; max-width: 78px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.checklist-options-trigger { min-width: 22px; padding-inline: 3px; position: relative; margin-inline-start: -5px; }
+.checklist-filter-active { color: var(--accent-ink); background: var(--accent-light); }
+.checklist-filter-dot { position: absolute; width: 4px; height: 4px; border-radius: 50%; background: currentColor; inset-inline-end: 3px; top: 5px; }
+.checklist-progress { padding: 6px 9px 10px; }
+.checklist-progress > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: 12px; }
+.checklist-progress > div > span:last-child { font-size: 11px; color: var(--text-secondary); }
+.checklist-progress progress { display: block; width: 100%; height: 4px; margin-top: 9px; appearance: none; border: none; border-radius: 4px; overflow: hidden; background: var(--border-color); }
+.checklist-progress progress::-webkit-progress-bar { background: var(--border-color); }
+.checklist-progress progress::-webkit-progress-value { background: var(--accent-ink); border-radius: 4px; }
+.menu-divider { height: 1px; background: var(--border-subtle); margin: 5px 0; }
+.menu-item:disabled { opacity: .4; cursor: default; background: transparent; }
+.task-drag-handle { position: absolute; inset-inline-start: -27px; top: 0; width: 23px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--text-tertiary); opacity: 0; cursor: grab; user-select: none; transition: opacity .12s ease, background-color .12s ease; }
+li.task-item:hover > .task-drag-handle, .task-drag-handle:focus-visible { opacity: 1; }
+.task-drag-handle:hover, .task-drag-handle:focus-visible { background: var(--card-hover); color: var(--text-secondary); }
+.task-drag-handle:active { cursor: grabbing; }
+.tiptap li[data-type="taskItem"].task-completed-hidden { display: none !important; }
+@media(max-width:1100px) { .formatting-style-label { display: none; } }
+@media(prefers-reduced-motion:reduce) { .task-drag-handle { transition: none; } }
+@media print {
+  .tiptap li[data-type="taskItem"].task-completed-hidden { display: flex !important; }
+  .task-drag-handle { display: none !important; }
+}
+
+/* Task moves use a single guide at a whole-item boundary. Text drops retain the native cursor. */
+.task-reordering .prosemirror-dropcursor-block, .task-reordering .prosemirror-dropcursor-inline { display: none !important; }
+.task-drop-indicator { position: fixed; z-index: 90; height: 2px; border-radius: 2px; background: var(--accent-ink, var(--accent-color)); pointer-events: none; }
+@media print { .task-drop-indicator { display: none !important; } }

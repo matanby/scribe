@@ -73,7 +73,7 @@ export const App: React.FC = () => {
       fontSize: 'normal',
       themeMode: 'system',
       smartTypography: true,
-      autoSortTasks: true
+      autoSortTasks: false
     };
   });
 
@@ -1066,7 +1066,7 @@ export const App: React.FC = () => {
             externalChangeToken={externalChangeToken}
             searchQuery={searchQuery}
             smartTypography={appearance.smartTypography !== false}
-            autoSortTasks={appearance.autoSortTasks !== false}
+            autoSortTasks={appearance.autoSortTasks === true}
           /></Suspense>
         </div>
       </main>
