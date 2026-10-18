@@ -27,6 +27,10 @@ export const App: React.FC = () => {
   const [editorFocusRequest, setEditorFocusRequest] = useState<NoteFocusRequest | null>(null);
   const editorFocusSequence = useRef(0);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [searchScope, setSearchScope] = useState<'all' | 'folder'>('all');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState(false);
+  const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [lastSavedText, setLastSavedText] = useState('');
   const [externalChangeToken, setExternalChangeToken] = useState<number>(0);
@@ -36,7 +40,16 @@ export const App: React.FC = () => {
     }
     return false;
   });
-  const [showSidebar, setShowSidebar] = useState(true);
+  const [showSidebar, setShowSidebar] = useState(() => readStored('scribe_show_sidebar', true));
+  const [writingFocus, setWritingFocus] = useState(() => readStored('scribe_writing_focus', false));
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+  useEffect(() => {
+    const resize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, []);
+  useEffect(() => { writeStored('scribe_show_sidebar', showSidebar); }, [showSidebar]);
+  useEffect(() => { writeStored('scribe_writing_focus', writingFocus); }, [writingFocus]);
   const [compactNotes, setCompactNotes] = useState(() => localStorage.getItem('scribe_compact_notes') === 'true');
   const handleToggleCompactNotes = () => {
     const next = !compactNotes;
@@ -77,6 +90,7 @@ export const App: React.FC = () => {
     const root = document.documentElement;
     const accent = appearance.accentColor || '#EAB308';
     root.style.setProperty('--accent-color', accent);
+    root.style.setProperty('--note-font-size', appearance.fontSize === 'compact' ? '15px' : appearance.fontSize === 'large' ? '19px' : '17px');
     
     // Find matching palette hover
     const found = ACCENT_PALETTES.find(p => p.color.toLowerCase() === accent.toLowerCase());
@@ -130,7 +144,7 @@ export const App: React.FC = () => {
 
   const [noteListWidth, setNoteListWidth] = useState<number>(() => {
     const saved = localStorage.getItem('scribe_notelist_width');
-    return saved ? Math.max(220, Math.min(460, parseInt(saved, 10))) : 260;
+    return saved ? Math.max(220, Math.min(460, parseInt(saved, 10))) : 290;
   });
 
   const [sortMode, setSortMode] = useState<SortMode>(() => {
@@ -149,6 +163,13 @@ export const App: React.FC = () => {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const selectedNoteRef = useRef<NoteMeta | null>(selectedNote);
   selectedNoteRef.current = selectedNote;
+  const sidebarVisible = showSidebar && !writingFocus;
+  const effectiveSidebarWidth = Math.min(sidebarWidth, Math.max(160, windowWidth - 760));
+  const effectiveNoteListWidth = Math.min(noteListWidth, Math.max(220, windowWidth - (sidebarVisible ? effectiveSidebarWidth : 0) - 480));
+  const toggleSidebar = () => {
+    if (writingFocus) { setWritingFocus(false); setShowSidebar(true); }
+    else setShowSidebar(previous => !previous);
+  };
 
   const isDraggingSidebar = useRef(false);
   const isDraggingNoteList = useRef(false);
@@ -333,9 +354,17 @@ export const App: React.FC = () => {
     if (nextIndex < 0 || nextIndex >= history.entries.length) return;
     const target = findNoteByPath(history.entries[nextIndex]);
     if (!target) return;
+    setEditorFocusRequest(null);
+    setSearchQuery('');
+    const inTrash = !!tree?.trashNotes.some(note => note.filePath === target.filePath);
+    setSelectedFolder(folder => {
+      if (inTrash) return '__TRASH__';
+      const noteFolder = target.folder.replace(/^\//, '');
+      return folder !== '__TRASH__' && (!folder || noteFolder === folder || noteFolder.startsWith(`${folder}/`)) ? folder : '';
+    });
     setSelectedNote(target);
     setHistory(prev => ({ ...prev, index: nextIndex }));
-  }, [history.entries, findNoteByPath]);
+  }, [history.entries, findNoteByPath, tree?.trashNotes]);
 
   const handleGoBack = useCallback(() => {
     goToHistoryIndex(history.index - 1);
@@ -588,6 +617,12 @@ export const App: React.FC = () => {
     const unsubscribeQuickSwitcher = window.scribeAPI.onMenuEvent?.('menu:quickSwitcher', () => {
       if (!documentMode) setIsQuickSwitcherOpen(true);
     });
+    const unsubscribeSearchNotes = window.scribeAPI.onMenuEvent('menu:searchNotes', () => {
+      if (!documentMode) { searchInputRef.current?.focus(); searchInputRef.current?.select(); }
+    });
+    const unsubscribeWritingFocus = window.scribeAPI.onMenuEvent('menu:writingFocus', () => {
+      if (!documentMode) setWritingFocus(previous => !previous);
+    });
 
     const unsubscribeNewNote = window.scribeAPI.onMenuEvent?.('menu:newNote', () => {
       handleNewNoteRef.current();
@@ -623,6 +658,7 @@ export const App: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!documentMode && (e.metaKey || e.ctrlKey) && (e.key === '\\' || e.code === 'Backslash')) {
         e.preventDefault();
+        setWritingFocus(false);
         setShowSidebar(prev => !prev);
       }
       if (e.key === 'Escape') {
@@ -640,6 +676,8 @@ export const App: React.FC = () => {
       unsubscribeRenameFile();
       unsubscribeShortcuts();
       unsubscribeQuickSwitcher?.();
+      unsubscribeSearchNotes();
+      unsubscribeWritingFocus();
       unsubscribeNewNote?.();
       unsubscribeDuplicateNote?.();
       unsubscribeRevealInFinder?.();
@@ -770,6 +808,15 @@ export const App: React.FC = () => {
   const handleSelectFolder = (folderRelativePath: string) => {
     setSelectedFolder(folderRelativePath);
     setSearchQuery('');
+    setSearchScope('all');
+    const notes = folderRelativePath === '__TRASH__' ? (tree?.trashNotes || []) : (tree?.allNotes || []).filter(note => {
+      const folder = note.folder.replace(/^\//, '');
+      return !folderRelativePath || folder === folderRelativePath || folder.startsWith(`${folderRelativePath}/`);
+    });
+    if (!notes.some(note => note.filePath === selectedNote?.filePath)) {
+      const pinned = folderRelativePath === '__TRASH__' ? undefined : notes.find(note => pinnedIds.has(note.filePath) || note.frontmatter?.pinned);
+      selectNoteWithHistory(pinned || notes[0] || null);
+    }
   };
 
   // Full-text matches come from the main process, which can read note bodies. The list
@@ -781,18 +828,22 @@ export const App: React.FC = () => {
     const query = searchQuery.trim();
     if (!query) {
       setBodyMatches(null);
+      setIsSearching(false);
+      setSearchError(false);
       return;
     }
 
     setBodyMatches(null);
+    setIsSearching(true);
+    setSearchError(false);
     let cancelled = false;
     const timer = setTimeout(() => {
       window.scribeAPI
         .searchExcerpts(query)
         .then(results => {
-          if (!cancelled) setBodyMatches(new Map(results.map(result => [result.filePath, result.excerpt])));
+          if (!cancelled) { setBodyMatches(new Map(results.map(result => [result.filePath, result.excerpt]))); setIsSearching(false); }
         })
-        .catch(err => console.error('Search failed:', err));
+        .catch(err => { console.error('Search failed:', err); if (!cancelled) { setSearchError(true); setIsSearching(false); } });
     }, 200);
 
     return () => {
@@ -811,7 +862,7 @@ export const App: React.FC = () => {
 
     if (isTrashView) {
       list = [...tree.trashNotes];
-    } else if (selectedFolder === '') {
+    } else if (selectedFolder === '' || (searchQuery.trim() && searchScope === 'all')) {
       list = [...tree.allNotes];
     } else {
       list = tree.allNotes.filter(n => {
@@ -822,7 +873,7 @@ export const App: React.FC = () => {
     }
 
     if (searchQuery && typeof searchQuery === 'string' && searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
+      const q = searchQuery.trim().toLowerCase();
       list = list.filter(n =>
         (n.title || '').toLowerCase().includes(q) ||
         (n.snippet || '').toLowerCase().includes(q) ||
@@ -832,6 +883,12 @@ export const App: React.FC = () => {
 
     // Sort notes
     list.sort((a, b) => {
+      if (searchQuery.trim()) {
+        const query = searchQuery.trim().toLowerCase();
+        const rank = (note: NoteMeta) => note.title.toLowerCase() === query ? 0 : note.title.toLowerCase().startsWith(query) ? 1 : note.title.toLowerCase().includes(query) ? 2 : 3;
+        const difference = rank(a) - rank(b);
+        if (difference) return difference;
+      }
       const aPinned = pinnedIds.has(a.id);
       const bPinned = pinnedIds.has(b.id);
       if (aPinned && !bPinned) return -1;
@@ -854,10 +911,10 @@ export const App: React.FC = () => {
     });
 
     return list;
-  }, [tree, selectedFolder, isTrashView, searchQuery, sortMode, pinnedIds, bodyMatches]);
+  }, [tree, selectedFolder, isTrashView, searchQuery, searchScope, sortMode, pinnedIds, bodyMatches]);
 
   return (
-    <div className={`h-screen w-screen flex flex-col overflow-hidden bg-[var(--app-bg)] text-[var(--text-primary)] ${isDark ? 'dark' : ''} font-${appearance.fontFamily}-mode`}>
+    <div className={`scribe-app h-screen w-screen flex flex-col overflow-hidden bg-[var(--app-bg)] text-[var(--text-primary)] ${isDark ? 'dark' : ''} ${writingFocus ? 'writing-focus' : ''} ${isResizing ? 'is-resizing' : ''} font-${appearance.fontFamily}-mode`}>
       {/* Native macOS Titlebar */}
       <Titlebar
         documentTitle={documentMode ? (selectedNote?.fileName || 'Markdown Document') : undefined}
@@ -869,22 +926,31 @@ export const App: React.FC = () => {
         currentFolder={isTrashView ? 'Recently Deleted' : (selectedFolder || 'All Notes')}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        onSearchSubmit={() => {
+          const note = filteredNotes[0];
+          if (note) {
+            selectNoteWithHistory(note);
+            setEditorFocusRequest({ filePath: note.filePath, requestId: ++editorFocusSequence.current, search: searchQuery.trim(), focus: true });
+          }
+        }}
         onNewNote={handleNewNote}
         onSelectFolder={handleOpenFolderDialog}
         isSaving={isSaving}
         lastSavedText={lastSavedText}
         isDark={isDark}
         onToggleTheme={handleToggleTheme}
-        showSidebar={showSidebar}
-        onToggleSidebar={() => setShowSidebar(!showSidebar)}
+        showSidebar={sidebarVisible}
+        onToggleSidebar={toggleSidebar}
+        writingFocus={writingFocus}
+        onToggleFocus={() => setWritingFocus(previous => !previous)}
+        libraryWidth={(sidebarVisible ? effectiveSidebarWidth : 0) + effectiveNoteListWidth}
+        toolbarRef={setToolbarTarget}
         searchInputRef={searchInputRef}
         onGoBack={handleGoBack}
         onGoForward={handleGoForward}
         canGoBack={canGoBack}
         canGoForward={canGoForward}
         onQuickCapture={() => { void window.scribeAPI.openCapture(); }}
-        onExportPDF={handleExportPDF}
-        onPrint={handlePrint}
       />
 
       {/* 3-Pane Resizable Layout */}
@@ -893,19 +959,21 @@ export const App: React.FC = () => {
         {/* Pane 1: Sidebar Folders (Resizable & Foldable with smooth animation) */}
         <div 
           style={{ 
-            width: showSidebar ? `${sidebarWidth}px` : '0px',
-            opacity: showSidebar ? 1 : 0,
+            width: sidebarVisible ? `${effectiveSidebarWidth}px` : '0px',
+            opacity: sidebarVisible ? 1 : 0,
           }} 
+          {...(!sidebarVisible ? { inert: '' } : {})}
+          aria-hidden={!sidebarVisible}
           className={`h-full shrink-0 overflow-hidden no-print ${
             isResizing ? '' : 'transition-[width,opacity] duration-300 ease-[cubic-bezier(0.2,0.9,0.3,1)]'
           }`}
         >
-          <div style={{ width: `${sidebarWidth}px` }} className="h-full">
+          <div style={{ width: `${effectiveSidebarWidth}px` }} className="h-full">
             <Sidebar
               key={tree?.rootPath || "loading"}
               tree={tree}
               selectedFolder={selectedFolder}
-              onSelectFolder={setSelectedFolder}
+              onSelectFolder={handleSelectFolder}
               allNotesCount={tree?.allNotes.length || 0}
               onOpenFolderDialog={handleOpenFolderDialog}
               onOpenAppearance={() => setIsAppearanceOpen(true)}
@@ -924,17 +992,26 @@ export const App: React.FC = () => {
         <div
           onMouseDown={handleSidebarMouseDown}
           className={`w-[4px] h-full cursor-col-resize hover:bg-[var(--accent-color)]/60 active:bg-[var(--accent-color)] z-20 shrink-0 select-none -mr-[2px] -ml-[2px] no-print ${
-            !showSidebar ? 'pointer-events-none opacity-0' : 'opacity-100'
+            !sidebarVisible ? 'pointer-events-none opacity-0' : 'opacity-100'
           } ${isResizing ? '' : 'transition-opacity duration-300 ease-[cubic-bezier(0.2,0.9,0.3,1)]'}`}
           title="Drag to resize sidebar"
         />
 
         {/* Pane 2: Note List (Resizable) */}
         <div 
-          style={{ width: `${noteListWidth}px` }} 
+          style={{ width: `${effectiveNoteListWidth}px` }}
           className="h-full shrink-0 overflow-hidden no-print"
         >
           <NoteList
+            currentFolder={isTrashView ? 'Recently Deleted' : (selectedFolder.split('/').filter(Boolean).pop() || 'All Notes')}
+            showFolderLabels={!selectedFolder || (!!searchQuery.trim() && searchScope === 'all')}
+            onNewNote={handleNewNote}
+            isSearching={isSearching}
+            searchError={searchError}
+            searchScope={searchScope}
+            onSearchScopeChange={setSearchScope}
+            canSearchFolder={!!selectedFolder && !isTrashView}
+            onClearSearch={() => setSearchQuery('')}
             compact={compactNotes}
             onToggleCompact={handleToggleCompactNotes}
             notes={filteredNotes}
@@ -977,12 +1054,13 @@ export const App: React.FC = () => {
         <div className="flex-1 h-full min-w-0 overflow-hidden">
           <Suspense fallback={<div className="h-full bg-[var(--editor-bg)]" />}><Editor
             note={selectedNote}
+            toolbarTarget={toolbarTarget}
             documentMode={documentMode}
             focusRequest={editorFocusRequest}
             onFocusRequestHandled={handleEditorFocused}
             onSave={handleSaveNote}
             onRename={handleRenameNote}
-            onSelectFolder={documentMode ? undefined : setSelectedFolder}
+            onSelectFolder={documentMode ? undefined : handleSelectFolder}
             setIsSaving={setIsSaving}
             setLastSavedText={setLastSavedText}
             externalChangeToken={externalChangeToken}

@@ -52,7 +52,7 @@ export const TableButton: React.FC<{ editor: Editor; insertTrigger: number }> = 
   const inserting = forceInsert || !editor.isActive('table');
   return <Popover label={inserting ? 'Insert table' : 'Table options'} open={open}
     onOpenChange={next => { setOpen(next); if (!next) setForceInsert(false); }}
-    triggerClassName={`flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs hover:bg-black/5 dark:hover:bg-white/10 ${editor.isActive('table') ? 'text-[var(--accent-color)] bg-[var(--accent-light)]' : 'text-[var(--text-primary)]'}`}
+    triggerClassName={`chrome-button ${editor.isActive('table') ? 'text-[var(--accent-color)] bg-[var(--accent-light)]' : 'text-[var(--text-primary)]'}`}
     trigger={<><TableIcon size={16} /><ChevronDown size={11} /></>}>
     {close => inserting ? <TableSizePicker editor={editor} close={close} /> : <TableMenus editor={editor} close={close} />}
   </Popover>;

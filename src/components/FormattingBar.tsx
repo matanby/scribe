@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { Editor } from '@tiptap/react';
 import {
   Bold, Italic, Underline, Strikethrough, Highlighter, Code, List, ListOrdered,
@@ -11,7 +12,7 @@ import { TableButton } from './TableButton';
 import { NoteOutline } from './NoteOutline';
 import { Popover } from './Popover';
 
-interface FormattingBarProps { editor: Editor | null; onAttach: () => void; noteFilePath: string; tableInsertTrigger: number; documentMode?: boolean; }
+interface FormattingBarProps { editor: Editor | null; onAttach: () => void; onEditLink: () => void; toolbarTarget?: HTMLElement | null; noteFilePath: string; tableInsertTrigger: number; documentMode?: boolean; }
 interface Action {
   label: string;
   icon?: LucideIcon;
@@ -21,7 +22,7 @@ interface Action {
   run: () => void;
 }
 
-const toolbarButton = 'flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors';
+const toolbarButton = 'chrome-button';
 const Divider = () => <div className="h-px bg-[var(--border-subtle)] my-1" />;
 const Actions: React.FC<{ actions: Action[]; close: () => void }> = ({ actions, close }) => (
   <>
@@ -40,7 +41,7 @@ const Actions: React.FC<{ actions: Action[]; close: () => void }> = ({ actions, 
   </>
 );
 
-export const FormattingBar: React.FC<FormattingBarProps> = ({ editor, onAttach, noteFilePath, tableInsertTrigger, documentMode = false }) => {
+export const FormattingBar: React.FC<FormattingBarProps> = ({ editor, onAttach, onEditLink, toolbarTarget, noteFilePath, tableInsertTrigger, documentMode = false }) => {
   if (!editor) return null;
 
   const paragraphStyles: Action[] = [
@@ -67,16 +68,9 @@ export const FormattingBar: React.FC<FormattingBarProps> = ({ editor, onAttach, 
     { label: 'Right to left', active: editor.isActive({ directionOverride: 'rtl' }), run: () => { editor.chain().focus().setTextDirection('rtl').run(); } },
     { label: 'Left to right', active: editor.isActive({ directionOverride: 'ltr' }), run: () => { editor.chain().focus().setTextDirection('ltr').run(); } }
   ];
-  const setLink = () => {
-    const previousUrl = editor.getAttributes('link').href;
-    const url = window.prompt('Enter Link URL:', previousUrl);
-    if (url === null) return;
-    if (!url) editor.chain().focus().extendMarkRange('link').unsetLink().run();
-    else editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
-  };
   const inserts: Action[] = [
     { label: 'Image or File…', icon: Plus, run: onAttach },
-    { label: 'Link…', icon: LinkIcon, run: setLink },
+    { label: 'Link…', icon: LinkIcon, shortcut: '⌘K', run: onEditLink },
     { label: 'Divider', icon: Minus, run: () => { editor.chain().focus().setHorizontalRule().run(); } },
     { label: 'Math Formula', icon: Sigma, run: () => { editor.chain().focus().insertContent('$E = mc^2$ ').run(); } }
   ];
@@ -102,8 +96,8 @@ export const FormattingBar: React.FC<FormattingBarProps> = ({ editor, onAttach, 
     } }
   ];
 
-  return (
-    <div role="group" aria-label="Note formatting" className="no-print flex flex-wrap items-center justify-between gap-1 px-6 py-1.5 border-b border-[var(--border-subtle)] bg-[var(--editor-bg)] select-none shrink-0 sticky top-0 z-20">
+  const toolbar = (
+    <div role="group" aria-label="Note formatting" className="formatting-bar no-print">
       <div className="flex items-center gap-1">
         <Popover label="Text style and formatting" triggerClassName={toolbarButton}
           trigger={<><span className="text-[15px] font-medium">Aa</span><ChevronDown size={11} /></>}>
@@ -119,10 +113,11 @@ export const FormattingBar: React.FC<FormattingBarProps> = ({ editor, onAttach, 
           {close => <Actions actions={inserts} close={close} />}
         </Popover>
       </div>
-      <div className="flex items-center gap-1"><NoteOutline editor={editor} documentMode={documentMode} />
-      <Popover label={documentMode ? "Export file" : "Export note"} align="right" triggerClassName={`${toolbarButton} text-[var(--text-secondary)]`} trigger={<><Share size={15} /><span>Export</span></>}>
+      <div className="formatting-secondary flex items-center gap-1"><NoteOutline editor={editor} documentMode={documentMode} />
+      <Popover label={documentMode ? "Export file" : "Export note"} align="right" triggerClassName={`${toolbarButton} text-[var(--text-secondary)]`} trigger={<Share size={16} />}>
         {close => <Actions actions={exports} close={close} />}
       </Popover></div>
     </div>
   );
+  return toolbarTarget ? createPortal(toolbar, toolbarTarget) : toolbar;
 };

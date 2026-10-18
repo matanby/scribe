@@ -150,10 +150,11 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
 
   return (
     <div 
-      className={`no-print absolute top-12 right-3 max-w-[calc(100%-24px)] z-30 flex flex-col bg-white/95 dark:bg-[#222226]/95 backdrop-blur-2xl border border-[var(--border-color)] shadow-2xl rounded-2xl p-1.5 transition-all text-xs select-none ${
+      className={`find-replace-bar no-print absolute top-3 right-3 max-w-[calc(100%-24px)] z-30 flex flex-col bg-[var(--editor-bg)] backdrop-blur-2xl border border-[var(--border-color)] shadow-xl rounded-lg p-1.5 transition-all text-xs select-none ${
         isOpen ? 'block animate-in fade-in duration-100' : 'hidden'
       }`}
     >
+      <div className="px-2 pt-1 pb-2 text-[11px] font-medium text-[var(--text-secondary)]">Find in this note</div>
       {/* Top Search Row */}
       <div className="flex items-center gap-1.5">
         <button
@@ -177,7 +178,7 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
             onChange={(e) => handleSearchChange(e.target.value)}
             onKeyDown={handleKeyDown}
             aria-label="Find in note" placeholder="Find in note (⌘F)…"
-            className="w-40 min-w-0 pl-2 pr-14 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-transparent focus:border-[var(--accent-color)] focus:bg-transparent text-[var(--text-primary)] placeholder-[var(--text-tertiary)] outline-none text-xs"
+            dir="auto" className="w-40 min-w-0 pl-2 pr-14 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-transparent focus:border-[var(--accent-color)] focus:bg-transparent text-[var(--text-primary)] placeholder-[var(--text-tertiary)] outline-none text-xs"
           />
           {searchTerm && (
             <span className="absolute right-2 text-[10px] text-[var(--text-secondary)] pointer-events-none">
@@ -250,7 +251,7 @@ export const FindReplaceBar: React.FC<FindReplaceBarProps> = ({
               }
             }}
             aria-label="Replace with" placeholder="Replace with…"
-            className="w-40 min-w-0 pl-2 pr-14 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-transparent focus:border-[var(--accent-color)] focus:bg-transparent text-[var(--text-primary)] placeholder-[var(--text-tertiary)] outline-none text-xs"
+            dir="auto" className="w-40 min-w-0 pl-2 pr-14 py-1 rounded-lg bg-black/5 dark:bg-white/5 border border-transparent focus:border-[var(--accent-color)] focus:bg-transparent text-[var(--text-primary)] placeholder-[var(--text-tertiary)] outline-none text-xs"
           />
 
           <button

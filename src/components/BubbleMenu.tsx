@@ -17,22 +17,12 @@ import {
 
 interface BubbleMenuProps {
   editor: Editor | null;
+  onEditLink: () => void;
 }
 
-export const BubbleMenu: React.FC<BubbleMenuProps> = ({ editor }) => {
+export const BubbleMenu: React.FC<BubbleMenuProps> = ({ editor, onEditLink }) => {
   if (!editor) return null;
 
-  const setLink = () => {
-    const previousUrl = editor.getAttributes('link').href;
-    const url = window.prompt('Enter Link URL:', previousUrl);
-
-    if (url === null) return;
-    if (url === '') {
-      editor.chain().focus().extendMarkRange('link').unsetLink().run();
-      return;
-    }
-    editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
-  };
 
   return (
     <TipTapBubbleMenu
@@ -48,7 +38,7 @@ export const BubbleMenu: React.FC<BubbleMenuProps> = ({ editor }) => {
         maxWidth: 'none',
         offset: [0, 8]
       }}
-      className="flex flex-nowrap whitespace-nowrap items-center gap-0.5 p-1 rounded-2xl bg-white/95 dark:bg-[#252528]/95 backdrop-blur-2xl border border-[var(--border-color)] shadow-2xl z-50 select-none shrink-0"
+      className="flex flex-nowrap whitespace-nowrap items-center gap-0.5 p-1 rounded-lg bg-[var(--editor-bg)] backdrop-blur-2xl border border-[var(--border-color)] shadow-2xl z-50 select-none shrink-0"
     >
       {/* Inline Formatting */}
       <button
@@ -190,13 +180,13 @@ export const BubbleMenu: React.FC<BubbleMenuProps> = ({ editor }) => {
 
       {/* Link Button */}
       <button
-        onClick={setLink}
+        onClick={onEditLink}
         className={`p-1.5 rounded-lg text-xs transition-all shrink-0 ${
           editor.isActive('link')
             ? 'bg-[var(--accent-color)] text-white shadow-xs'
             : 'text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10'
         }`}
-        title="Insert Link"
+        title="Edit Link (⌘K)" aria-label="Edit link"
       >
         <LinkIcon size={13.5} />
       </button>

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useRef, useMemo } from 'react';
 import { FolderNode, NoteMeta, SortMode } from '../types';
 import { 
   FileText, 
@@ -7,10 +7,20 @@ import {
   Check, 
   List,
   Folder,
-  MoreHorizontal
+  MoreHorizontal, SquarePen, Search
 } from 'lucide-react';
+import { Popover } from './Popover';
 
 interface NoteListProps {
+  currentFolder: string;
+  showFolderLabels: boolean;
+  onNewNote: () => void;
+  isSearching: boolean;
+  searchError: boolean;
+  searchScope: 'all' | 'folder';
+  onSearchScopeChange: (scope: 'all' | 'folder') => void;
+  canSearchFolder: boolean;
+  onClearSearch: () => void;
   searchQuery?: string;
   searchExcerpts?: Map<string, string> | null;
   compact: boolean;
@@ -40,7 +50,7 @@ function highlightExcerpt(text: string, query: string): React.ReactNode {
   let cursor = 0, index = lower.indexOf(needle);
   while (index >= 0 && needle) {
     parts.push(text.slice(cursor, index));
-    parts.push(<mark key={index} className="bg-[var(--accent-light)] text-[var(--text-primary)] rounded-sm">{text.slice(index, index + query.length)}</mark>);
+    parts.push(<mark key={index} className="note-search-match">{text.slice(index, index + query.length)}</mark>);
     cursor = index + query.length; index = lower.indexOf(needle, cursor);
   }
   parts.push(text.slice(cursor)); return parts;
@@ -75,6 +85,15 @@ interface NoteGroup {
 }
 
 export const NoteList: React.FC<NoteListProps> = ({
+  currentFolder,
+  showFolderLabels,
+  onNewNote,
+  isSearching,
+  searchError,
+  searchScope,
+  onSearchScopeChange,
+  canSearchFolder,
+  onClearSearch,
   searchQuery = '',
   searchExcerpts,
   compact,
@@ -97,27 +116,8 @@ export const NoteList: React.FC<NoteListProps> = ({
   onRevealInFinder,
   onExportPDF
 }) => {
-  const [showSortMenu, setShowSortMenu] = useState(false);
-  const sortMenuRef = useRef<HTMLDivElement>(null);
   const noteRefs = useRef(new Map<string, HTMLDivElement>());
   const listRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (sortMenuRef.current && !sortMenuRef.current.contains(e.target as Node)) {
-        setShowSortMenu(false);
-      }
-    };
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setShowSortMenu(false);
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleEscape);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, []);
 
   const handleContextMenu = async (note: NoteMeta, e: React.MouseEvent, position?: { x: number; y: number }) => {
     const trigger = e.currentTarget as HTMLElement;
@@ -185,6 +185,7 @@ export const NoteList: React.FC<NoteListProps> = ({
 
   // Group notes like Apple Notes
   const { pinnedNotes, groupedNotes } = useMemo(() => {
+    if (searchQuery.trim()) return { pinnedNotes: [], groupedNotes: [{ title: 'Search Results', notes }] };
     if (isTrash) {
       return { pinnedNotes: [], groupedNotes: [{ title: 'Recently Deleted', notes }] };
     }
@@ -247,13 +248,15 @@ export const NoteList: React.FC<NoteListProps> = ({
     Object.keys(older).forEach(key => {
       groups.push({ title: key, notes: older[key] });
     });
+    const time = (note: NoteMeta) => sortMode.includes('created') ? note.createdAt : note.modifiedAt;
+    groups.sort((a, b) => (time(a.notes[0]) - time(b.notes[0])) * (sortMode.endsWith('asc') ? 1 : -1));
 
     if (groups.length === 0 && unpinned.length > 0) {
       groups.push({ title: 'Notes', notes: unpinned });
     }
 
     return { pinnedNotes: pinned, groupedNotes: groups };
-  }, [notes, pinnedIds, sortMode, isTrash]);
+  }, [notes, pinnedIds, sortMode, isTrash, searchQuery]);
 
   // Navigate the visible order, including the pinned section and date groups.
   const orderedNotes = useMemo(() => [
@@ -313,7 +316,7 @@ export const NoteList: React.FC<NoteListProps> = ({
           e.dataTransfer.effectAllowed = 'move';
         }}
         title={compact ? `${note.title || 'Untitled Note'}${note.folder ? ` · ${note.folder}` : ''} · ${displayDate}` : undefined}
-        className={`note-list-row group relative px-3.5 rounded-md ${compact ? 'py-2' : 'py-2.5'} cursor-pointer transition-colors duration-150 select-none ${
+        className={`note-list-row group relative px-3.5 rounded-lg ${compact ? 'py-2.5' : 'py-3'} cursor-pointer transition-colors duration-150 select-none ${
           isSelected
             ? 'bg-[var(--card-active)] text-[var(--text-primary)]'
             : 'hover:bg-[var(--card-hover)] text-[var(--text-primary)]'
@@ -330,7 +333,8 @@ export const NoteList: React.FC<NoteListProps> = ({
             )}
             <h3 
               dir="auto"
-              className="text-left text-[13px] leading-snug truncate flex-1 font-semibold text-[var(--text-primary)]"
+              className="text-start text-[13px] leading-snug truncate flex-1 font-semibold text-[var(--text-primary)]"
+              title={note.title || 'Untitled Note'}
             >
               {searchQuery.trim() ? highlightExcerpt(note.title || 'Untitled Note', searchQuery.trim()) : note.title || 'Untitled Note'}
             </h3>
@@ -347,7 +351,7 @@ export const NoteList: React.FC<NoteListProps> = ({
                 const bounds = event.currentTarget.getBoundingClientRect();
                 void handleContextMenu(note, event, { x: bounds.left, y: bounds.bottom + 4 });
               }}
-              className="shrink-0 p-0.5 rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+              className="shrink-0 p-1 min-w-6 min-h-6 rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
             >
               <MoreHorizontal size={14} />
             </button>
@@ -356,29 +360,29 @@ export const NoteList: React.FC<NoteListProps> = ({
 
         {/* Note Metadata & Snippet */}
         {!compact && !searchQuery.trim() && (
-          <div className="flex items-baseline gap-2 text-[11.5px] text-[var(--text-secondary)]">
-            <span className="shrink-0 text-[11px]">{displayDate}</span>
+          <div className="text-[12px] text-[var(--text-secondary)]">
             {note.snippet && (
-              <p dir="auto" className="text-left truncate text-[11.5px] flex-1 leading-normal">
+              <p dir="auto" className="text-start line-clamp-2 text-[12px] leading-relaxed">
                 {note.snippet}
               </p>
             )}
           </div>
         )}
 
-        {searchQuery.trim() && searchExcerpts?.get(note.filePath) && (
-          <p dir="auto" className="text-left text-xs leading-relaxed text-[var(--text-secondary)] mt-1.5 line-clamp-3">
-            {highlightExcerpt(searchExcerpts.get(note.filePath)!, searchQuery.trim())}
+        {searchQuery.trim() && (searchExcerpts?.get(note.filePath) || note.snippet) && (
+          <p dir="auto" className="text-start text-xs leading-relaxed text-[var(--text-secondary)] mt-1.5 line-clamp-3">
+            {highlightExcerpt(searchExcerpts?.get(note.filePath) || note.snippet, searchQuery.trim())}
           </p>
         )}
 
         {/* Subfolder label if applicable */}
-        {!compact && note.folder && note.folder !== '/' && note.folder !== 'Trash' && (
-          <div className="text-[11px] text-[var(--text-secondary)] mt-1 flex items-center gap-1 min-w-0">
+        {!compact && <div className="note-row-metadata">
+          <time dateTime={new Date(note.modifiedAt).toISOString()}>{displayDate}</time>
+          {showFolderLabels && note.folder && note.folder !== '/' && note.folder !== 'Trash' && <span className="flex items-center gap-1 min-w-0">
             <Folder size={11} className="shrink-0" />
             <span className="truncate" dir="auto">{note.folder}</span>
-          </div>
-        )}
+          </span>}
+        </div>}
       </div>
     );
   };
@@ -386,10 +390,18 @@ export const NoteList: React.FC<NoteListProps> = ({
   return (
     <div className="w-full h-full bg-[var(--notelist-bg)] border-r border-[var(--border-color)] flex flex-col shrink-0 select-none backdrop-blur-2xl">
       {/* Header bar: Sort Selector & Trash Info */}
-      <div className="flex items-center justify-between px-3.5 py-2 border-b border-[var(--border-subtle)]">
-        <span className="text-xs font-medium text-[var(--text-secondary)]">
-          {isTrash ? 'Recently Deleted' : `${notes.length} Notes`}
-        </span>
+      <div className="note-list-heading">
+        <div className="min-w-0"><h1 dir="auto" className="truncate text-start text-lg font-semibold tracking-tight" title={currentFolder}>{searchQuery.trim() ? 'Search' : currentFolder}</h1>
+          <p className="text-[11px] text-[var(--text-secondary)] mt-0.5" role="status" aria-live="polite">{isSearching ? 'Searching notes…' : searchError ? 'Search unavailable · title matches shown' : `${notes.length} ${searchQuery.trim() ? (notes.length === 1 ? 'result' : 'results') : (notes.length === 1 ? 'note' : 'notes')}`}</p>
+        </div>
+        {!isTrash && <button onClick={onNewNote} className="chrome-button text-[var(--accent-color)]" aria-label="New note" title="New Note (⌘N)"><SquarePen size={18} /></button>}
+      </div>
+      {searchQuery.trim() && !isTrash && <div className="search-scope" role="group" aria-label="Search scope">
+        <button aria-pressed={searchScope === 'all'} onClick={() => onSearchScopeChange('all')}>All Notes</button>
+        {canSearchFolder && <button aria-pressed={searchScope === 'folder'} onClick={() => onSearchScopeChange('folder')}>This Folder</button>}
+      </div>}
+      <div className="note-list-options">
+        <span className="text-[11px] text-[var(--text-secondary)]">{searchQuery.trim() ? (isTrash ? 'Recently Deleted' : searchScope === 'all' ? 'Across your library' : currentFolder) : 'Notes'}</span>
 
         <div className="flex items-center gap-1">
           <button
@@ -397,7 +409,7 @@ export const NoteList: React.FC<NoteListProps> = ({
             aria-label="Compact view"
             aria-pressed={compact}
             title={compact ? 'Show note previews' : 'Compact view: hide note previews'}
-            className={`p-1 rounded-md transition-colors ${compact ? 'bg-[var(--accent-light)] text-[var(--accent-color)]' : 'text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/10'}`}
+            className={`chrome-button ${compact ? 'bg-[var(--accent-light)] text-[var(--accent-color)]' : 'text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/10'}`}
           >
             <List size={13} />
           </button>
@@ -411,42 +423,12 @@ export const NoteList: React.FC<NoteListProps> = ({
               </button>
             )
           ) : (
-            <div className="relative" ref={sortMenuRef}>
-              <button
-                onClick={() => setShowSortMenu(!showSortMenu)}
-                className="p-1 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors flex items-center gap-1"
-                title="Sort Notes"
-                aria-label="Sort notes"
-                aria-expanded={showSortMenu}
-              >
-                <ArrowUpDown size={12} />
-              </button>
-
-              {showSortMenu && (
-                <div className="absolute right-0 top-full mt-1.5 w-52 p-1.5 rounded-2xl bg-white/95 dark:bg-[#252528]/95 backdrop-blur-2xl border border-[var(--border-color)] shadow-2xl z-50 space-y-0.5 text-xs animate-in fade-in zoom-in-95 duration-100">
-                  <div className="px-2.5 py-1 text-[9.5px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">
-                    Sort Notes By
-                  </div>
-                  {sortOptions.map(opt => (
-                    <button
-                      key={opt.id}
-                      onClick={() => {
-                        onSortChange(opt.id);
-                        setShowSortMenu(false);
-                      }}
-                      className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-left text-xs transition-colors ${
-                        sortMode === opt.id
-                          ? 'bg-[var(--accent-light)] text-[var(--accent-color)] font-semibold'
-                          : 'hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-primary)]'
-                      }`}
-                    >
-                      <span>{opt.label}</span>
-                      {sortMode === opt.id && <Check size={12} />}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <Popover label="Sort notes" align="right" triggerClassName="chrome-button" trigger={<ArrowUpDown size={14} />}>
+              {close => <>
+                <p className="px-2.5 py-2 text-[11px] font-medium text-[var(--text-secondary)]">Sort notes by</p>
+                {sortOptions.map(option => <button key={option.id} className="menu-item" aria-pressed={sortMode === option.id} onClick={() => { onSortChange(option.id); close(); }}><span>{option.label}</span>{sortMode === option.id && <Check size={14} />}</button>)}
+              </>}
+            </Popover>
           )}
         </div>
       </div>
@@ -455,13 +437,14 @@ export const NoteList: React.FC<NoteListProps> = ({
       <div ref={listRef} role="list" aria-label="Notes. Use arrow keys to browse and Enter to edit." className="flex-1 overflow-y-auto px-2 py-1.5 space-y-2">
         {notes.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center p-6 text-center text-[var(--text-secondary)] select-none">
-            <FileText size={32} className="opacity-20 mb-2" />
+            {searchQuery.trim() ? <Search size={28} className="opacity-40 mb-3" /> : <FileText size={32} className="opacity-30 mb-3" />}
             <p className="text-xs font-semibold text-[var(--text-primary)] opacity-80">
-              {isTrash ? 'Trash is Empty' : 'No Notes'}
+              {isSearching ? 'Searching…' : searchQuery.trim() ? 'No matching notes' : isTrash ? 'Trash is Empty' : 'No Notes Yet'}
             </p>
             <p className="text-[11px] opacity-60 mt-1">
-              {isTrash ? 'Deleted notes appear here' : 'Press ⌘N to create a note'}
+              {searchQuery.trim() ? 'Try a different word or search all notes.' : isTrash ? 'Deleted notes appear here' : 'Capture a thought with ⌘N'}
             </p>
+            {searchQuery.trim() && <button className="mt-4 text-xs text-[var(--text-primary)] hover:underline" onClick={onClearSearch}>Clear search</button>}
           </div>
         ) : (
           <>

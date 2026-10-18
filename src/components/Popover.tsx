@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 interface PopoverProps {
   label: string;
@@ -10,88 +11,81 @@ interface PopoverProps {
   onOpenChange?: (open: boolean) => void;
 }
 
-/** A nonmodal disclosure with native Tab order, arrow navigation, and Escape dismissal. */
+/** One anchored disclosure at a time, with predictable keyboard and focus behavior. */
 export const Popover: React.FC<PopoverProps> = ({ label, trigger, children, align = 'left', triggerClassName = '', open: controlledOpen, onOpenChange }) => {
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen ?? internalOpen;
-  const setOpen = (next: boolean) => { setInternalOpen(next); onOpenChange?.(next); };
+  const openRef = useRef(open);
+  openRef.current = open;
+  const changeRef = useRef(onOpenChange);
+  changeRef.current = onOpenChange;
+  const setOpen = (next: boolean) => { setInternalOpen(next); changeRef.current?.(next); };
   const id = useId();
-  const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+  const contains = (target: EventTarget | null) => target instanceof Node && (!!buttonRef.current?.contains(target) || !!panelRef.current?.contains(target));
+  const close = () => { setOpen(false); buttonRef.current?.focus({ preventScroll: true }); };
   const place = () => {
-    if (!open || !buttonRef.current || !panelRef.current) return;
+    if (!openRef.current || !buttonRef.current || !panelRef.current) return;
     const anchor = buttonRef.current.getBoundingClientRect();
     const panel = panelRef.current.getBoundingClientRect();
     const x = align === 'right' ? anchor.right - panel.width : align === 'center' ? anchor.left + (anchor.width - panel.width) / 2 : anchor.left;
     const below = anchor.bottom + 8;
-    const y = below + panel.height <= window.innerHeight - 12 ? below : Math.max(12, anchor.top - panel.height - 8);
-    const next = { left: Math.max(12, Math.min(x, window.innerWidth - panel.width - 12)), top: y };
+    const top = below + panel.height <= window.innerHeight - 12 ? below : Math.max(12, anchor.top - panel.height - 8);
+    const next = { left: Math.max(12, Math.min(x, window.innerWidth - panel.width - 12)), top };
     setPosition(previous => previous?.left === next.left && previous?.top === next.top ? previous : next);
   };
   useLayoutEffect(place);
   useEffect(() => {
     if (!open) { setPosition(null); return; }
-    window.addEventListener('scroll', place, true);
+    // Opening another disclosure closes this one without stealing its focus.
+    window.dispatchEvent(new CustomEvent('scribe:popover-open', { detail: id }));
+    const otherOpened = (event: Event) => { if ((event as CustomEvent<string>).detail !== id) setOpen(false); };
+    const dismiss = (event: PointerEvent) => { if (!contains(event.target)) setOpen(false); };
+    const focusOutside = (event: FocusEvent) => { if (!contains(event.target)) setOpen(false); };
+    window.addEventListener('scribe:popover-open', otherOpened);
+    document.addEventListener('pointerdown', dismiss);
+    document.addEventListener('focusin', focusOutside);
     window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
     const observer = new ResizeObserver(place);
     if (panelRef.current) observer.observe(panelRef.current);
-    return () => { window.removeEventListener('scroll', place, true); window.removeEventListener('resize', place); observer.disconnect(); };
-  }, [open, align]);
-
-  useEffect(() => {
-    if (!open) return;
-    const first = panelRef.current?.querySelector<HTMLElement>('[data-autofocus]') || panelRef.current?.querySelector<HTMLButtonElement>('button:not([disabled])');
-    (first || panelRef.current)?.focus();
-    const dismiss = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    return () => {
+      window.removeEventListener('scribe:popover-open', otherOpened);
+      document.removeEventListener('pointerdown', dismiss);
+      document.removeEventListener('focusin', focusOutside);
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+      observer.disconnect();
     };
-    document.addEventListener('mousedown', dismiss);
-    return () => document.removeEventListener('mousedown', dismiss);
-  }, [open]);
+  }, [open, id, align]);
+  const positioned = position !== null;
+  useEffect(() => {
+    if (!open || !positioned) return;
+    const first = panelRef.current?.querySelector<HTMLElement>('[data-autofocus]') || panelRef.current?.querySelector<HTMLElement>('input:not([disabled]), button:not([disabled])');
+    (first || panelRef.current)?.focus({ preventScroll: true });
+  }, [open, positioned]);
 
   const handleKeyDown = (event: React.KeyboardEvent) => {
-    if (event.key === 'Escape' && open) {
-      event.preventDefault();
-      event.stopPropagation();
-      setOpen(false);
-      buttonRef.current?.focus();
-      return;
-    }
-    if (event.target === buttonRef.current && event.key === 'ArrowDown') {
-      event.preventDefault();
-      setOpen(true);
-      return;
-    }
+    if (event.key === 'Escape' && open) { event.preventDefault(); event.stopPropagation(); close(); return; }
+    if (event.target === buttonRef.current && event.key === 'ArrowDown') { event.preventDefault(); setOpen(true); return; }
     if (!open || !panelRef.current?.contains(event.target as Node)) return;
     if ((event.target as HTMLElement).matches('input, textarea, select')) return;
     if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-    const buttons = Array.from(panelRef.current.querySelectorAll<HTMLButtonElement>('button:not([disabled])'));
+    const buttons = Array.from(panelRef.current.querySelectorAll<HTMLButtonElement>('button:not([disabled])')).filter(button => button.tabIndex !== -1);
     if (!buttons.length) return;
-    event.preventDefault();
+    event.preventDefault(); event.stopPropagation();
     const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
-    const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
-      : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
     buttons[next].focus();
   };
 
-  return (
-    <div ref={rootRef} className="relative" onKeyDown={handleKeyDown} onBlur={(event) => {
-      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
-    }}>
-      <button ref={buttonRef} type="button" aria-label={label} title={label}
-        aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
-        onClick={() => setOpen(!open)} className={triggerClassName}>
-        {trigger}
-      </button>
-      {open && (
-        <div ref={panelRef} id={id} role="dialog" aria-label={label} tabIndex={-1}
-          style={position ? { position: 'fixed', left: position.left, top: position.top, right: 'auto', transform: 'none', marginTop: 0 } : undefined}
-          className={`absolute top-full mt-2 w-56 max-w-[calc(100vw-2rem)] max-h-[70vh] overflow-y-auto p-1.5 rounded-lg bg-[var(--editor-bg)] border border-[var(--border-color)] shadow-lg z-50 ${align === 'center' ? 'left-1/2 -translate-x-1/2' : align === 'right' ? 'right-0' : 'left-0'}`}>
-          {children(() => setOpen(false))}
-        </div>
-      )}
-    </div>
-  );
+  return <div className="relative" onKeyDown={handleKeyDown} onBlur={event => { if (event.relatedTarget && !contains(event.relatedTarget)) setOpen(false); }}>
+    <button ref={buttonRef} type="button" aria-label={label} title={label} aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
+      onClick={() => setOpen(!open)} className={triggerClassName}>{trigger}</button>
+    {open && createPortal(<div ref={panelRef} id={id} role="dialog" aria-label={label} tabIndex={-1}
+      style={{ position: 'fixed', left: position?.left ?? 12, top: position?.top ?? 54, visibility: position ? 'visible' : 'hidden' }}
+      className="scribe-popover no-print">{children(close)}</div>, document.body)}
+  </div>;
 };

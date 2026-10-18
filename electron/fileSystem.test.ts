@@ -1,7 +1,7 @@
 /**
  * Behavioural tests for the notes filesystem layer.
  *
- * Run with:  npx tsx electron/fileSystem.test.ts
+ * Run with: npm run test:fs (Electron supplies the local history directory).
  *
  * These cover the cases that previously caused silent data loss: watcher echoes being
  * mistaken for external edits, trash collisions overwriting notes, and frontmatter being
@@ -11,6 +11,10 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import os from 'os';
 import path from 'path';
+import { app } from 'electron';
+
+const testProfile = fsSync.mkdtempSync(path.join(os.tmpdir(), 'scribe-test-profile-'));
+app.setPath('userData', testProfile);
 
 import {
   assertInsideRoot,
@@ -397,10 +401,14 @@ async function main() {
   await testTwoWindowsStaySynced();
 
   console.log(`\n${passed} passed, ${failed} failed`);
-  process.exit(failed === 0 ? 0 : 1);
+  if (failed) throw new Error(`${failed} filesystem checks failed`);
 }
 
-main().catch(err => {
+const finish = (code: number) => {
+  fsSync.rmSync(testProfile, { recursive: true, force: true });
+  app.exit(code);
+};
+app.whenReady().then(main).then(() => finish(0)).catch(err => {
   console.error('Test run crashed:', err);
-  process.exit(1);
+  finish(1);
 });

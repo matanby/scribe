@@ -1,5 +1,5 @@
 import { readStored, writeStored } from '../utils/session';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Folder, 
   FolderOpen, 
@@ -45,6 +45,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onDeleteFolder,
   onRevealInFinder
 }) => {
+  const sidebarRef = useRef<HTMLElement>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => readStored(`scribe_folders:${tree?.rootPath}`, {}));
   useEffect(() => { if (tree) writeStored(`scribe_folders:${tree.rootPath}`, collapsed); }, [tree?.rootPath, collapsed]);
   const [dragOverTarget, setDragOverTarget] = useState<string | null>(null);
@@ -168,6 +169,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return (
       <div key={node.path} className="select-none">
         <div
+          role="treeitem"
+          tabIndex={0}
+          data-folder-path={node.relativePath}
+          aria-label={node.name}
+          aria-selected={isSelected}
+          aria-expanded={hasChildren ? isExpanded : undefined}
+          onKeyDown={event => {
+            if (event.target !== event.currentTarget) return;
+            if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectFolder(node.relativePath); }
+            if (event.key === 'ArrowRight' && hasChildren) { event.preventDefault(); setCollapsed(previous => ({ ...previous, [node.path]: false })); }
+            if (event.key === 'ArrowLeft' && hasChildren && isExpanded) { event.preventDefault(); setCollapsed(previous => ({ ...previous, [node.path]: true })); }
+            if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+              event.preventDefault();
+              const rows = Array.from(sidebarRef.current?.querySelectorAll<HTMLElement>('[role="treeitem"]') || []).filter(row => !row.closest('[aria-hidden="true"]'));
+              const index = rows.indexOf(event.currentTarget);
+              const next = event.key === 'Home' ? 0 : event.key === 'End' ? rows.length - 1 : Math.max(0, Math.min(rows.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)));
+              rows[next]?.focus();
+            }
+          }}
           onClick={() => onSelectFolder(node.relativePath)}
           onContextMenu={(e) => handleFolderContextMenu(node.path, node.name, false, e)}
           onDragOver={(e) => handleDragOver(node.path, e)}
@@ -185,6 +205,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className="flex items-center gap-2 min-w-0">
             {hasChildren ? (
               <button
+                tabIndex={-1}
+                aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${node.name}`}
                 onClick={(e) => toggleCollapse(node.path, e)}
                 className="p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 text-[var(--text-secondary)] transition-transform duration-200"
               >
@@ -203,7 +225,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <Folder size={14} className="text-[var(--accent-color)] shrink-0 opacity-90 transition-transform duration-150" />
             )}
             
-            <span className="truncate">{node.name}</span>
+            <span className="truncate text-start" dir="auto">{node.name}</span>
           </div>
 
           <span className="text-[11px] text-[var(--text-secondary)] font-normal px-1">
@@ -213,6 +235,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {hasChildren && (
           <div 
+            role="group"
+            aria-hidden={!isExpanded}
+            {...(!isExpanded ? { inert: '' } : {})}
             className={`grid transition-[grid-template-rows,opacity] duration-200 ease-out ${
               isExpanded ? 'grid-rows-[1fr] opacity-100 mt-0.5' : 'grid-rows-[0fr] opacity-0 pointer-events-none'
             }`}
@@ -227,18 +252,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <aside className="w-full h-full bg-[var(--sidebar-bg)] border-r border-[var(--border-color)] flex flex-col p-2 shrink-0 overflow-y-auto select-none backdrop-blur-2xl">
+    <aside ref={sidebarRef} aria-label="Notes sidebar" className="w-full h-full bg-[var(--sidebar-bg)] border-r border-[var(--border-color)] flex flex-col p-2 pt-4 shrink-0 overflow-hidden select-none backdrop-blur-2xl">
       {/* Smart Views */}
       <div className="space-y-0.5 mb-3">
         <div className="text-[11px] font-semibold text-[var(--text-secondary)] px-2.5 py-1">
           Views
         </div>
-        <div
+        <button
+          type="button"
+          aria-current={selectedFolder === '' ? 'page' : undefined}
           onClick={() => onSelectFolder('')}
           onDragOver={(e) => handleDragOver('__ALL_NOTES__', e)}
           onDragLeave={(e) => handleDragLeave('__ALL_NOTES__', e)}
           onDrop={(e) => handleDrop(tree?.rootPath || '', false, e)}
-          className={`flex items-center justify-between px-2.5 py-1.5 rounded-md text-[13px] cursor-pointer transition-colors ${
+          className={`w-full flex items-center justify-between px-2.5 py-2 rounded-md text-[13px] cursor-pointer transition-colors ${
             dragOverTarget === '__ALL_NOTES__'
               ? 'ring-2 ring-[var(--accent-color)] bg-[var(--card-active)]'
               : selectedFolder === ''
@@ -253,15 +280,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <span className="text-[11px] text-[var(--text-secondary)] font-normal">
             {allNotesCount}
           </span>
-        </div>
+        </button>
 
         {/* Recently Deleted */}
-        <div
+        <button
+          type="button"
+          aria-current={selectedFolder === '__TRASH__' ? 'page' : undefined}
           onClick={() => onSelectFolder('__TRASH__')}
           onDragOver={(e) => handleDragOver('__TRASH__', e)}
           onDragLeave={(e) => handleDragLeave('__TRASH__', e)}
           onDrop={(e) => handleDrop('', true, e)}
-          className={`flex items-center justify-between px-2.5 py-1.5 rounded-md text-[13px] cursor-pointer transition-colors ${
+          className={`w-full flex items-center justify-between px-2.5 py-2 rounded-md text-[13px] cursor-pointer transition-colors ${
             dragOverTarget === '__TRASH__'
               ? 'ring-2 ring-red-500 bg-red-500/20 text-red-500'
               : selectedFolder === '__TRASH__'
@@ -276,11 +305,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <span className="text-[11px] text-[var(--text-secondary)] font-normal">
             {tree?.trashCount || 0}
           </span>
-        </div>
+        </button>
       </div>
 
       {/* Folders hierarchy */}
-      <div className="flex-1 space-y-0.5">
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-0.5 pb-3">
         <div 
           onContextMenu={(e) => tree?.rootPath && handleFolderContextMenu(tree.rootPath, rootFolderName, true, e)}
           className="flex items-center justify-between px-2.5 py-1"
@@ -303,13 +332,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
               }}
               className="p-1 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
               title="New Folder..."
+              aria-label="New folder"
             >
               <FolderPlus size={12} />
             </button>
           </div>
         </div>
 
-        {tree?.folders.map(rootNode =>
+        <div role="tree" aria-label="Notes folders">{tree?.folders.map(rootNode =>
           rootNode.children.length > 0 ? (
             rootNode.children.map(child => renderFolderNode(child, 0))
           ) : (
@@ -320,7 +350,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               No subfolders
             </div>
           )
-        )}
+        )}</div>
       </div>
 
       {/* Footer Controls: Open Folder & Appearance */}
@@ -329,6 +359,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           onClick={onOpenFolderDialog}
           className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 hover:text-[var(--text-primary)] transition-colors text-[11px] font-medium"
           title="Open notes folder"
+          aria-label="Open notes folder"
         >
           <Folder size={13} className="text-[var(--accent-color)]" />
           <span className="truncate max-w-[110px]">{rootFolderName}</span>
@@ -338,6 +369,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           onClick={onOpenAppearance}
           className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 hover:text-[var(--text-primary)] transition-colors"
           title="Settings"
+          aria-label="Settings"
         >
           <Sliders size={13} />
         </button>

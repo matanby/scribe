@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu, shell, screen, clipboard, protocol, net, MenuItemConstructorOptions, globalShortcut } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, Menu, shell, screen, clipboard, protocol, net, MenuItemConstructorOptions, globalShortcut, systemPreferences } from 'electron';
 import { CaptureShortcut, captureAccelerator, captureShortcutState, loadCaptureShortcut, registerCaptureShortcut, updateCaptureShortcut } from './shortcuts';
 import path from 'path';
 import fsSync from 'fs';
@@ -46,6 +46,13 @@ protocol.registerSchemesAsPrivileged([
 
 process.env.DIST = path.join(__dirname, '../dist');
 process.env.VITE_PUBLIC = app.isPackaged ? process.env.DIST : path.join(process.env.DIST, '../public');
+
+// A development preview can keep preferences, history, and sample notes separate.
+if (!app.isPackaged && process.env.SCRIBE_PREVIEW_DATA) {
+  fsSync.mkdirSync(process.env.SCRIBE_PREVIEW_DATA, { recursive: true });
+  app.setPath('userData', process.env.SCRIBE_PREVIEW_DATA);
+  app.setName('Scribe Preview');
+}
 
 const allWindows = new Set<BrowserWindow>();
 const documentFiles = new Map<number, string>();
@@ -212,6 +219,7 @@ export function createWindow(targetFolderPath?: string, openSettings = false, op
   win.on('page-title-updated', event => {
     const file = documentFiles.get(win.webContents.id);
     if (file) { event.preventDefault(); win.setTitle(path.basename(file)); }
+    else if (!app.isPackaged && process.env.SCRIBE_PREVIEW_DATA) { event.preventDefault(); win.setTitle('Scribe Preview'); }
   });
   allWindows.add(win);
   const webContentsId = win.webContents.id;
@@ -320,7 +328,7 @@ function syncDocumentMenu(win: BrowserWindow | null) {
   const menu = Menu.getApplicationMenu();
   if (!menu) return;
   const documentMode = !!win && documentFiles.has(win.webContents.id);
-  for (const id of ['new-note', 'quick-switcher', 'trash-note', 'duplicate-note', 'history-back', 'history-forward']) {
+  for (const id of ['new-note', 'quick-switcher', 'trash-note', 'duplicate-note', 'history-back', 'history-forward', 'search-notes', 'writing-focus']) {
     const item = menu.getMenuItemById(id);
     if (item) { item.visible = !documentMode; item.enabled = !documentMode; }
   }
@@ -467,6 +475,12 @@ function setupMenu() {
           click: (_item, focusedWin) => sendToFocusedWindow('menu:find', focusedWin as BrowserWindow)
         },
         {
+          label: 'Search Notes…',
+          id: 'search-notes',
+          accelerator: 'CmdOrCtrl+Alt+F',
+          click: (_item, focusedWin) => sendToFocusedWindow('menu:searchNotes', focusedWin as BrowserWindow)
+        },
+        {
           label: 'Find and Replace...',
           accelerator: 'CmdOrCtrl+Shift+F',
           click: (_item, focusedWin) => sendToFocusedWindow('menu:findReplace', focusedWin as BrowserWindow)
@@ -476,6 +490,7 @@ function setupMenu() {
     {
       label: 'Format',
       submenu: [
+        { label: 'Add or Edit Link…', accelerator: 'CmdOrCtrl+K', click: (_item, focusedWin) => sendToFocusedWindow('format:link', focusedWin as BrowserWindow) },
         {
           label: 'Bold',
           accelerator: 'CmdOrCtrl+B',
@@ -498,6 +513,8 @@ function setupMenu() {
     {
       label: 'View',
       submenu: [
+        { id: 'writing-focus', label: 'Writing Focus', accelerator: 'CmdOrCtrl+Shift+L', click: (_item, focusedWin) => sendToFocusedWindow('menu:writingFocus', focusedWin as BrowserWindow) },
+        { type: 'separator' as const },
         { role: 'reload' as const },
         { role: 'forceReload' as const },
         { role: 'toggleDevTools' as const },
@@ -561,7 +578,7 @@ app.whenReady().then(() => {
   const argumentsToCheck = process.argv.slice(app.isPackaged ? 1 : 2);
   for (const argument of argumentsToCheck) if (!argument.startsWith('-') && /\.(md|markdown)$/i.test(argument)) files.push(argument);
   if (files.length) { for (const file of new Set(files)) void openMarkdownFile(file); }
-  else createWindow();
+  else createWindow(!app.isPackaged ? process.env.SCRIBE_PREVIEW_ROOT : undefined);
   registerCaptureShortcut(() => openCapture());
 
   app.on('activate', () => {
@@ -578,6 +595,18 @@ app.on('window-all-closed', () => {
 });
 
 // IPC Handlers scoped per window
+ipcMain.handle('windows:titleBarDoubleClick', event => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || !allWindows.has(win) || win.isFullScreen()) return;
+  // The draggable region handles this natively. Noninteractive web content in
+  // the unified header uses the same policy through the narrow preload bridge.
+  const action = process.platform === 'darwin' ? systemPreferences.getUserDefault('AppleActionOnDoubleClick', 'string') : '';
+  if (action === 'None') return;
+  if (action === 'Minimize') { win.minimize(); return; }
+  if (!win.isMaximizable()) return;
+  if (win.isMaximized()) win.unmaximize();
+  else win.maximize();
+});
 ipcMain.handle('windows:openLibrary', () => openLibraryWindow());
 ipcMain.handle('windows:closeEditor', event => { BrowserWindow.fromWebContents(event.sender)?.close(); });
 ipcMain.handle('notes:listTree', async (event) => {

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Fuse from 'fuse.js';
 import { NoteMeta } from '../types';
+import { useFocusTrap } from '../utils/useFocusTrap';
 import { Search, FileText, Folder, CornerDownLeft } from 'lucide-react';
 
 interface QuickSwitcherProps {
@@ -101,6 +102,8 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   onNewNote
 }) => {
   const [query, setQuery] = useState('');
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef, isOpen);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -123,7 +126,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
   // Compute filtered notes
   const filteredNotes = useMemo(() => {
     if (!query.trim()) {
-      return notes.slice(0, 25);
+      return [...notes].sort((a, b) => b.modifiedAt - a.modifiedAt).slice(0, 25);
     }
     const results = fuse.search(query.trim());
     return results.slice(0, 25).map(r => r.item);
@@ -197,7 +200,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
       onClick={onClose}
       className="fixed inset-0 z-[100] flex items-start justify-center pt-[14vh] bg-black/40 dark:bg-black/60 backdrop-blur-md animate-in fade-in duration-150 p-4"
     >
-      <div 
+      <div ref={panelRef} role="dialog" aria-modal="true" aria-label="Quick Switcher"
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-xl bg-white/95 dark:bg-[#202024]/95 backdrop-blur-2xl border border-[var(--border-color)] shadow-2xl rounded-2xl overflow-hidden flex flex-col max-h-[65vh] select-none"
       >
@@ -210,7 +213,7 @@ export const QuickSwitcher: React.FC<QuickSwitcherProps> = ({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Quick Switcher (⌘⇧O) — type to search notes..."
+            aria-label="Quick Switcher search" placeholder="Jump to a note…"
             className="w-full bg-transparent text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] outline-none font-medium"
           />
           <span className="text-[10px] font-mono text-[var(--text-tertiary)] border border-[var(--border-color)] px-1.5 py-0.5 rounded-md shrink-0">

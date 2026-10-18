@@ -1,22 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { 
-  SquarePen, 
-  Search, 
-  FolderOpen, 
-  Sun, 
-  Moon, 
-  Check, 
-  RefreshCw,
-  Sidebar as SidebarIcon,
-  X,
-  MoreHorizontal,
-  ChevronLeft,
-  ChevronRight,
-  FileDown,
-  Printer,
-  NotebookPen,
-  AlertTriangle
-} from 'lucide-react';
+import { Search, FolderOpen, Sun, Moon, Check, RefreshCw, PanelLeft, X, MoreHorizontal, ChevronLeft, ChevronRight, NotebookPen, AlertTriangle, Focus, SquarePen } from 'lucide-react';
+import { Popover } from './Popover';
 
 interface TitlebarProps {
   currentFolder: string;
@@ -28,6 +12,7 @@ interface TitlebarProps {
   onOpenLibrary?: () => void;
   searchQuery: string;
   onSearchChange: (q: string) => void;
+  onSearchSubmit: () => void;
   onNewNote: () => void;
   onSelectFolder: () => void;
   isSaving: boolean;
@@ -36,199 +21,86 @@ interface TitlebarProps {
   onToggleTheme: () => void;
   showSidebar: boolean;
   onToggleSidebar: () => void;
+  writingFocus: boolean;
+  onToggleFocus: () => void;
+  libraryWidth: number;
+  toolbarRef: (element: HTMLDivElement | null) => void;
   searchInputRef?: React.RefObject<HTMLInputElement>;
   onGoBack?: () => void;
   onGoForward?: () => void;
   canGoBack?: boolean;
   canGoForward?: boolean;
   onQuickCapture?: () => void;
-  onExportPDF?: () => void;
-  onPrint?: () => void;
 }
 
-export const Titlebar: React.FC<TitlebarProps> = ({
-  currentFolder,
-  documentTitle,
-  documentPath,
-  onRenameDocument,
-  onDocumentHistory,
-  onRevealDocument,
-  onOpenLibrary,
-  searchQuery,
-  onSearchChange,
-  onNewNote,
-  onSelectFolder,
-  isSaving,
-  lastSavedText,
-  isDark,
-  onToggleTheme,
-  showSidebar,
-  onToggleSidebar,
-  searchInputRef,
-  onGoBack,
-  onGoForward,
-  canGoBack,
-  canGoForward,
-  onQuickCapture,
-  onExportPDF,
-  onPrint
-}) => {
-  const [showActions, setShowActions] = useState(false);
-  const actionsRef = useRef<HTMLDivElement>(null);
-  const actionsButtonRef = useRef<HTMLButtonElement>(null);
+export const Titlebar: React.FC<TitlebarProps> = (props) => {
+  const headerRef = useRef<HTMLElement>(null);
   useEffect(() => {
-    const closeOutside = (event: MouseEvent) => {
-      if (!actionsRef.current?.contains(event.target as Node)) setShowActions(false);
+    const header = headerRef.current;
+    const doubleClick = (event: MouseEvent) => {
+      if (event.button !== 0 || !(event.target instanceof Element)) return;
+      if (event.target.closest('button, input, textarea, select, a, [role="button"], .titlebar-no-drag')) return;
+      void window.scribeAPI.titleBarDoubleClick().catch(error => console.error('Could not resize window:', error));
     };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && showActions) {
-        setShowActions(false);
-        actionsButtonRef.current?.focus();
-      }
-    };
-    document.addEventListener('mousedown', closeOutside);
-    document.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.removeEventListener('mousedown', closeOutside);
-      document.removeEventListener('keydown', closeOnEscape);
-    };
-  }, [showActions]);
-  const secondaryActions = documentTitle ? [
-    { label: 'Find…', icon: Search, action: () => window.dispatchEvent(new CustomEvent('scribe:find', { detail: false })) },
-    { label: 'Find and Replace…', icon: Search, action: () => window.dispatchEvent(new CustomEvent('scribe:find', { detail: true })) },
-    ...(onRenameDocument ? [{ label: 'Rename File…', icon: SquarePen, action: onRenameDocument }] : []),
-    ...(onDocumentHistory ? [{ label: 'Version History…', icon: RefreshCw, action: onDocumentHistory }] : []),
-    ...(onRevealDocument ? [{ label: 'Reveal in Finder', icon: FolderOpen, action: onRevealDocument }] : []),
-    ...(onOpenLibrary ? [{ label: 'Open Notes Library', icon: NotebookPen, action: onOpenLibrary }] : []),
-    { label: isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode', icon: isDark ? Sun : Moon, action: onToggleTheme }
-  ] : [
-    ...(onQuickCapture ? [{ label: 'Quick Capture…', icon: NotebookPen, action: onQuickCapture }] : []),
-    ...(onExportPDF ? [{ label: 'Export PDF…', icon: FileDown, action: onExportPDF }] : []),
-    ...(onPrint ? [{ label: 'Print…', icon: Printer, action: onPrint }] : []),
-    { label: 'Open Notes Folder…', icon: FolderOpen, action: onSelectFolder },
-    { label: isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode', icon: isDark ? Sun : Moon, action: onToggleTheme }
+    // Use DOM bubbling so this also covers the editor toolbar rendered here
+    // through a React portal. Native drag regions consume their own clicks.
+    header?.addEventListener('dblclick', doubleClick);
+    return () => header?.removeEventListener('dblclick', doubleClick);
+  }, []);
+  const [showSaving, setShowSaving] = useState(false);
+  useEffect(() => {
+    if (!props.isSaving) { setShowSaving(false); return; }
+    const timer = setTimeout(() => setShowSaving(true), 800);
+    return () => clearTimeout(timer);
+  }, [props.isSaving]);
+  const documentMode = !!props.documentTitle;
+  const saveFailed = props.lastSavedText === "Couldn't save" || props.lastSavedText === 'Review changes';
+  const actions = [
+    { label: 'Find in Note…', icon: Search, run: () => window.dispatchEvent(new CustomEvent('scribe:find', { detail: false })), shortcut: '⌘F' },
+    { label: 'Find and Replace…', icon: Search, run: () => window.dispatchEvent(new CustomEvent('scribe:find', { detail: true })), shortcut: '⌘⇧F' },
+    ...(props.onRenameDocument ? [{ label: 'Rename File…', icon: SquarePen, run: props.onRenameDocument }] : []),
+    { label: 'Version History…', icon: RefreshCw, run: () => window.dispatchEvent(new Event('scribe:open-history')) },
+    ...(props.onRevealDocument ? [{ label: 'Reveal in Finder', icon: FolderOpen, run: props.onRevealDocument }] : []),
+    ...(props.onOpenLibrary ? [{ label: 'Open Notes Library', icon: NotebookPen, run: props.onOpenLibrary }] : []),
+    ...(!documentMode ? [
+      { label: props.writingFocus ? 'Leave Writing Focus' : 'Enter Writing Focus', icon: Focus, run: props.onToggleFocus, shortcut: '⌘⇧L' },
+      ...(props.onQuickCapture ? [{ label: 'Quick Capture…', icon: NotebookPen, run: props.onQuickCapture }] : []),
+      { label: 'Open Notes Folder…', icon: FolderOpen, run: props.onSelectFolder }
+    ] : []),
+    { label: props.isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode', icon: props.isDark ? Sun : Moon, run: props.onToggleTheme }
   ];
-  return (
-    <header className="titlebar-drag-region no-print h-11 border-b border-[var(--border-color)] flex items-center justify-between px-3 select-none bg-[var(--sidebar-bg)] backdrop-blur-2xl shrink-0 z-30 relative">
-      {/* Left section: traffic lights spacing, history arrows & sidebar toggle */}
-      <div className="flex items-center gap-1.5 pl-[72px] titlebar-no-drag">
-        {!documentTitle && <>
-        {/* Navigation History */}
-        <div className="flex items-center gap-0.5 mr-1">
-          <button
-            onClick={onGoBack}
-            disabled={!canGoBack}
-            title="Back (⌘[)"
-            className="p-1 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors disabled:opacity-25 disabled:pointer-events-none active:scale-95"
-          >
-            <ChevronLeft size={15} />
-          </button>
-          <button
-            onClick={onGoForward}
-            disabled={!canGoForward}
-            title="Forward (⌘])"
-            className="p-1 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors disabled:opacity-25 disabled:pointer-events-none active:scale-95"
-          >
-            <ChevronRight size={15} />
-          </button>
+  return <header ref={headerRef} className={`app-titlebar titlebar-drag-region no-print ${documentMode ? 'document-titlebar' : ''}`}>
+    <div className={`library-toolbar ${props.libraryWidth < 380 ? 'compact-navigation' : ''}`} style={{ width: documentMode ? 92 : props.libraryWidth }}>
+      {!documentMode && <>
+        <button onClick={props.onToggleSidebar} className="chrome-button titlebar-no-drag" aria-label={props.showSidebar ? 'Hide folders' : 'Show folders'} title={`${props.showSidebar ? 'Hide' : 'Show'} Folders (⌘\\)`} aria-pressed={props.showSidebar}><PanelLeft size={18} /></button>
+        <div className="navigation-history titlebar-no-drag">
+          <button onClick={props.onGoBack} disabled={!props.canGoBack} className="chrome-button" aria-label="Back" title="Back (⌘[)"><ChevronLeft size={17} /></button>
+          <button onClick={props.onGoForward} disabled={!props.canGoForward} className="chrome-button" aria-label="Forward" title="Forward (⌘])"><ChevronRight size={17} /></button>
         </div>
-
-        <button
-          onClick={onToggleSidebar}
-          title={showSidebar ? "Hide Sidebar (⌘\\)" : "Show Sidebar (⌘\\)"}
-          className="p-1 rounded-md hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors active:scale-95"
-        >
-          <SidebarIcon size={15} />
-        </button>
-
-        {/* Breadcrumb path */}
-        <div className="text-[13px] text-[var(--text-primary)] min-w-0">
-          <span className="block truncate max-w-[180px] font-medium" dir="auto">{currentFolder || 'All Notes'}</span>
+        <div className="library-search titlebar-no-drag">
+          <Search size={14} aria-hidden="true" />
+          <input ref={props.searchInputRef} aria-label="Search notes" placeholder="Search notes" value={props.searchQuery} dir="auto"
+            onChange={event => props.onSearchChange(event.target.value)}
+            onKeyDown={event => {
+              if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); props.onSearchChange(''); }
+              if (event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); props.onSearchSubmit(); }
+            }} />
+          {props.searchQuery && <button onClick={() => { props.onSearchChange(''); props.searchInputRef?.current?.focus(); }} aria-label="Clear search"><X size={13} /></button>}
+          {!props.searchQuery && <span className="search-shortcut" aria-hidden="true">⌥⌘F</span>}
         </div>
-        </>}
+      </>}
+    </div>
+    <div className="editor-toolbar">
+      <div ref={props.toolbarRef} id="editor-toolbar-slot" className="editor-toolbar-slot" />
+      {documentMode && <span className="document-name" dir="auto" title={props.documentPath}>{props.documentTitle}</span>}
+      <div className={`save-status ${saveFailed ? 'save-status-error' : ''}`} role="status" aria-live="polite" title={props.lastSavedText || 'All changes saved'}>
+        {saveFailed ? <><AlertTriangle size={15} /><span>{props.lastSavedText}</span></> : showSaving ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
+        {!saveFailed && <span className="sr-only">{showSaving ? 'Saving changes' : props.lastSavedText ? 'All changes saved' : ''}</span>}
       </div>
-
-      {/* Center section: Search input */}
-      <div className={documentTitle ? "absolute left-1/2 -translate-x-1/2 max-w-[calc(100%-340px)] pointer-events-none" : "titlebar-no-drag flex-1 max-w-xs mx-4"}>
-        {documentTitle ? <span dir="auto" className="block truncate text-center text-xs font-medium text-[var(--text-primary)]" title={documentPath || documentTitle}>{documentTitle}</span> : <div className="relative flex items-center">
-          <Search size={13} className="absolute left-2.5 text-[var(--text-secondary)] pointer-events-none opacity-60" />
-          <input
-            ref={searchInputRef}
-            type="text"
-            placeholder="Search notes…"
-            aria-label="Search notes"
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full h-7 pl-7 pr-7 text-xs rounded-md bg-black/5 dark:bg-white/10 border border-transparent focus:border-[var(--accent-border)] focus:bg-white dark:focus:bg-[#252528] text-[var(--text-primary)] placeholder-[var(--text-secondary)] outline-none transition-colors"
-          />
-          {searchQuery ? (
-            <button
-              onClick={() => onSearchChange('')}
-              className="absolute right-2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-0.5 rounded-full"
-            >
-              <X size={11} />
-            </button>
-          ) : (
-            <span className="absolute right-2 text-[9px] font-medium text-[var(--text-secondary)] opacity-40 uppercase pointer-events-none">
-              ⌘F
-            </span>
-          )}
-        </div>}
-      </div>
-
-      {/* Save status, secondary actions, and New Note */}
-      <div className="titlebar-no-drag flex items-center gap-1.5">
-        {/* Auto-save status */}
-        <div role="status" aria-live="polite" title={lastSavedText || undefined} className="flex items-center gap-1 text-[10.5px] text-[var(--text-secondary)] mr-2">
-          {isSaving ? (
-            <><RefreshCw size={11} className="animate-spin text-[var(--accent-color)]" /><span>Saving…</span></>
-          ) : lastSavedText === "Couldn't save" || lastSavedText === 'Review changes' ? (
-            <><AlertTriangle size={11} className="text-amber-600 dark:text-amber-400" /><span>{lastSavedText}</span></>
-          ) : lastSavedText ? (
-            <><Check size={11} /><span>{lastSavedText.startsWith('Saved') ? 'Saved' : lastSavedText}</span></>
-          ) : null}
-        </div>
-
-        <div className="relative" ref={actionsRef} onBlur={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setShowActions(false);
-        }}>
-          <button
-            ref={actionsButtonRef}
-            onClick={() => setShowActions(!showActions)}
-            aria-label="More actions"
-            aria-expanded={showActions}
-            aria-controls="titlebar-actions"
-            title="More actions"
-            className="p-1.5 rounded-md hover:bg-black/5 dark:hover:bg-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-          >
-            <MoreHorizontal size={15} />
-          </button>
-          {showActions && (
-            <div id="titlebar-actions" className="absolute right-0 top-full mt-2 w-52 p-1.5 rounded-xl bg-[var(--editor-bg)] border border-[var(--border-color)] shadow-xl z-50">
-              {secondaryActions.map(({ label, icon: Icon, action }) => (
-                <button key={label} onClick={() => {
-                  setShowActions(false);
-                  actionsButtonRef.current?.focus();
-                  action();
-                }} className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left text-xs text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10">
-                  <Icon size={13} />
-                  <span>{label}</span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* New Note Button */}
-        {!documentTitle && <button
-          onClick={onNewNote}
-          title="New Note (⌘N)"
-          aria-label="New note"
-          className="p-1.5 rounded-md text-[var(--accent-color)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors ml-1"
-        >
-          <SquarePen size={18} />
-        </button>}
-      </div>
-    </header>
-  );
+      {!documentMode && <button onClick={props.onToggleFocus} className="chrome-button focus-toggle" aria-pressed={props.writingFocus} aria-label={props.writingFocus ? 'Leave writing focus' : 'Enter writing focus'} title="Writing Focus (⌘⇧L)"><Focus size={17} /></button>}
+      <Popover label="More actions" align="right" triggerClassName="chrome-button" trigger={<MoreHorizontal size={18} />}>
+        {close => <>{actions.map(({ label, icon: Icon, run, ...action }) => <button key={label} className="menu-item" onClick={() => { close(); run(); }}><Icon size={15} /><span>{label}</span>{'shortcut' in action && <kbd>{action.shortcut}</kbd>}</button>)}</>}
+      </Popover>
+    </div>
+  </header>;
 };

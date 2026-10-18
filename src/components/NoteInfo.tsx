@@ -17,7 +17,7 @@ const formatDate = (timestamp: number) => new Date(timestamp).toLocaleString([],
 export const NoteInfo: React.FC<NoteInfoProps> = ({ note, wordCount, onSelectFolder, onHistory }) => {
   const folder = note.folder && note.folder !== '/' ? note.folder : 'All Notes';
   return (
-    <div className="no-print flex justify-center mb-5 text-xs text-[var(--text-secondary)] select-none">
+    <div className="no-print flex justify-center mb-4 text-[11px] text-[var(--text-secondary)] select-none">
       <Popover label="Note information" align="center"
         triggerClassName="px-2 py-1 rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
         trigger={<time dateTime={new Date(note.modifiedAt).toISOString()}>{formatDate(note.modifiedAt)}</time>}>

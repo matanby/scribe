@@ -28,6 +28,7 @@ import { CollapsibleHeadingsExtension } from '../extensions/CollapsibleHeadingsE
 import { MathExtension } from '../extensions/MathExtension';
 import { BubbleMenu } from './BubbleMenu';
 import { FormattingBar } from './FormattingBar';
+import { LinkEditor, LinkAnchor } from './LinkEditor';
 import { FLUSH_NOTE_EVENT, FlushNoteRequest } from '../utils/flushNote';
 import { readPosition, savePosition } from '../utils/session';
 import { NoteInfo } from './NoteInfo';
@@ -46,6 +47,7 @@ const lowlight = createLowlight(common);
 const AUTOSAVE_DEBOUNCE_MS = 400;
 
 interface EditorProps {
+  toolbarTarget?: HTMLElement | null;
   documentMode?: boolean;
   note: NoteMeta | null;
   onSave: (filePath: string, markdown: string, expectedMarkdown: string) => Promise<SaveResult>;
@@ -62,6 +64,7 @@ interface EditorProps {
 }
 
 interface TipTapNoteEditorProps {
+  toolbarTarget?: HTMLElement | null;
   documentMode?: boolean;
   note: NoteMeta;
   initialMarkdown: string;
@@ -142,6 +145,7 @@ function applyExternalContent(editor: any, markdown: string) {
 }
 
 const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
+  toolbarTarget,
   note,
   documentMode = false,
   initialMarkdown,
@@ -158,12 +162,15 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   onFocusRequestHandled
 }) => {
   const [title, setTitle] = useState(note.title);
+  const [linkAnchor, setLinkAnchor] = useState<LinkAnchor | null>(null);
+  const closeLink = useCallback(() => setLinkAnchor(null), []);
   const attachmentInput = useRef<HTMLInputElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const positionRestored = useRef(false);
   const initialPosition = useRef(readPosition(note.filePath));
+  const lastPosition = useRef(initialPosition.current || { from: 1, to: 1, scroll: 0 });
   const [tableInsertTrigger, setTableInsertTrigger] = useState(0);
   const [isFindOpen, setIsFindOpen] = useState(false);
   const [showReplaceMode, setShowReplaceMode] = useState(false);
@@ -180,6 +187,13 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
   // Everything the debounced save needs is read through refs. TipTap builds its options
   // object once, so reading props directly inside onUpdate would pin first-render values.
   const editorRef = useRef<any>(null);
+  const openLink = useCallback(() => {
+    const current = editorRef.current;
+    if (!current || current.isDestroyed) return;
+    if (current.isActive('link')) current.commands.extendMarkRange('link');
+    const from = current.view.coordsAtPos(current.state.selection.from);
+    setLinkAnchor({ left: from.left, top: from.top, bottom: from.bottom });
+  }, []);
   const isDirtyRef = useRef(false);
   // What we believe is currently on disk. Serializing the editor and comparing that
   // instead would report a difference for every cosmetic normalisation the markdown
@@ -481,7 +495,10 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
     ],
     editorProps: {
       attributes: {
-        class: 'tiptap ProseMirror focus:outline-none w-full max-w-[900px] mx-auto px-8 py-2'
+        class: 'tiptap ProseMirror note-content focus:outline-none',
+        role: 'textbox',
+        'aria-label': 'Note content',
+        'aria-multiline': 'true'
       },
       handleClick: (view, pos, event) => {
         const target = (event.target as HTMLElement).closest('a');
@@ -491,7 +508,11 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
             event.preventDefault();
             if (href.startsWith('scribe-asset:')) {
               window.scribeAPI.openAttachment(href).catch(error => void showMessage('Could not open attachment', error.message, 'error'));
-            } else window.scribeAPI.openExternal(href);
+            } else if (event.metaKey || event.ctrlKey) window.scribeAPI.openExternal(href);
+            else {
+              editorRef.current?.commands.setTextSelection(pos);
+              openLink();
+            }
             return true;
           }
         }
@@ -537,7 +558,8 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
       'format:italic': () => { editor.chain().focus().toggleItalic().run(); },
       'format:task': () => { editor.chain().focus().toggleTaskList().run(); },
       'format:checkTask': () => { editor.chain().focus().toggleCurrentTask().run(); },
-      'format:sortTasks': () => { editor.chain().focus().sortCompletedTasks().run(); }
+      'format:sortTasks': () => { editor.chain().focus().sortCompletedTasks().run(); },
+      'format:link': openLink
     };
     const subscriptions = Object.entries(actions).map(([name, run]) => window.scribeAPI.onMenuEvent(name, () => {
       if (!document.querySelector('[aria-modal="true"]') && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') run();
@@ -569,11 +591,20 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
     scroller?.addEventListener('keydown', markInteraction);
     let timer: ReturnType<typeof setTimeout> | undefined;
     const persist = () => {
-      if (!positionRestored.current || editor.isDestroyed) return;
-      const { from, to } = editor.state.selection;
-      savePosition(note.filePath, { from, to, scroll: scroller?.scrollTop || 0 });
+      if (!positionRestored.current) return;
+      // useEditor can destroy its view before this effect cleans up. Keep the last
+      // observed position so a quick switch still restores the exact cursor later.
+      if (!editor.isDestroyed) {
+        const { from, to } = editor.state.selection;
+        lastPosition.current = { from, to, scroll: scroller?.scrollTop || 0 };
+      }
+      savePosition(note.filePath, lastPosition.current);
     };
     const schedule = () => {
+      if (!editor.isDestroyed) {
+        const { from, to } = editor.state.selection;
+        lastPosition.current = { from, to, scroll: scroller?.scrollTop || 0 };
+      }
       clearTimeout(timer);
       timer = setTimeout(persist, 180);
     };
@@ -604,6 +635,14 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
       editor.commands.setSearchTerm(focusRequest.search);
       const match = editor.storage.searchReplace.results[0];
       if (match) editor.commands.setTextSelection(match);
+      else if (titleInputRef.current && title.toLowerCase().includes(focusRequest.search.toLowerCase())) {
+        const start = title.toLowerCase().indexOf(focusRequest.search.toLowerCase());
+        if (focusRequest.focus) titleInputRef.current.focus();
+        titleInputRef.current.setSelectionRange(start, start + focusRequest.search.length);
+        if (scrollerRef.current) scrollerRef.current.scrollTop = 0;
+        onFocusRequestHandled?.(focusRequest.requestId);
+        return;
+      }
       if (focusRequest.focus) editor.commands.focus();
     } else editor.commands.focus();
     onFocusRequestHandled?.(focusRequest.requestId);
@@ -785,9 +824,9 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
 
 
   return (
-    <div className="flex-1 h-full bg-[var(--editor-bg)] flex flex-col relative overflow-hidden">
+    <div className="note-editor flex-1 h-full bg-[var(--editor-bg)] flex flex-col relative overflow-hidden">
       {/* Top Pinned Formatting & Search/Replace Bars */}
-      <FormattingBar editor={editor} documentMode={documentMode} noteFilePath={note.filePath} tableInsertTrigger={tableInsertTrigger} onAttach={() => attachmentInput.current?.click()} />
+      <FormattingBar editor={editor} toolbarTarget={toolbarTarget} onEditLink={openLink} documentMode={documentMode} noteFilePath={note.filePath} tableInsertTrigger={tableInsertTrigger} onAttach={() => attachmentInput.current?.click()} />
       <input ref={attachmentInput} type="file" multiple className="hidden" aria-label="Attach images or files" onChange={event => {
         const files = Array.from(event.target.files || []);
         event.target.value = '';
@@ -802,7 +841,8 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
         onClose={() => setIsFindOpen(false)} 
       />
 
-      <BubbleMenu editor={editor} />
+      <BubbleMenu editor={editor} onEditLink={openLink} />
+      {linkAnchor && editor && <LinkEditor editor={editor} anchor={linkAnchor} onClose={closeLink} />}
       <SlashMenu editor={editor} onInsertTable={() => setTableInsertTrigger(value => value + 1)} />
 
       {conflictMarkdown !== null && (
@@ -854,7 +894,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
 
       {/* Scrollable Note Content Container */}
       <div ref={scrollerRef} className="flex-1 overflow-y-auto relative">
-        {!documentMode && <div className="w-full max-w-[900px] mx-auto px-8 pt-7 pb-2 print:max-w-full print:p-0 print:m-0">
+        {!documentMode && <div className="note-heading print:max-w-full print:p-0 print:m-0">
           <NoteInfo note={note} wordCount={wordCount} onSelectFolder={onSelectFolder} onHistory={async () => {
             await performSaveRef.current();
             if (!isDirtyRef.current) setHistoryOpen(true);
@@ -880,7 +920,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
             placeholder="Title"
             aria-label="Note title"
             dir="auto"
-            className="w-full text-2xl font-bold bg-transparent text-[var(--text-primary)] placeholder-[var(--text-tertiary)] border-none focus:outline-none focus:ring-0 mb-3 px-0 tracking-tight"
+            className="editor-title-input w-full bg-transparent text-[var(--text-primary)] placeholder-[var(--text-tertiary)] border-none focus:outline-none focus:ring-0 px-0"
           />
 
         </div>}
@@ -895,6 +935,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
 };
 
 export const Editor: React.FC<EditorProps> = ({
+  toolbarTarget,
   note,
   documentMode = false,
   onSave,
@@ -971,6 +1012,7 @@ export const Editor: React.FC<EditorProps> = ({
   // in place so the user keeps their cursor, scroll position and undo history.
   return (
     <TipTapNoteEditor
+      toolbarTarget={toolbarTarget}
       key={`${note.filePath}_${variant}`}
       note={note}
       documentMode={documentMode}

@@ -237,7 +237,7 @@ export const SearchReplaceExtension = Extension.create<void, SearchReplaceStorag
               decorations.push(
                 Decoration.inline(result.from, result.to, {
                   class: isCurrent
-                    ? 'search-result-active bg-amber-400 text-black font-semibold'
+                    ? 'search-result-active bg-amber-400 text-black'
                     : 'search-result-match bg-yellow-200/80 dark:bg-yellow-500/40',
                 })
               );

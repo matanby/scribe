@@ -14,11 +14,11 @@ export const ShortcutsReference: React.FC<{ onClose: () => void; documentMode?: 
   }, []);
   const groups: [string, [string, string][]][] = [
     [documentMode ? 'Files' : 'Notes', [['New note', '⌘N'], ['Quick Capture', capture], ['Quick Switcher', '⌘⇧O'], ['Open Markdown file', '⌘⌥O'], ['Save', '⌘S'], ['Duplicate note', '⌘D'], ['Move note to Trash', '⌘⌫'], ['Settings', '⌘,']]],
-    ['Navigation', [['Find in note', '⌘F'], ['Find and replace', '⌘⇧F'], ['Next / previous match', '↵ / ⇧↵ in Find'], ['Back / forward', '⌘[ / ⌘]'], ['Show / hide sidebar', '⌘\\'], ['Rename title → body', '↵ in title']]],
-    ['Writing', [['Bold / italic / underline', '⌘B / ⌘I / ⌘U'], ['Checklist', '⌘⇧C'], ['Check / uncheck current task', '⌘⇧U'], ['Heading levels 1–3', '⌘⌥1–3'], ['Body text', '⌘⌥0'], ['Insert menu', '/ in an empty paragraph'], ['Next / previous table cell', '⇥ / ⇧⇥']]],
+    ['Navigation', [['Search notes', '⌥⌘F'], ['Find in note', '⌘F'], ['Find and replace', '⌘⇧F'], ['Next / previous match', '↵ / ⇧↵ in Find'], ['Back / forward', '⌘[ / ⌘]'], ['Show / hide sidebar', '⌘\\'], ['Writing focus', '⌘⇧L'], ['Rename title → body', '↵ in title']]],
+    ['Writing', [['Bold / italic / underline', '⌘B / ⌘I / ⌘U'], ['Add / edit link', '⌘K'], ['Checklist', '⌘⇧C'], ['Check / uncheck current task', '⌘⇧U'], ['Heading levels 1–3', '⌘⌥1–3'], ['Body text', '⌘⌥0'], ['Insert menu', '/ in an empty paragraph'], ['Next / previous table cell', '⇥ / ⇧⇥']]],
     ['Quick Capture', [['Save capture', '⌘↵'], ['Keep draft and close', 'Esc']]]
   ];
-  const hiddenInDocuments = new Set(['New note', 'Quick Switcher', 'Duplicate note', 'Move note to Trash', 'Back / forward', 'Show / hide sidebar', 'Rename title → body']);
+  const hiddenInDocuments = new Set(['Search notes', 'Writing focus', 'New note', 'Quick Switcher', 'Duplicate note', 'Move note to Trash', 'Back / forward', 'Show / hide sidebar', 'Rename title → body']);
   const visibleGroups = documentMode ? groups.map(([name, rows]) => [name, rows.filter(([label]) => !hiddenInDocuments.has(label))] as [string, [string, string][]]) : groups;
   return <div className="fixed inset-0 z-[110] bg-black/35 backdrop-blur-sm flex items-center justify-center p-6" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
     <div ref={panel} role="dialog" aria-modal="true" aria-labelledby="shortcuts-title" className="w-full max-w-[640px] max-h-[85vh] flex flex-col rounded-xl border border-[var(--border-color)] bg-[var(--editor-bg)] text-[var(--text-primary)] shadow-2xl"

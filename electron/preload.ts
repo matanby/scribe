@@ -2,6 +2,7 @@ import type { CaptureShortcut, CaptureShortcutState } from './shortcuts';
 import { contextBridge, ipcRenderer } from 'electron';
 
 export const scribeAPI = {
+  titleBarDoubleClick: () => ipcRenderer.invoke('windows:titleBarDoubleClick') as Promise<void>,
   closeEditorWindow: () => ipcRenderer.invoke('windows:closeEditor') as Promise<void>,
   openLibraryWindow: () => ipcRenderer.invoke('windows:openLibrary') as Promise<void>,
   getShortcutSettings: () => ipcRenderer.invoke('shortcuts:get') as Promise<CaptureShortcutState>,

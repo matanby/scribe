@@ -14,6 +14,7 @@ import { DirectionMarkdown } from '../src/extensions/DirectionMarkdown';
   };
   const create = (content: string) => {
     const element = document.createElement('div');
+    element.className = 'scribe-app';
     document.body.append(element);
     return new Editor({ element, content, extensions: [StarterKit, TaskList,
       CustomTaskItem.configure({ nested: true, autoSort: false }), BiDiExtension,

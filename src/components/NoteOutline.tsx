@@ -18,13 +18,13 @@ export const NoteOutline: React.FC<{ editor: Editor; documentMode?: boolean }> =
     refresh(); editor.on('update', refresh);
     return () => { editor.off('update', refresh); };
   }, [editor]);
-  return <Popover label={documentMode ? "Document outline" : "Note outline"} align="right" triggerClassName="flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs text-[var(--text-secondary)] hover:bg-black/5 dark:hover:bg-white/10"
+  return <Popover label={documentMode ? "Document outline" : "Note outline"} align="right" triggerClassName="chrome-button"
     trigger={<ListTree size={16} />}>
     {close => <>
       <p className="px-2.5 py-2 text-xs font-medium text-[var(--text-secondary)]">Outline</p>
       {headings.length ? headings.map(heading => <button type="button" key={heading.position} dir="auto"
-        className="w-full text-left text-xs py-2 pr-2 rounded-md text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 truncate"
-        style={{ paddingLeft: 10 + (heading.level - 1) * 12 }} title={heading.title}
+        className="w-full text-start text-xs py-2 pr-2 rounded-md text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 truncate"
+        style={{ paddingInlineStart: 10 + (heading.level - 1) * 12 }} title={heading.title}
         onClick={() => {
           close();
           // Reveal folded ancestors before jumping to a nested heading.
