@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "chokidar": "^4.0.3",
+    "emoji-picker-react": "^5.1.0",
     "gray-matter": "^4.0.3"
   },
   "devDependencies": {

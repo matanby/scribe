@@ -49,7 +49,7 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md max-h-[85vh] bg-white/95 dark:bg-[#202024]/95 backdrop-blur-2xl border border-[var(--border-color)] shadow-2xl rounded-2xl overflow-hidden flex flex-col select-none animate-in zoom-in-95 duration-100"
+        className="w-full max-w-lg max-h-[85vh] bg-white/95 dark:bg-[#202024]/95 backdrop-blur-2xl border border-[var(--border-color)] shadow-2xl rounded-2xl overflow-hidden flex flex-col select-none animate-in zoom-in-95 duration-100"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-color)]">
@@ -73,7 +73,7 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
             <label className="text-xs font-semibold text-[var(--text-primary)] block mb-2.5">
               Accent Color
             </label>
-            <div className="grid grid-cols-6 gap-2">
+            <div className="grid grid-cols-7 gap-2">
               {ACCENT_PALETTES.map(p => {
                 const isSelected = settings.accentColor === p.color;
                 return (

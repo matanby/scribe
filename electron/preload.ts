@@ -21,6 +21,9 @@ export const scribeAPI = {
   closeCapture: () => ipcRenderer.invoke('capture:close'),
   openCapture: () => ipcRenderer.invoke('capture:open'),
   listNotesTree: () => ipcRenderer.invoke('notes:listTree'),
+  loadFolderAppearances: () => ipcRenderer.invoke('folders:appearances:load') as Promise<Record<string, { icon?: string; color?: string; emoji?: string }> | null>,
+  saveFolderAppearances: (appearances: Record<string, { icon?: string; color?: string; emoji?: string }>) =>
+    ipcRenderer.invoke('folders:appearances:save', appearances) as Promise<void>,
   readNote: (filePath: string) => ipcRenderer.invoke('notes:read', filePath),
   saveNote: (payload: { filePath: string; markdown: string; expectedMarkdown?: string }) =>
     ipcRenderer.invoke('notes:save', payload) as Promise<import('../src/types').SaveResult>,

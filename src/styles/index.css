@@ -1143,3 +1143,12 @@ li.task-item:hover > .task-drag-handle, .task-drag-handle:focus-visible { opacit
 .task-reordering .prosemirror-dropcursor-block, .task-reordering .prosemirror-dropcursor-inline { display: none !important; }
 .task-drop-indicator { position: fixed; z-index: 90; height: 2px; border-radius: 2px; background: var(--accent-ink, var(--accent-color)); pointer-events: none; }
 @media print { .task-drop-indicator { display: none !important; } }
+
+.folder-emoji-picker { font-family: inherit !important; }
+.folder-emoji-picker .epr-category-label-appearance {
+  font-family: inherit !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  letter-spacing: .01em;
+  line-height: 1.2;
+}

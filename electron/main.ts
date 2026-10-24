@@ -609,6 +609,74 @@ ipcMain.handle('windows:titleBarDoubleClick', event => {
 });
 ipcMain.handle('windows:openLibrary', () => openLibraryWindow());
 ipcMain.handle('windows:closeEditor', event => { BrowserWindow.fromWebContents(event.sender)?.close(); });
+const scribeConfigFileName = '.scribe.json';
+const legacyFolderAppearancesFileName = '.scribe-folder-appearances.json';
+type ScribeNotesConfig = Record<string, unknown> & { version: number; folderAppearances?: Record<string, { icon?: string; color?: string; emoji?: string }> };
+
+function sanitizeFolderAppearances(value: unknown): Record<string, { icon?: string; color?: string; emoji?: string }> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const output: Record<string, { icon?: string; color?: string; emoji?: string }> = {};
+  for (const [folder, item] of Object.entries(value as Record<string, unknown>).slice(0, 1000)) {
+    if (folder.length > 2048 || !item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const data = item as Record<string, unknown>;
+    const appearance: { icon?: string; color?: string; emoji?: string } = {};
+    if (typeof data.icon === 'string' && data.icon.length <= 64) appearance.icon = data.icon;
+    if (typeof data.color === 'string' && /^#[0-9a-f]{6}$/i.test(data.color)) appearance.color = data.color;
+    if (typeof data.emoji === 'string' && data.emoji.length <= 32) appearance.emoji = data.emoji;
+    if (Object.keys(appearance).length) output[folder] = appearance;
+  }
+  return output;
+}
+
+async function readScribeNotesConfig(filePath: string): Promise<ScribeNotesConfig | null> {
+  try {
+    const parsed = JSON.parse(await fsSync.promises.readFile(filePath, 'utf8'));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Invalid Scribe notes configuration.');
+    return parsed as ScribeNotesConfig;
+  } catch (error: any) {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+async function writeScribeNotesConfig(root: string, config: ScribeNotesConfig): Promise<void> {
+  const filePath = path.join(root, scribeConfigFileName);
+  assertInsideRoot(root, filePath);
+  const temporary = path.join(root, `.${scribeConfigFileName}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`);
+  try {
+    await fsSync.promises.writeFile(temporary, JSON.stringify(config, null, 2), 'utf8');
+    await fsSync.promises.rename(temporary, filePath);
+  } catch (error) {
+    await fsSync.promises.unlink(temporary).catch(() => {});
+    throw error;
+  }
+}
+
+ipcMain.handle('folders:appearances:load', async event => {
+  const root = await fsSync.promises.realpath(getWindowRoot(event.sender.id));
+  const filePath = path.join(root, scribeConfigFileName);
+  assertInsideRoot(root, filePath);
+  const config = await readScribeNotesConfig(filePath);
+  if (config) return sanitizeFolderAppearances(config.folderAppearances);
+
+  const legacyPath = path.join(root, legacyFolderAppearancesFileName);
+  assertInsideRoot(root, legacyPath);
+  const legacyFile = await readScribeNotesConfig(legacyPath);
+  if (!legacyFile) return null;
+  const legacyValue = legacyFile.version === 1 ? legacyFile.folders : legacyFile;
+  const folderAppearances = sanitizeFolderAppearances(legacyValue);
+  await writeScribeNotesConfig(root, { version: 1, folderAppearances });
+  await fsSync.promises.unlink(legacyPath).catch(() => {});
+  return folderAppearances;
+});
+
+ipcMain.handle('folders:appearances:save', async (event, value: unknown) => {
+  const root = await fsSync.promises.realpath(getWindowRoot(event.sender.id));
+  const appearances = sanitizeFolderAppearances(value);
+  const current = await readScribeNotesConfig(path.join(root, scribeConfigFileName));
+  await writeScribeNotesConfig(root, { ...current, version: current?.version || 1, folderAppearances: appearances });
+});
+
 ipcMain.handle('notes:listTree', async (event) => {
   const root = getWindowRoot(event.sender.id);
   const document = documentFiles.get(event.sender.id);
@@ -1044,6 +1112,11 @@ ipcMain.handle('contextMenu:folder', async (event, { folderPath, isRoot }) => {
 
   return new Promise((resolve) => {
     const template: MenuItemConstructorOptions[] = [
+      {
+        label: 'Customize Folder Icon...',
+        click: () => resolve({ action: 'customizeIcon', folderPath })
+      },
+      { type: 'separator' },
       {
         label: 'New Note in Folder',
         click: () => resolve({ action: 'newNote', folderPath })

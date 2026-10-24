@@ -2,7 +2,6 @@ import { readStored, writeStored } from '../utils/session';
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Folder, 
-  FolderOpen, 
   FolderPlus,
   Layers,
   Trash2,
@@ -12,6 +11,7 @@ import {
 import { FolderNode, NotesTree } from '../types';
 
 import { FolderDialog, FolderDialogState } from './FolderDialog';
+import { FolderAppearance, FolderIconPicker, folderIconComponent } from './FolderIconPicker';
 import { confirmDestructive } from '../utils/dialogs';
 
 interface SidebarProps {
@@ -49,6 +49,39 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => readStored(`scribe_folders:${tree?.rootPath}`, {}));
   useEffect(() => { if (tree) writeStored(`scribe_folders:${tree.rootPath}`, collapsed); }, [tree?.rootPath, collapsed]);
   const [dragOverTarget, setDragOverTarget] = useState<string | null>(null);
+  const legacyFolderAppearances = useRef<Record<string, Record<string, FolderAppearance>>>(readStored('scribe_folder_appearances', {}));
+  const [folderAppearances, setFolderAppearances] = useState<Record<string, Record<string, FolderAppearance>>>(() => legacyFolderAppearances.current);
+  const [loadedAppearanceRoots, setLoadedAppearanceRoots] = useState<Record<string, boolean>>({});
+  const [dirtyAppearanceRoots, setDirtyAppearanceRoots] = useState<Record<string, boolean>>({});
+  const [openPicker, setOpenPicker] = useState<string | null>(null);
+  const [pickerAnchor, setPickerAnchor] = useState({ x: 0, y: 0 });
+  useEffect(() => {
+    const root = tree?.rootPath;
+    if (!root || loadedAppearanceRoots[root]) return;
+    let active = true;
+    window.scribeAPI.loadFolderAppearances().then(saved => {
+      if (!active) return;
+      const legacy = legacyFolderAppearances.current[root] || {};
+      const appearances = saved ?? legacy;
+      setFolderAppearances(previous => ({ ...previous, [root]: appearances }));
+      setLoadedAppearanceRoots(previous => ({ ...previous, [root]: true }));
+      if (saved === null && Object.keys(legacy).length) {
+        void window.scribeAPI.saveFolderAppearances(legacy).catch(error => console.error('Could not migrate folder appearances:', error));
+      }
+    }).catch(error => console.error('Could not load folder appearances:', error));
+    return () => { active = false; };
+  }, [tree?.rootPath, loadedAppearanceRoots]);
+  useEffect(() => {
+    const root = tree?.rootPath;
+    if (!root || !loadedAppearanceRoots[root] || !dirtyAppearanceRoots[root]) return;
+    void window.scribeAPI.saveFolderAppearances(folderAppearances[root] || {})
+      .catch(error => console.error('Could not save folder appearances:', error));
+  }, [folderAppearances, tree?.rootPath, loadedAppearanceRoots, dirtyAppearanceRoots]);
+
+  const updateFolderAppearance = (root: string, relativePath: string, value: FolderAppearance) => {
+    setFolderAppearances(previous => ({ ...previous, [root]: { ...previous[root], [relativePath]: value } }));
+    setDirtyAppearanceRoots(previous => ({ ...previous, [root]: true }));
+  };
   const [dialogState, setDialogState] = useState<FolderDialogState>({
     isOpen: false,
     mode: 'newFolder',
@@ -70,6 +103,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const handleFolderContextMenu = async (folderPath: string, folderName: string, isRoot: boolean, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    const anchor = { x: e.clientX, y: e.clientY };
 
     if (window.scribeAPI.showFolderContextMenu) {
       let res: any = null;
@@ -84,7 +118,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       }
 
       if (res?.action) {
-        if (res.action === 'newNote') {
+        if (res.action === 'customizeIcon') {
+          setPickerAnchor(anchor);
+          setOpenPicker(`${tree?.rootPath || ''}:${isRoot ? '/' : folderPath.replace(`${tree?.rootPath || ''}/`, '')}`);
+        } else if (res.action === 'newNote') {
           onNewNoteInFolder?.(folderPath);
         } else if (res.action === 'newSubfolder') {
           setDialogState({
@@ -159,12 +196,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const rootFolderName = tree?.rootPath ? tree.rootPath.split('/').filter(Boolean).pop() || 'Notes' : 'Notes';
+  const rootKey = tree?.rootPath || '';
+  const rootAppearance = folderAppearances[rootKey]?.['/'];
+  const RootIcon = folderIconComponent(rootAppearance?.icon);
+  const rootAppearanceKey = `${rootKey}:/`;
 
   const renderFolderNode = (node: FolderNode, depth = 0) => {
     const isSelected = selectedFolder === node.relativePath;
     const isExpanded = !collapsed[node.path];
     const hasChildren = node.children && node.children.length > 0;
     const isDragOver = dragOverTarget === node.path;
+    const rootKey = tree?.rootPath || '';
+    const appearanceKey = `${rootKey}:${node.relativePath}`;
+    const appearance = folderAppearances[rootKey]?.[node.relativePath];
+    const Icon = folderIconComponent(appearance?.icon);
 
     return (
       <div key={node.path} className="select-none">
@@ -194,7 +239,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           onDragLeave={(e) => handleDragLeave(node.path, e)}
           onDrop={(e) => handleDrop(node.path, false, e)}
           style={{ paddingLeft: `${Math.max(10, depth * 12 + 10)}px` }}
-          className={`folder-item group flex items-center justify-between pr-2.5 py-1.5 rounded-md text-[13px] cursor-pointer transition-colors ${
+          className={`folder-item group relative flex items-center justify-between pr-2.5 py-1.5 rounded-md text-[13px] cursor-pointer transition-colors ${
             isDragOver
               ? 'ring-2 ring-[var(--accent-color)] bg-[var(--card-active)]'
               : isSelected
@@ -219,18 +264,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span className="w-3" />
             )}
             
-            {isSelected ? (
-              <FolderOpen size={14} className="text-[var(--accent-color)] shrink-0 transition-transform duration-150" />
-            ) : (
-              <Folder size={14} className="text-[var(--accent-color)] shrink-0 opacity-90 transition-transform duration-150" />
-            )}
+            {appearance?.emoji ? <span aria-hidden="true" className="w-[14px] text-center text-[13px] leading-none shrink-0">{appearance.emoji}</span> :
+              <Icon size={14} aria-hidden="true" style={{ color: appearance?.color || 'var(--accent-color)' }} className="shrink-0 transition-transform duration-150" />}
             
             <span className="truncate text-start" dir="auto">{node.name}</span>
           </div>
 
-          <span className="text-[11px] text-[var(--text-secondary)] font-normal px-1">
-            {node.noteCount}
-          </span>
+          <span className="text-[11px] text-[var(--text-secondary)] font-normal px-1">{node.noteCount}</span>
+          {openPicker === appearanceKey && <FolderIconPicker anchor={pickerAnchor} value={appearance} onClose={() => setOpenPicker(null)} onChange={value => {
+            updateFolderAppearance(rootKey, node.relativePath, value);
+          }} />}
         </div>
 
         {hasChildren && (
@@ -312,10 +355,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="flex-1 min-h-0 overflow-y-auto space-y-0.5 pb-3">
         <div 
           onContextMenu={(e) => tree?.rootPath && handleFolderContextMenu(tree.rootPath, rootFolderName, true, e)}
-          className="flex items-center justify-between px-2.5 py-1"
+          className="relative flex items-center justify-between px-2.5 py-1"
         >
-          <span className="text-[11px] font-semibold text-[var(--text-secondary)] truncate">
-            {rootFolderName}
+          <span className="flex items-center gap-1.5 min-w-0 text-[11px] font-semibold text-[var(--text-secondary)] truncate">
+            {rootAppearance?.emoji ? <span aria-hidden="true">{rootAppearance.emoji}</span> : <RootIcon size={12} aria-hidden="true" style={{ color: rootAppearance?.color || 'var(--accent-color)' }} />}
+            <span className="truncate">{rootFolderName}</span>
           </span>
           <div className="flex items-center gap-0.5">
             <button
@@ -337,6 +381,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <FolderPlus size={12} />
             </button>
           </div>
+          {openPicker === rootAppearanceKey && <FolderIconPicker anchor={pickerAnchor} value={rootAppearance} onClose={() => setOpenPicker(null)} onChange={value => {
+            updateFolderAppearance(rootKey, '/', value);
+          }} />}
         </div>
 
         <div role="tree" aria-label="Notes folders">{tree?.folders.map(rootNode =>
