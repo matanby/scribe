@@ -5,7 +5,7 @@ import { useTrashUndo } from './components/TrashUndo';
 import { Titlebar } from './components/Titlebar';
 import { Sidebar } from './components/Sidebar';
 import { NoteList } from './components/NoteList';
-import { AppearanceSettings, ACCENT_PALETTES } from './utils/appearance';
+import { AppearanceSettings, ACCENT_PALETTES, resolveNoteFontSize, DEFAULT_NOTE_FONT_SIZE, MIN_NOTE_FONT_SIZE, MAX_NOTE_FONT_SIZE } from './utils/appearance';
 import { NoteMeta, NoteFocusRequest, NotesTree, SortMode, FolderNode } from './types';
 import { confirmDestructive, showMessage } from './utils/dialogs';
 
@@ -41,15 +41,22 @@ export const App: React.FC = () => {
     return false;
   });
   const [showSidebar, setShowSidebar] = useState(() => readStored('scribe_show_sidebar', true));
-  const [writingFocus, setWritingFocus] = useState(() => readStored('scribe_writing_focus', false));
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   useEffect(() => {
     const resize = () => setWindowWidth(window.innerWidth);
     window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
   }, []);
+  useEffect(() => {
+    const applyZoom = (factor: number) => {
+      if (!Number.isFinite(factor) || factor <= 0) return;
+      document.documentElement.style.setProperty('--app-zoom', String(factor));
+      setWindowWidth(window.innerWidth);
+    };
+    window.scribeAPI?.getZoomFactor?.().then(applyZoom).catch(() => {});
+    return window.scribeAPI?.onZoomChanged?.(applyZoom);
+  }, []);
   useEffect(() => { writeStored('scribe_show_sidebar', showSidebar); }, [showSidebar]);
-  useEffect(() => { writeStored('scribe_writing_focus', writingFocus); }, [writingFocus]);
   const [compactNotes, setCompactNotes] = useState(() => localStorage.getItem('scribe_compact_notes') === 'true');
   const handleToggleCompactNotes = () => {
     const next = !compactNotes;
@@ -85,12 +92,30 @@ export const App: React.FC = () => {
     });
   };
 
+  const stepNoteFontSize = useCallback((delta: number) => {
+    setAppearance(prev => {
+      const current = resolveNoteFontSize(prev.fontSize);
+      const next = Math.min(MAX_NOTE_FONT_SIZE, Math.max(MIN_NOTE_FONT_SIZE, current + delta));
+      const updated = { ...prev, fontSize: next };
+      localStorage.setItem('scribe_appearance', JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  const resetNoteFontSize = useCallback(() => {
+    setAppearance(prev => {
+      const updated = { ...prev, fontSize: DEFAULT_NOTE_FONT_SIZE };
+      localStorage.setItem('scribe_appearance', JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
   // Synchronize CSS variables and theme classes
   useEffect(() => {
     const root = document.documentElement;
     const accent = appearance.accentColor || '#EAB308';
     root.style.setProperty('--accent-color', accent);
-    root.style.setProperty('--note-font-size', appearance.fontSize === 'compact' ? '15px' : appearance.fontSize === 'large' ? '19px' : '17px');
+    root.style.setProperty('--note-font-size', `${resolveNoteFontSize(appearance.fontSize)}px`);
     
     // Find matching palette hover
     const found = ACCENT_PALETTES.find(p => p.color.toLowerCase() === accent.toLowerCase());
@@ -163,13 +188,10 @@ export const App: React.FC = () => {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const selectedNoteRef = useRef<NoteMeta | null>(selectedNote);
   selectedNoteRef.current = selectedNote;
-  const sidebarVisible = showSidebar && !writingFocus;
+  const sidebarVisible = showSidebar;
   const effectiveSidebarWidth = Math.min(sidebarWidth, Math.max(160, windowWidth - 760));
   const effectiveNoteListWidth = Math.min(noteListWidth, Math.max(220, windowWidth - (sidebarVisible ? effectiveSidebarWidth : 0) - 480));
-  const toggleSidebar = () => {
-    if (writingFocus) { setWritingFocus(false); setShowSidebar(true); }
-    else setShowSidebar(previous => !previous);
-  };
+  const toggleSidebar = () => setShowSidebar(previous => !previous);
 
   const isDraggingSidebar = useRef(false);
   const isDraggingNoteList = useRef(false);
@@ -620,9 +642,6 @@ export const App: React.FC = () => {
     const unsubscribeSearchNotes = window.scribeAPI.onMenuEvent('menu:searchNotes', () => {
       if (!documentMode) { searchInputRef.current?.focus(); searchInputRef.current?.select(); }
     });
-    const unsubscribeWritingFocus = window.scribeAPI.onMenuEvent('menu:writingFocus', () => {
-      if (!documentMode) setWritingFocus(previous => !previous);
-    });
 
     const unsubscribeNewNote = window.scribeAPI.onMenuEvent?.('menu:newNote', () => {
       handleNewNoteRef.current();
@@ -652,14 +671,32 @@ export const App: React.FC = () => {
       handlePrintRef.current();
     });
 
+    const unsubscribeFontLarger = window.scribeAPI.onMenuEvent?.('format:fontLarger', () => {
+      stepNoteFontSize(1);
+    });
+
+    const unsubscribeFontSmaller = window.scribeAPI.onMenuEvent?.('format:fontSmaller', () => {
+      stepNoteFontSize(-1);
+    });
+
+    const unsubscribeFontReset = window.scribeAPI.onMenuEvent?.('format:fontReset', () => {
+      resetNoteFontSize();
+    });
+
     // Everything with a menu accelerator is handled by the application menu, which fires
     // before the renderer and never fights text inputs. Only shortcuts without a menu
     // entry are bound here.
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!documentMode && (e.metaKey || e.ctrlKey) && (e.key === '\\' || e.code === 'Backslash')) {
         e.preventDefault();
-        setWritingFocus(false);
         setShowSidebar(prev => !prev);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.altKey && (e.key === '=' || e.key === '+' || e.code === 'Equal' || e.code === 'NumpadAdd')) {
+        e.preventDefault();
+        stepNoteFontSize(1);
+      } else if ((e.metaKey || e.ctrlKey) && e.altKey && !e.shiftKey && (e.key === '-' || e.code === 'Minus' || e.code === 'NumpadSubtract')) {
+        e.preventDefault();
+        stepNoteFontSize(-1);
       }
       if (e.key === 'Escape') {
         setIsAppearanceOpen(false);
@@ -677,7 +714,6 @@ export const App: React.FC = () => {
       unsubscribeShortcuts();
       unsubscribeQuickSwitcher?.();
       unsubscribeSearchNotes();
-      unsubscribeWritingFocus();
       unsubscribeNewNote?.();
       unsubscribeDuplicateNote?.();
       unsubscribeRevealInFinder?.();
@@ -685,9 +721,12 @@ export const App: React.FC = () => {
       unsubscribeGoForward?.();
       unsubscribeExportPDF?.();
       unsubscribePrintNote?.();
+      unsubscribeFontLarger?.();
+      unsubscribeFontSmaller?.();
+      unsubscribeFontReset?.();
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [loadTree, documentMode]);
+  }, [loadTree, documentMode, stepNoteFontSize, resetNoteFontSize]);
 
   // Delete / Trash Note
   const handleDeleteNote = useCallback(async (note: NoteMeta, e?: React.MouseEvent) => {
@@ -914,7 +953,7 @@ export const App: React.FC = () => {
   }, [tree, selectedFolder, isTrashView, searchQuery, searchScope, sortMode, pinnedIds, bodyMatches]);
 
   return (
-    <div className={`scribe-app h-screen w-screen flex flex-col overflow-hidden bg-[var(--app-bg)] text-[var(--text-primary)] ${isDark ? 'dark' : ''} ${writingFocus ? 'writing-focus' : ''} ${isResizing ? 'is-resizing' : ''} font-${appearance.fontFamily}-mode`}>
+    <div className={`scribe-app h-screen w-screen flex flex-col overflow-hidden bg-[var(--app-bg)] text-[var(--text-primary)] ${isDark ? 'dark' : ''} ${isResizing ? 'is-resizing' : ''} font-${appearance.fontFamily}-mode`}>
       {/* Native macOS Titlebar */}
       <Titlebar
         documentTitle={documentMode ? (selectedNote?.fileName || 'Markdown Document') : undefined}
@@ -941,8 +980,6 @@ export const App: React.FC = () => {
         onToggleTheme={handleToggleTheme}
         showSidebar={sidebarVisible}
         onToggleSidebar={toggleSidebar}
-        writingFocus={writingFocus}
-        onToggleFocus={() => setWritingFocus(previous => !previous)}
         libraryWidth={(sidebarVisible ? effectiveSidebarWidth : 0) + effectiveNoteListWidth}
         toolbarRef={setToolbarTarget}
         searchInputRef={searchInputRef}

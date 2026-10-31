@@ -7,6 +7,7 @@ import { Popover } from '../src/components/Popover';
 import { LinkEditor } from '../src/components/LinkEditor';
 import { NoteList } from '../src/components/NoteList';
 import { Titlebar } from '../src/components/Titlebar';
+import { AppearanceModal } from '../src/components/AppearanceModal';
 import { createPortal } from 'react-dom';
 import { runWritingTests } from './writing.renderer.test';
 
@@ -57,7 +58,7 @@ import { runWritingTests } from './writing.renderer.test';
   (window as any).scribeAPI = { titleBarDoubleClick: async () => { zoomRequests++; } };
   await render(<Titlebar currentFolder="All Notes" searchQuery="" onSearchChange={() => {}} onSearchSubmit={() => {}}
     onNewNote={() => {}} onSelectFolder={() => {}} isSaving={false} lastSavedText="Saved" isDark={false} onToggleTheme={() => {}}
-    showSidebar={true} onToggleSidebar={() => {}} writingFocus={false} onToggleFocus={() => {}} libraryWidth={420} toolbarRef={() => {}} />);
+    showSidebar={true} onToggleSidebar={() => {}} libraryWidth={420} toolbarRef={() => {}} />);
   const header = host.querySelector('header')!;
   const doubleClick = async (element: Element) => { await act(async () => { element.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, button: 0 })); }); };
   await doubleClick(header);
@@ -73,6 +74,41 @@ import { runWritingTests } from './writing.renderer.test';
   await doubleClick(slot.querySelector('span')!);
   check('title-bar zoom covers content from a separate React portal', zoomRequests === 2);
   await act(async () => { portalRoot.unmount(); }); portalHost.remove();
+  await render(null);
+  let mockZoom = 1;
+  (window as any).scribeAPI = {
+    getZoomFactor: async () => mockZoom,
+    zoomIn: async () => { mockZoom = Math.min(1.5, Math.round((mockZoom + 0.1) * 100) / 100); return mockZoom; },
+    zoomOut: async () => { mockZoom = Math.max(0.7, Math.round((mockZoom - 0.1) * 100) / 100); return mockZoom; },
+    resetZoom: async () => { mockZoom = 1; return mockZoom; },
+    onZoomChanged: () => () => {},
+    getShortcutSettings: async () => ({
+      config: { command: true, control: true, alt: true, shift: false, key: 'N' },
+      defaultConfig: { command: true, control: true, alt: true, shift: false, key: 'N' },
+      available: true,
+      label: '⌃⌥⌘N',
+      isMac: true
+    }),
+    onShortcutsChanged: () => () => {}
+  };
+  let appearanceSettings: React.ComponentProps<typeof AppearanceModal>['settings'] = { accentColor: '#EAB308', fontFamily: 'sans', fontSize: 'normal', themeMode: 'system', smartTypography: true, autoSortTasks: false };
+  const renderAppearance = () => render(<AppearanceModal isOpen={true} onClose={() => {}} settings={appearanceSettings} onUpdateSettings={patch => { appearanceSettings = { ...appearanceSettings, ...patch }; }} />);
+  await renderAppearance();
+  check('settings displays the initial 14px note font size', document.querySelector('[aria-label="Reset note font size"]')?.textContent === '14px');
+  await click(document.querySelector('[aria-label="Increase note font size"]')!);
+  await renderAppearance();
+  check('increasing note font size updates to 15px', document.querySelector('[aria-label="Reset note font size"]')?.textContent === '15px');
+  await click(document.querySelector('[aria-label="Reset note font size"]')!);
+  await renderAppearance();
+  check('resetting note font size returns to 14px', document.querySelector('[aria-label="Reset note font size"]')?.textContent === '14px');
+  check('settings displays the initial 100% interface zoom', document.querySelector('[aria-label="Reset zoom to actual size"]')?.textContent === '100%');
+  await click(document.querySelector('[aria-label="Zoom in"]')!);
+  check('zooming in updates interface zoom to 110%', document.querySelector('[aria-label="Reset zoom to actual size"]')?.textContent === '110%');
+  await click(document.querySelector('[aria-label="Zoom out"]')!);
+  await click(document.querySelector('[aria-label="Zoom out"]')!);
+  check('zooming out updates interface zoom to 90%', document.querySelector('[aria-label="Reset zoom to actual size"]')?.textContent === '90%');
+  await click(document.querySelector('[aria-label="Reset zoom to actual size"]')!);
+  check('resetting interface zoom returns to 100%', document.querySelector('[aria-label="Reset zoom to actual size"]')?.textContent === '100%');
   await render(null);
   await render(<><Popover label="Menu A" trigger={<span>A</span>}>
     {close => <><button onClick={close}>First action</button><button onClick={close}>Second action</button></>}

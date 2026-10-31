@@ -38,7 +38,7 @@ function canonical(accelerator: string) {
 }
 function conflictsWithMenu(accelerator: string) {
   const wanted = canonical(accelerator);
-  const builtIn = ['A', 'C', 'V', 'X', 'Z', 'Y', 'Q', 'W', 'M', 'H'].map(key => `CmdOrCtrl+${key}`);
+  const builtIn = ['A', 'C', 'V', 'X', 'Z', 'Y', 'Q', 'W', 'M', 'H', '=', '-', '0', 'Plus'].map(key => `CmdOrCtrl+${key}`);
   builtIn.push('CmdOrCtrl+Shift+Z', 'CmdOrCtrl+Alt+H');
   const visit = (items: Electron.MenuItem[]): boolean => items.some(item =>
     item.id !== 'quick-capture' && ((item.accelerator && canonical(item.accelerator) === wanted) || (item.submenu && visit(item.submenu.items))));

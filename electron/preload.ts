@@ -3,6 +3,16 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 export const scribeAPI = {
   titleBarDoubleClick: () => ipcRenderer.invoke('windows:titleBarDoubleClick') as Promise<void>,
+  getZoomFactor: () => ipcRenderer.invoke('zoom:get') as Promise<number>,
+  setZoomFactor: (factor: number) => ipcRenderer.invoke('zoom:set', factor) as Promise<number>,
+  zoomIn: () => ipcRenderer.invoke('zoom:in') as Promise<number>,
+  zoomOut: () => ipcRenderer.invoke('zoom:out') as Promise<number>,
+  resetZoom: () => ipcRenderer.invoke('zoom:reset') as Promise<number>,
+  onZoomChanged: (callback: (factor: number) => void) => {
+    const handler = (_: unknown, factor: number) => callback(factor);
+    ipcRenderer.on('zoom:changed', handler);
+    return () => { ipcRenderer.removeListener('zoom:changed', handler); };
+  },
   closeEditorWindow: () => ipcRenderer.invoke('windows:closeEditor') as Promise<void>,
   openLibraryWindow: () => ipcRenderer.invoke('windows:openLibrary') as Promise<void>,
   getShortcutSettings: () => ipcRenderer.invoke('shortcuts:get') as Promise<CaptureShortcutState>,

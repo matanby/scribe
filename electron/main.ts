@@ -117,6 +117,29 @@ interface WindowState {
   width: number;
   height: number;
   isMaximized?: boolean;
+  zoomFactor?: number;
+}
+
+const ZOOM_STEPS = [0.7, 0.8, 0.9, 1, 1.1, 1.2, 1.3, 1.4, 1.5] as const;
+const MIN_ZOOM = ZOOM_STEPS[0];
+const MAX_ZOOM = ZOOM_STEPS[ZOOM_STEPS.length - 1];
+let currentZoomFactor: number | null = null;
+
+function normalizeZoomFactor(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 1;
+  const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
+  return Math.round(clamped * 100) / 100;
+}
+
+function stepZoomFactor(current: number, direction: 1 | -1): number {
+  const normalized = normalizeZoomFactor(current);
+  if (direction > 0) {
+    return ZOOM_STEPS.find(step => step > normalized + 0.001) ?? MAX_ZOOM;
+  }
+  for (let i = ZOOM_STEPS.length - 1; i >= 0; i--) {
+    if (ZOOM_STEPS[i] < normalized - 0.001) return ZOOM_STEPS[i];
+  }
+  return MIN_ZOOM;
 }
 
 function getWindowStateConfigPath(documentMode = false): string {
@@ -138,13 +161,14 @@ function loadWindowState(documentMode = false): WindowState {
     const configPath = getWindowStateConfigPath(documentMode);
     if (fsSync.existsSync(configPath)) {
       const data = JSON.parse(fsSync.readFileSync(configPath, 'utf-8'));
+      const zoomFactor = typeof data.zoomFactor === 'number' && Number.isFinite(data.zoomFactor) ? normalizeZoomFactor(data.zoomFactor) : undefined;
       if (Number.isFinite(data.width) && Number.isFinite(data.height)) {
         if (documentMode) {
           const hasPosition = Number.isFinite(data.x) && Number.isFinite(data.y);
           const area = (hasPosition ? screen.getDisplayMatching({ x: data.x, y: data.y, width: Math.max(1, data.width), height: Math.max(1, data.height) }) : screen.getPrimaryDisplay()).workArea;
           const width = Math.min(area.width, Math.max(620, data.width));
           const height = Math.min(area.height, Math.max(520, data.height));
-          return { width, height, isMaximized: !!data.isMaximized, ...(hasPosition ? { x: Math.max(area.x, Math.min(data.x, area.x + area.width - width)), y: Math.max(area.y, Math.min(data.y, area.y + area.height - height)) } : {}) };
+          return { width, height, isMaximized: !!data.isMaximized, zoomFactor, ...(hasPosition ? { x: Math.max(area.x, Math.min(data.x, area.x + area.width - width)), y: Math.max(area.y, Math.min(data.y, area.y + area.height - height)) } : {}) };
         }
         if (typeof data.x === 'number' && typeof data.y === 'number') {
           const visible = screen.getAllDisplays().some(display => {
@@ -162,15 +186,20 @@ function loadWindowState(documentMode = false): WindowState {
               y: data.y,
               width: Math.max(860, data.width),
               height: Math.max(520, data.height),
-              isMaximized: !!data.isMaximized
+              isMaximized: !!data.isMaximized,
+              zoomFactor
             };
           }
         }
         return {
           width: Math.max(860, data.width),
           height: Math.max(520, data.height),
-          isMaximized: !!data.isMaximized
+          isMaximized: !!data.isMaximized,
+          zoomFactor
         };
+      }
+      if (zoomFactor !== undefined) {
+        return { ...defaultState, zoomFactor };
       }
     }
   } catch (e) {
@@ -189,12 +218,89 @@ function saveWindowState(state: WindowState, documentMode = false) {
   }
 }
 
+function getCurrentZoomFactor(): number {
+  if (currentZoomFactor === null) {
+    currentZoomFactor = loadWindowState(false).zoomFactor ?? loadWindowState(true).zoomFactor ?? 1;
+  }
+  return currentZoomFactor;
+}
+
+function getTrafficLightPosition(factor = getCurrentZoomFactor()): { x: number; y: number } {
+  return { x: 18, y: Math.max(10, Math.round(27 * factor - 9)) };
+}
+
+function applyZoomToWindow(win: BrowserWindow, factor = getCurrentZoomFactor(), adjustTrafficLights = true) {
+  if (win.isDestroyed()) return;
+  try {
+    win.webContents.setZoomFactor(factor);
+    if (adjustTrafficLights && process.platform === 'darwin' && typeof win.setWindowButtonPosition === 'function') {
+      win.setWindowButtonPosition(getTrafficLightPosition(factor));
+    }
+    win.webContents.send('zoom:changed', factor);
+  } catch {}
+}
+
+function syncZoomMenu() {
+  const menu = Menu.getApplicationMenu();
+  if (!menu) return;
+  const factor = getCurrentZoomFactor();
+  const zoomInItem = menu.getMenuItemById('zoom-in');
+  if (zoomInItem) zoomInItem.enabled = factor < MAX_ZOOM - 0.001;
+  const zoomOutItem = menu.getMenuItemById('zoom-out');
+  if (zoomOutItem) zoomOutItem.enabled = factor > MIN_ZOOM + 0.001;
+  const zoomResetItem = menu.getMenuItemById('zoom-reset');
+  if (zoomResetItem) zoomResetItem.enabled = Math.abs(factor - 1) > 0.001;
+}
+
+function setAppZoomFactor(factor: number): number {
+  const next = normalizeZoomFactor(factor);
+  currentZoomFactor = next;
+  for (const documentMode of [false, true]) {
+    const state = loadWindowState(documentMode);
+    saveWindowState({ ...state, zoomFactor: next }, documentMode);
+  }
+  for (const win of allWindows) {
+    applyZoomToWindow(win, next, true);
+  }
+  if (captureWindow && !captureWindow.isDestroyed()) {
+    applyZoomToWindow(captureWindow, next, false);
+  }
+  syncZoomMenu();
+  return next;
+}
+
+function stepAppZoom(direction: 1 | -1): number {
+  return setAppZoomFactor(stepZoomFactor(getCurrentZoomFactor(), direction));
+}
+
+function bindZoomShortcuts(win: BrowserWindow, adjustTrafficLights = true) {
+  win.webContents.on('did-finish-load', () => {
+    applyZoomToWindow(win, getCurrentZoomFactor(), adjustTrafficLights);
+  });
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+    const primaryModifier = process.platform === 'darwin' ? input.meta && !input.control : input.control && !input.meta;
+    if (!primaryModifier || input.alt) return;
+    if (input.key === '=' || input.key === '+' || input.code === 'Equal' || input.code === 'NumpadAdd') {
+      event.preventDefault();
+      stepAppZoom(1);
+    } else if ((input.key === '-' || input.code === 'Minus' || input.code === 'NumpadSubtract') && !input.shift) {
+      event.preventDefault();
+      stepAppZoom(-1);
+    } else if ((input.key === '0' || input.code === 'Digit0' || input.code === 'Numpad0') && !input.shift) {
+      event.preventDefault();
+      setAppZoomFactor(1);
+    }
+  });
+}
+
 export function createWindow(targetFolderPath?: string, openSettings = false, openShortcuts = false, documentFile?: string): BrowserWindow {
   const documentMode = !!documentFile;
   const windowState = loadWindowState(documentMode);
   const similarWindows = Array.from(allWindows).filter(window => documentFiles.has(window.webContents.id) === documentMode).length;
   const cascadeOffset = (similarWindows * 25) % 150;
 
+  const zoomFactor = getCurrentZoomFactor();
   const win = new BrowserWindow({
     x: windowState.x !== undefined ? windowState.x + cascadeOffset : undefined,
     y: windowState.y !== undefined ? windowState.y + cascadeOffset : undefined,
@@ -203,7 +309,7 @@ export function createWindow(targetFolderPath?: string, openSettings = false, op
     minWidth: documentFile ? 620 : 860,
     minHeight: 520,
     titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 18, y: 18 },
+    trafficLightPosition: getTrafficLightPosition(zoomFactor),
     vibrancy: 'under-window',
     visualEffectState: 'active',
     backgroundColor: '#00000000',
@@ -212,9 +318,11 @@ export function createWindow(targetFolderPath?: string, openSettings = false, op
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      spellcheck: true
+      spellcheck: true,
+      zoomFactor
     }
   });
+  bindZoomShortcuts(win, true);
 
   win.on('page-title-updated', event => {
     const file = documentFiles.get(win.webContents.id);
@@ -237,7 +345,7 @@ export function createWindow(targetFolderPath?: string, openSettings = false, op
   let saveTimeout: NodeJS.Timeout | null = null;
   const persistWindowState = () => {
     if (win.isDestroyed() || win.isFullScreen() || win.isMinimized()) return;
-    try { saveWindowState({ ...win.getNormalBounds(), isMaximized: win.isMaximized() }, documentMode); }
+    try { saveWindowState({ ...win.getNormalBounds(), isMaximized: win.isMaximized(), zoomFactor: getCurrentZoomFactor() }, documentMode); }
     catch (error) { console.error('Could not remember window placement:', error); }
   };
   const trackWindowState = () => {
@@ -328,7 +436,7 @@ function syncDocumentMenu(win: BrowserWindow | null) {
   const menu = Menu.getApplicationMenu();
   if (!menu) return;
   const documentMode = !!win && documentFiles.has(win.webContents.id);
-  for (const id of ['new-note', 'quick-switcher', 'trash-note', 'duplicate-note', 'history-back', 'history-forward', 'search-notes', 'writing-focus']) {
+  for (const id of ['new-note', 'quick-switcher', 'trash-note', 'duplicate-note', 'history-back', 'history-forward', 'search-notes']) {
     const item = menu.getMenuItemById(id);
     if (item) { item.visible = !documentMode; item.enabled = !documentMode; }
   }
@@ -507,13 +615,19 @@ function setupMenu() {
           click: (_item, focusedWin) => sendToFocusedWindow('format:task', focusedWin as BrowserWindow)
         },
         { label: 'Check / Uncheck Current Task', accelerator: 'CmdOrCtrl+Shift+U', click: (_item, focusedWin) => sendToFocusedWindow('format:checkTask', focusedWin as BrowserWindow) },
-        { label: 'Move Completed Tasks to Bottom', click: (_item, focusedWin) => sendToFocusedWindow('format:sortTasks', focusedWin as BrowserWindow) }
+        { label: 'Move Completed Tasks to Bottom', click: (_item, focusedWin) => sendToFocusedWindow('format:sortTasks', focusedWin as BrowserWindow) },
+        { type: 'separator' as const },
+        { label: 'Bigger Text', accelerator: 'CmdOrCtrl+Alt+Plus', click: (_item, focusedWin) => sendToFocusedWindow('format:fontLarger', focusedWin as BrowserWindow) },
+        { label: 'Smaller Text', accelerator: 'CmdOrCtrl+Alt+-', click: (_item, focusedWin) => sendToFocusedWindow('format:fontSmaller', focusedWin as BrowserWindow) },
+        { label: 'Default Text Size', click: (_item, focusedWin) => sendToFocusedWindow('format:fontReset', focusedWin as BrowserWindow) }
       ]
     },
     {
       label: 'View',
       submenu: [
-        { id: 'writing-focus', label: 'Writing Focus', accelerator: 'CmdOrCtrl+Shift+L', click: (_item, focusedWin) => sendToFocusedWindow('menu:writingFocus', focusedWin as BrowserWindow) },
+        { id: 'zoom-reset', label: 'Actual Size', accelerator: 'CmdOrCtrl+0', click: () => { setAppZoomFactor(1); } },
+        { id: 'zoom-in', label: 'Zoom In', accelerator: 'CmdOrCtrl+Plus', click: () => { stepAppZoom(1); } },
+        { id: 'zoom-out', label: 'Zoom Out', accelerator: 'CmdOrCtrl+-', click: () => { stepAppZoom(-1); } },
         { type: 'separator' as const },
         { role: 'reload' as const },
         { role: 'forceReload' as const },
@@ -547,6 +661,7 @@ function setupMenu() {
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
   syncDocumentMenu(BrowserWindow.getFocusedWindow());
+  syncZoomMenu();
 }
 
 app.whenReady().then(() => {
@@ -609,6 +724,11 @@ ipcMain.handle('windows:titleBarDoubleClick', event => {
 });
 ipcMain.handle('windows:openLibrary', () => openLibraryWindow());
 ipcMain.handle('windows:closeEditor', event => { BrowserWindow.fromWebContents(event.sender)?.close(); });
+ipcMain.handle('zoom:get', () => getCurrentZoomFactor());
+ipcMain.handle('zoom:set', (_event, factor: number) => setAppZoomFactor(factor));
+ipcMain.handle('zoom:in', () => stepAppZoom(1));
+ipcMain.handle('zoom:out', () => stepAppZoom(-1));
+ipcMain.handle('zoom:reset', () => setAppZoomFactor(1));
 const scribeConfigFileName = '.scribe.json';
 const legacyFolderAppearancesFileName = '.scribe-folder-appearances.json';
 type ScribeNotesConfig = Record<string, unknown> & { version: number; folderAppearances?: Record<string, { icon?: string; color?: string; emoji?: string }> };
@@ -1179,7 +1299,8 @@ function openCapture() {
   } catch { /* First launch uses the default placement. */ }
   const win = new BrowserWindow({ width: 520, height: 410, ...placement, minWidth: 380, minHeight: 300,
     title: 'Quick Capture', titleBarStyle: 'hiddenInset', backgroundColor: '#fafafa',
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false } });
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, zoomFactor: getCurrentZoomFactor() } });
+  bindZoomShortcuts(win, false);
   captureWindow = win;
   setWindowRoot(win.webContents.id, captureRoot);
   const captureId = win.webContents.id;

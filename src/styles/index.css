@@ -1024,14 +1024,14 @@ u,
 /* Shared window chrome and writing rhythm. */
 :root {
   --reading-width: 780px;
-  --note-font-size: 17px;
+  --note-font-size: 14px;
   --accent-ink: color-mix(in srgb, var(--accent-color), #000 32%);
 }
 .dark { --accent-ink: color-mix(in srgb, var(--accent-color), #fff 12%); }
 .scribe-app { --sidebar-bg: rgba(242, 242, 244, .94); --notelist-bg: #fafafa; }
 .scribe-app.dark { --sidebar-bg: rgba(24, 24, 26, .96); --notelist-bg: #232325; }
 .app-titlebar { height: 54px; flex: 0 0 54px; display: flex; position: relative; z-index: 40; border-bottom: 1px solid var(--border-color); background: var(--editor-bg); user-select: none; }
-.library-toolbar { display: flex; align-items: center; gap: 5px; padding: 0 12px 0 80px; background: var(--sidebar-bg); border-inline-end: 1px solid var(--border-color); flex-shrink: 0; min-width: 0; transition: width .3s cubic-bezier(.2,.9,.3,1); }
+.library-toolbar { display: flex; align-items: center; gap: 5px; padding: 0 12px 0 max(80px, calc(78px / var(--app-zoom, 1))); background: var(--sidebar-bg); border-inline-end: 1px solid var(--border-color); flex-shrink: 0; min-width: 0; transition: width .3s cubic-bezier(.2,.9,.3,1); }
 .is-resizing .library-toolbar { transition: none; }
 .navigation-history { display: flex; align-items: center; gap: 0; }
 .navigation-history .chrome-button { width: 25px; min-width: 25px; }
@@ -1075,8 +1075,10 @@ u,
 .note-heading, .note-content { width: 100%; max-width: var(--reading-width); margin-inline: auto; padding-inline: 36px; }
 .note-heading { padding-top: 26px; padding-bottom: 4px; }
 .note-content { padding-top: 6px; }
-.scribe-app .editor-title-input { font: inherit; font-size: 28px; font-weight: 700; line-height: 1.35; letter-spacing: -.025em; text-align: start; margin-bottom: 4px; }
+.scribe-app .editor-title-input { font: inherit; font-size: calc(var(--note-font-size, 14px) * 1.65); font-weight: 700; line-height: 1.35; letter-spacing: -.025em; text-align: start; margin-bottom: 4px; }
 .scribe-app .tiptap { font-family: inherit; font-size: var(--note-font-size); }
+.scribe-app .tiptap :not(pre) > code { font-size: 0.88em; }
+.scribe-app .tiptap pre { font-size: 0.88em; }
 .scribe-app .tiptap p { font-size: inherit; line-height: 1.65; margin-bottom: .7em; }
 .scribe-app .tiptap li { line-height: 1.65; }
 .scribe-app .tiptap li > p { margin-bottom: 0; }
@@ -1091,8 +1093,6 @@ u,
 .scribe-app .tiptap table { margin-block: 1.4em; }
 .scribe-app .tiptap td, .scribe-app .tiptap th { font-size: inherit; }
 .scribe-app .tiptap td p, .scribe-app .tiptap th p { font-size: .92em; }
-.writing-focus { --reading-width: 820px; }
-.writing-focus .note-heading { padding-top: 36px; }
 .link-editor { position: fixed; z-index: 95; width: 320px; max-width: calc(100vw - 24px); padding: 14px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--editor-bg); color: var(--text-primary); box-shadow: 0 12px 40px #00000028; -webkit-app-region: no-drag; }
 .link-input { display: block; width: 100%; padding: 9px 10px; margin-top: 5px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--card-hover); color: var(--text-primary); font-size: 13px; }
 .primary-button { padding: 7px 12px; border-radius: 6px; background: var(--text-primary); color: var(--editor-bg); font-size: 12px; font-weight: 500; }

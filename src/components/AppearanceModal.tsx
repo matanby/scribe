@@ -1,10 +1,10 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Check, Palette, Type, Sun, Moon, Laptop } from 'lucide-react';
+import { X, Check, Palette, Sun, Moon, Laptop, Minus, Plus } from 'lucide-react';
 import { ShortcutSettings } from './ShortcutSettings';
 import { useFocusTrap } from '../utils/useFocusTrap';
 
-import { AppearanceSettings, ACCENT_PALETTES } from '../utils/appearance';
+import { AppearanceSettings, ACCENT_PALETTES, resolveNoteFontSize, DEFAULT_NOTE_FONT_SIZE, MIN_NOTE_FONT_SIZE, MAX_NOTE_FONT_SIZE } from '../utils/appearance';
 export type { AppearanceSettings } from '../utils/appearance';
 export { ACCENT_PALETTES } from '../utils/appearance';
 
@@ -22,7 +22,18 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
   onUpdateSettings
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
+  const [zoomFactor, setZoomFactor] = useState(1);
   useFocusTrap(panelRef, isOpen);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    window.scribeAPI?.getZoomFactor?.().then(factor => {
+      if (Number.isFinite(factor) && factor > 0) setZoomFactor(factor);
+    }).catch(() => {});
+    return window.scribeAPI?.onZoomChanged?.(factor => {
+      if (Number.isFinite(factor) && factor > 0) setZoomFactor(factor);
+    });
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -38,6 +49,8 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
+
+  const noteFontSize = resolveNoteFontSize(settings.fontSize);
 
   const modalContent = (
     <div 
@@ -177,6 +190,106 @@ export const AppearanceModal: React.FC<AppearanceModalProps> = ({
               >
                 <Moon size={14} />
                 <span>Dark</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Note Font Size */}
+          <div className="pt-3 border-t border-[var(--border-color)] flex items-center justify-between">
+            <div className="pr-4">
+              <div className="text-xs font-semibold text-[var(--text-primary)]">
+                Note Font Size
+              </div>
+              <div className="text-[11px] text-[var(--text-secondary)] mt-0.5 leading-snug">
+                Adjust text size in the main note viewer (⌥⌘+ / ⌥⌘-)
+              </div>
+            </div>
+
+            <div className="inline-flex items-center rounded-xl border border-[var(--border-color)] bg-black/[0.02] dark:bg-white/[0.03] p-0.5 shrink-0">
+              <button
+                type="button"
+                aria-label="Decrease note font size"
+                title="Smaller Text (⌥⌘-)"
+                disabled={noteFontSize <= MIN_NOTE_FONT_SIZE}
+                onClick={() => onUpdateSettings({ fontSize: Math.max(MIN_NOTE_FONT_SIZE, noteFontSize - 1) })}
+                className="h-7 w-7 inline-flex items-center justify-center rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-35 disabled:pointer-events-none transition-colors"
+              >
+                <Minus size={14} />
+              </button>
+              <button
+                type="button"
+                aria-label="Reset note font size"
+                title="Default Text Size (14px)"
+                onClick={() => onUpdateSettings({ fontSize: DEFAULT_NOTE_FONT_SIZE })}
+                className="h-7 min-w-[52px] px-2 text-xs font-medium tabular-nums text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 rounded-lg transition-colors"
+              >
+                {noteFontSize}px
+              </button>
+              <button
+                type="button"
+                aria-label="Increase note font size"
+                title="Bigger Text (⌥⌘+)"
+                disabled={noteFontSize >= MAX_NOTE_FONT_SIZE}
+                onClick={() => onUpdateSettings({ fontSize: Math.min(MAX_NOTE_FONT_SIZE, noteFontSize + 1) })}
+                className="h-7 w-7 inline-flex items-center justify-center rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-35 disabled:pointer-events-none transition-colors"
+              >
+                <Plus size={14} />
+              </button>
+            </div>
+          </div>
+
+          {/* Interface Zoom */}
+          <div className="pt-3 border-t border-[var(--border-color)] flex items-center justify-between">
+            <div className="pr-4">
+              <div className="text-xs font-semibold text-[var(--text-primary)]">
+                Interface Zoom
+              </div>
+              <div className="text-[11px] text-[var(--text-secondary)] mt-0.5 leading-snug">
+                Scale the interface resolution (⌘+ / ⌘- / ⌘0)
+              </div>
+            </div>
+
+            <div className="inline-flex items-center rounded-xl border border-[var(--border-color)] bg-black/[0.02] dark:bg-white/[0.03] p-0.5 shrink-0">
+              <button
+                type="button"
+                aria-label="Zoom out"
+                title="Zoom Out (⌘-)"
+                disabled={zoomFactor <= 0.701}
+                onClick={() => {
+                  void window.scribeAPI?.zoomOut?.().then(factor => {
+                    if (Number.isFinite(factor) && factor > 0) setZoomFactor(factor);
+                  });
+                }}
+                className="h-7 w-7 inline-flex items-center justify-center rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-35 disabled:pointer-events-none transition-colors"
+              >
+                <Minus size={14} />
+              </button>
+              <button
+                type="button"
+                aria-label="Reset zoom to actual size"
+                title="Actual Size (⌘0)"
+                onClick={() => {
+                  void window.scribeAPI?.resetZoom?.().then(factor => {
+                    if (Number.isFinite(factor) && factor > 0) setZoomFactor(factor);
+                  });
+                }}
+                className="h-7 min-w-[52px] px-2 text-xs font-medium tabular-nums text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 rounded-lg transition-colors"
+              >
+                {Math.round(zoomFactor * 100)}%
+              </button>
+              <button
+                type="button"
+                aria-label="Zoom in"
+                title="Zoom In (⌘+)"
+                disabled={zoomFactor >= 1.499}
+                onClick={() => {
+                  void window.scribeAPI?.zoomIn?.().then(factor => {
+                    if (Number.isFinite(factor) && factor > 0) setZoomFactor(factor);
+                  });
+                }}
+                className="h-7 w-7 inline-flex items-center justify-center rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-35 disabled:pointer-events-none transition-colors"
+              >
+                <Plus size={14} />
               </button>
             </div>
           </div>

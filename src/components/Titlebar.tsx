@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Search, FolderOpen, Sun, Moon, Check, RefreshCw, PanelLeft, X, MoreHorizontal, ChevronLeft, ChevronRight, NotebookPen, AlertTriangle, Focus, SquarePen } from 'lucide-react';
+import { Search, FolderOpen, Sun, Moon, Check, RefreshCw, PanelLeft, X, MoreHorizontal, ChevronLeft, ChevronRight, NotebookPen, AlertTriangle, SquarePen } from 'lucide-react';
 import { Popover } from './Popover';
 
 interface TitlebarProps {
@@ -21,8 +21,6 @@ interface TitlebarProps {
   onToggleTheme: () => void;
   showSidebar: boolean;
   onToggleSidebar: () => void;
-  writingFocus: boolean;
-  onToggleFocus: () => void;
   libraryWidth: number;
   toolbarRef: (element: HTMLDivElement | null) => void;
   searchInputRef?: React.RefObject<HTMLInputElement>;
@@ -63,14 +61,13 @@ export const Titlebar: React.FC<TitlebarProps> = (props) => {
     ...(props.onRevealDocument ? [{ label: 'Reveal in Finder', icon: FolderOpen, run: props.onRevealDocument }] : []),
     ...(props.onOpenLibrary ? [{ label: 'Open Notes Library', icon: NotebookPen, run: props.onOpenLibrary }] : []),
     ...(!documentMode ? [
-      { label: props.writingFocus ? 'Leave Writing Focus' : 'Enter Writing Focus', icon: Focus, run: props.onToggleFocus, shortcut: '⌘⇧L' },
       ...(props.onQuickCapture ? [{ label: 'Quick Capture…', icon: NotebookPen, run: props.onQuickCapture }] : []),
       { label: 'Open Notes Folder…', icon: FolderOpen, run: props.onSelectFolder }
     ] : []),
     { label: props.isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode', icon: props.isDark ? Sun : Moon, run: props.onToggleTheme }
   ];
   return <header ref={headerRef} className={`app-titlebar titlebar-drag-region no-print ${documentMode ? 'document-titlebar' : ''}`}>
-    <div className={`library-toolbar ${props.libraryWidth < 380 ? 'compact-navigation' : ''}`} style={{ width: documentMode ? 92 : props.libraryWidth }}>
+    <div className={`library-toolbar ${props.libraryWidth < 380 ? 'compact-navigation' : ''}`} style={{ width: documentMode ? 'max(92px, calc(84px / var(--app-zoom, 1)))' : props.libraryWidth }}>
       {!documentMode && <>
         <button onClick={props.onToggleSidebar} className="chrome-button titlebar-no-drag" aria-label={props.showSidebar ? 'Hide folders' : 'Show folders'} title={`${props.showSidebar ? 'Hide' : 'Show'} Folders (⌘\\)`} aria-pressed={props.showSidebar}><PanelLeft size={18} /></button>
         <div className="navigation-history titlebar-no-drag">
@@ -97,7 +94,6 @@ export const Titlebar: React.FC<TitlebarProps> = (props) => {
         {saveFailed ? <><AlertTriangle size={15} /><span>{props.lastSavedText}</span></> : showSaving ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
         {!saveFailed && <span className="sr-only">{showSaving ? 'Saving changes' : props.lastSavedText ? 'All changes saved' : ''}</span>}
       </div>
-      {!documentMode && <button onClick={props.onToggleFocus} className="chrome-button focus-toggle" aria-pressed={props.writingFocus} aria-label={props.writingFocus ? 'Leave writing focus' : 'Enter writing focus'} title="Writing Focus (⌘⇧L)"><Focus size={17} /></button>}
       <Popover label="More actions" align="right" triggerClassName="chrome-button" trigger={<MoreHorizontal size={18} />}>
         {close => <>{actions.map(({ label, icon: Icon, run, ...action }) => <button key={label} className="menu-item" onClick={() => { close(); run(); }}><Icon size={15} /><span>{label}</span>{'shortcut' in action && <kbd>{action.shortcut}</kbd>}</button>)}</>}
       </Popover>

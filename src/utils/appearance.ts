@@ -1,10 +1,23 @@
 export interface AppearanceSettings {
   accentColor: string;
   fontFamily: 'sans' | 'serif' | 'mono';
-  fontSize: 'compact' | 'normal' | 'large';
+  fontSize: 'compact' | 'normal' | 'large' | number;
   themeMode: 'system' | 'light' | 'dark';
   smartTypography?: boolean;
   autoSortTasks?: boolean;
+}
+
+export const DEFAULT_NOTE_FONT_SIZE = 14;
+export const MIN_NOTE_FONT_SIZE = 12;
+export const MAX_NOTE_FONT_SIZE = 26;
+
+export function resolveNoteFontSize(fontSize?: AppearanceSettings['fontSize']): number {
+  if (typeof fontSize === 'number' && Number.isFinite(fontSize)) {
+    return Math.min(MAX_NOTE_FONT_SIZE, Math.max(MIN_NOTE_FONT_SIZE, Math.round(fontSize)));
+  }
+  if (fontSize === 'compact') return 13;
+  if (fontSize === 'large') return 16;
+  return DEFAULT_NOTE_FONT_SIZE;
 }
 
 export const ACCENT_PALETTES = [
