@@ -49,6 +49,14 @@ Open the DMG, drag Scribe to Applications, then eject the DMG. The current relea
 
 Choose **Open Notes Folder…** to pick where your notes live. A folder managed by Google Drive or another sync service works too; that service handles syncing. Attachments sit in an assets folder beside your notes. Version History is stored locally on this Mac.
 
+## Finder previews
+
+Packaged builds include a Quick Look extension for macOS Monterey (12) or later. Install Scribe in Applications and open it once, then select a `.md` or `.markdown` file in Finder and press **Space** to preview it. Scribe does not need to be running.
+
+If macOS does not show the preview, enable **Scribe** under **System Settings → General → Login Items & Extensions → Quick Look**. Other Markdown preview extensions may need to be disabled. On older macOS versions, look under **Extensions → Quick Look**.
+
+Previews support headings, lists, checklists, tables, code, highlights, and mixed Hebrew/English text. They are read-only. External images and sibling attachments are represented by their labels; Quick Look only grants the extension access to the selected document. Files larger than 2 MB cannot be previewed.
+
 ## A few shortcuts
 
 - **⌘N** — New note
@@ -60,12 +68,16 @@ See **Help → Keyboard Shortcuts** in the app for the full list. For details on
 
 ## Build from source
 
-On a Mac with Node.js 22 or later:
+On a Mac with Node.js 22 or later and Xcode Command Line Tools (needed to compile the native Quick Look extension):
 
     npm ci
     npm run dist
 
 The DMGs are written to release/. GitHub Actions builds Apple silicon and Intel versions when a version tag is pushed.
+
+Run `npm test` for the app checks and `npm run test:quicklook` for the native WebKit preview checks. Quick Look is bundled by `npm run dist`; the Electron development server does not install it.
+
+Use `npm run test:quicklook -- --benchmark` to measure first-request and subsequent Markdown generation times. These timings exclude Finder's extension launch and display time.
 
 ## License
 

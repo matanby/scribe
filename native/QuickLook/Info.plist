@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>com.scribe.notes.quicklook</string>
+  <key>CFBundleName</key><string>Scribe Quick Look</string>
+  <key>CFBundleDisplayName</key><string>Scribe</string>
+  <key>CFBundleExecutable</key><string>ScribeQuickLook</string>
+  <key>CFBundlePackageType</key><string>XPC!</string>
+  <key>CFBundleVersion</key><string>__VERSION__</string>
+  <key>CFBundleShortVersionString</key><string>__VERSION__</string>
+  <key>CFBundleSupportedPlatforms</key><array><string>MacOSX</string></array>
+  <key>LSMinimumSystemVersion</key><string>12.0</string>
+  <key>NSExtension</key><dict>
+    <key>NSExtensionPointIdentifier</key><string>com.apple.quicklook.preview</string>
+    <key>NSExtensionPrincipalClass</key><string>PreviewProvider</string>
+    <key>NSExtensionAttributes</key><dict>
+      <key>QLIsDataBasedPreview</key><true/>
+      <key>QLSupportsSearchableItems</key><false/>
+      <key>QLSupportedContentTypes</key><array><string>net.daringfireball.markdown</string></array>
+    </dict>
+  </dict>
+</dict></plist>

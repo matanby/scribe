@@ -1,20 +1,10 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { getDirection, RTL_REGEX } from '../utils/textDirection';
+export { getDirection, RTL_REGEX, LTR_REGEX } from '../utils/textDirection';
 
 export type TextDirection = 'rtl' | 'ltr' | 'auto';
 const directionTypes = ['paragraph', 'heading', 'bulletList', 'orderedList', 'taskList', 'listItem', 'taskItem', 'blockquote', 'table'];
-
-export const RTL_REGEX = /[\u0590-\u05FF\uFB1D-\uFB4F\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
-export const LTR_REGEX = /[a-zA-Z\u00C0-\u024F\u1E00-\u1EFF]/;
-
-export function getDirection(text: string): 'rtl' | 'ltr' | 'auto' {
-  if (!text || !text.trim()) return 'auto';
-  for (const char of text) {
-    if (RTL_REGEX.test(char)) return 'rtl';
-    if (LTR_REGEX.test(char)) return 'ltr';
-  }
-  return 'auto';
-}
 
 export function getDocDirection(doc: any): 'rtl' | 'ltr' {
   const text = doc.textContent;

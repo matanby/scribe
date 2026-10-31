@@ -1,6 +1,8 @@
 const { execFileSync } = require('child_process')
 const path = require('path')
 const fs = require('fs/promises')
+const { Arch } = require('builder-util')
+const buildQuickLook = require('./buildQuickLook.cjs')
 
 /**
  * Ad-hoc sign the packed .app (identity "-") so Apple Silicon will launch it.
@@ -41,4 +43,11 @@ module.exports = async function afterPack(context) {
     ],
     { stdio: 'inherit' }
   )
+
+  // Add the sandboxed extension after signing Electron's nested helpers, then
+  // re-seal the host without --deep so the extension keeps its own entitlements.
+  await buildQuickLook({ appPath, projectDir: context.packager.projectDir,
+    arch: Arch[context.arch], version: context.packager.appInfo.version })
+  execFileSync('codesign', ['--sign', '-', '--force', '--timestamp=none',
+    '--entitlements', entitlements, appPath], { stdio: 'inherit' })
 }

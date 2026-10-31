@@ -21,6 +21,7 @@
     "test:bidi": "tsx electron/bidi.test.ts",
     "test:direction": "esbuild electron/direction.renderer.test.ts --bundle --platform=browser --format=iife --outfile=dist-electron/direction.renderer.test.js && esbuild electron/direction.test.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist-electron/direction.test.cjs && electron dist-electron/direction.test.cjs",
     "test:links": "tsx src/utils/links.test.ts",
+    "test:quicklook": "node electron/quickLook.test.cjs",
     "test:ui": "tailwindcss -i src/styles/index.css -o dist-electron/ui-test.css && esbuild electron/ui.renderer.test.tsx --bundle --platform=browser --format=iife --outfile=dist-electron/ui.renderer.test.js && esbuild electron/ui.test.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist-electron/ui.test.cjs && electron dist-electron/ui.test.cjs"
   },
   "dependencies": {
@@ -47,24 +48,32 @@
     "@tiptap/react": "^2.11.5",
     "@tiptap/starter-kit": "^2.11.5",
     "@types/katex": "^0.16.8",
+    "@types/markdown-it": "^14.2.0",
     "@types/node": "^22.13.9",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
+    "@types/sanitize-html": "^2.16.2",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "clsx": "^2.1.1",
+    "dom-serializer": "^3.1.1",
+    "domhandler": "^6.0.1",
+    "domutils": "^4.0.2",
     "electron": "^34.3.0",
     "electron-builder": "^25.1.8",
     "esbuild": "^0.25.0",
     "fuse.js": "^7.5.0",
+    "htmlparser2": "^12.0.0",
     "katex": "^0.18.4",
     "lowlight": "^3.3.0",
     "lucide-react": "^1.16.0",
+    "markdown-it": "^14.3.3",
     "markdown-it-mark": "^4.0.0",
     "markdown-it-task-lists": "^2.1.1",
     "postcss": "^8.5.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "sanitize-html": "^2.18.1",
     "tailwind-merge": "^3.0.2",
     "tailwindcss": "^3.4.17",
     "tiptap-markdown": "^0.8.10",
@@ -92,6 +101,41 @@
     ],
     "artifactName": "${productName}-${version}-${arch}.${ext}",
     "mac": {
+      "extendInfo": {
+        "CFBundleDocumentTypes": [
+          {
+            "CFBundleTypeName": "Markdown Document",
+            "CFBundleTypeRole": "Editor",
+            "CFBundleTypeIconFile": "icon.icns",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": [
+              "net.daringfireball.markdown"
+            ],
+            "CFBundleTypeExtensions": [
+              "md",
+              "markdown"
+            ]
+          }
+        ],
+        "UTImportedTypeDeclarations": [
+          {
+            "UTTypeIdentifier": "net.daringfireball.markdown",
+            "UTTypeDescription": "Markdown Document",
+            "UTTypeConformsTo": [
+              "public.plain-text"
+            ],
+            "UTTypeTagSpecification": {
+              "public.filename-extension": [
+                "md",
+                "markdown"
+              ],
+              "public.mime-type": [
+                "text/markdown"
+              ]
+            }
+          }
+        ]
+      },
       "category": "public.app-category.productivity",
       "icon": "public/icon.icns",
       "identity": null,
@@ -106,17 +150,6 @@
             "arm64",
             "x64"
           ]
-        }
-      ],
-      "fileAssociations": [
-        {
-          "ext": [
-            "md",
-            "markdown"
-          ],
-          "name": "Markdown Document",
-          "role": "Editor",
-          "rank": "Alternate"
         }
       ]
     },
