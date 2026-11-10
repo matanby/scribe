@@ -15,7 +15,31 @@
     ul, ol { padding-inline-start: 1.8em; padding-inline-end: 0; }
     li > p { margin-block: .2em; }
     li.task-list-item, li[data-type="taskItem"] { list-style: none; }
-    input[type="checkbox"] { margin-inline: -1.5em .5em; vertical-align: middle; }
+    input[type="checkbox"] {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 1.15em;
+      height: 1.15em;
+      border: 1.75px solid light-dark(#8E8E93, #555558);
+      border-radius: 50%;
+      background: transparent;
+      vertical-align: middle;
+      display: inline-grid;
+      place-content: center;
+      margin-inline: -1.5em .5em;
+    }
+    input[type="checkbox"]:checked {
+      background-color: #E5A00D;
+      border-color: #E5A00D;
+    }
+    input[type="checkbox"]:checked::before {
+      content: "";
+      width: 0.68em;
+      height: 0.68em;
+      background-color: light-dark(#fff, #202020);
+      -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.4 6.2L4.8 8.8L9.6 3.4'/%3E%3C/svg%3E") center/contain no-repeat;
+      mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.4 6.2L4.8 8.8L9.6 3.4'/%3E%3C/svg%3E") center/contain no-repeat;
+    }
     li[data-type="taskItem"] { display: flex; gap: .5em; }
     li[data-type="taskItem"] > label { flex: 0 0 auto; }
     li[data-type="taskItem"] > label input { margin: 0; }

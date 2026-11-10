@@ -1,7 +1,7 @@
 cask "scribe" do
   arch arm: "arm64", intel: "x64"
 
-  version "1.0.3"
+  version "1.0.4"
   sha256 :no_check
 
   url "https://github.com/matanby/scribe/releases/download/v#{version}/Scribe-#{version}-#{arch}.dmg"

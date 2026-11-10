@@ -378,7 +378,7 @@ li[data-type="taskItem"] > label > input[type="checkbox"],
   width: 1.15rem !important;
   height: 1.15rem !important;
   border: 1.75px solid #8E8E93 !important;
-  border-radius: 5px !important;
+  border-radius: 50% !important;
   background-color: transparent !important;
   cursor: pointer !important;
   display: grid !important;
@@ -386,6 +386,14 @@ li[data-type="taskItem"] > label > input[type="checkbox"],
   margin: 0 !important;
   padding: 0 !important;
   transition: all 0.16s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.dark ul.task-list > li > label input[type="checkbox"],
+.dark li.task-item > label input[type="checkbox"],
+.dark li[data-type="taskItem"] > label > input[type="checkbox"],
+.dark .ProseMirror li[data-type="taskItem"] > label > input[type="checkbox"],
+.dark .tiptap li[data-type="taskItem"] > label > input[type="checkbox"] {
+  border-color: #555558 !important;
 }
 
 ul.task-list > li > label input[type="checkbox"]:hover,
@@ -402,7 +410,6 @@ li[data-type="taskItem"] > label > input[type="checkbox"]:checked,
 .ProseMirror li[data-type="taskItem"] > label > input[type="checkbox"]:checked {
   background-color: var(--accent-color) !important;
   border-color: var(--accent-color) !important;
-  transform: scale(1.05);
 }
 
 ul.task-list > li > label input[type="checkbox"]:checked::before,
@@ -410,11 +417,17 @@ li.task-item > label input[type="checkbox"]:checked::before,
 li[data-type="taskItem"] > label > input[type="checkbox"]:checked::before,
 .ProseMirror li[data-type="taskItem"] > label > input[type="checkbox"]:checked::before {
   content: "" !important;
-  width: 0.38rem !important;
+  width: 0.68rem !important;
   height: 0.68rem !important;
-  border: solid white !important;
-  border-width: 0 2.2px 2.2px 0 !important;
-  transform: rotate(45deg) translate(-1px, -1px) !important;
+  background-color: var(--editor-bg) !important;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.4 6.2L4.8 8.8L9.6 3.4'/%3E%3C/svg%3E") !important;
+  -webkit-mask-size: contain !important;
+  -webkit-mask-repeat: no-repeat !important;
+  -webkit-mask-position: center !important;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.4 6.2L4.8 8.8L9.6 3.4'/%3E%3C/svg%3E") !important;
+  mask-size: contain !important;
+  mask-repeat: no-repeat !important;
+  mask-position: center !important;
 }
 
 /* Task Item Text Body - strictly inline with no line breaks */
