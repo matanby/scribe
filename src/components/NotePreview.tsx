@@ -17,6 +17,7 @@ import TaskItem from '@tiptap/extension-task-item';
 import markPlugin from 'markdown-it-mark';
 import { BiDiExtension } from '../extensions/BiDiExtension';
 import { CalloutExtension } from '../extensions/CalloutExtension';
+import { MarkdownFidelity, RawHtmlBlock, RawHtmlInline } from '../extensions/MarkdownFidelity';
 
 /** Dedicated read-only instance: no autosave, formatting menus, or editing shortcuts. */
 export const NotePreview: React.FC<{ markdown: string }> = ({ markdown }) => {
@@ -24,7 +25,9 @@ export const NotePreview: React.FC<{ markdown: string }> = ({ markdown }) => {
     editable: false,
     content: markdown,
     extensions: [
-      StarterKit.configure({ blockquote: false }), CalloutExtension,
+      StarterKit.configure({ blockquote: false, heading: { levels: [1, 2, 3, 4, 5, 6] } }), CalloutExtension,
+      // Same Markdown reading as the editor: line breaks, blank lines and kept HTML.
+      MarkdownFidelity, RawHtmlBlock, RawHtmlInline,
       Underline,
       Highlight.extend({
         addStorage() {

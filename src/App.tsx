@@ -698,6 +698,13 @@ export const App: React.FC = () => {
         e.preventDefault();
         stepNoteFontSize(-1);
       }
+      // Cmd+Backspace trashes the note only outside text; in text it deletes to the line start.
+      const target = e.target as HTMLElement | null;
+      const inText = !!target?.closest('input, textarea, [contenteditable="true"], .ProseMirror');
+      if (e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && e.key === 'Backspace' && !inText) {
+        e.preventDefault();
+        window.dispatchEvent(new Event('scribe:trashNote'));
+      }
       if (e.key === 'Escape') {
         setIsAppearanceOpen(false);
         setIsQuickSwitcherOpen(false);
@@ -754,13 +761,18 @@ export const App: React.FC = () => {
     }
   }, [selectedFolder, loadTree, trashNoteWithUndo]);
 
-  useEffect(() => window.scribeAPI.onMenuEvent('menu:trashNote', () => {
-    if (documentMode || isQuickSwitcherOpen || isAppearanceOpen || document.querySelector('[aria-modal="true"]') || selectedFolder === '__TRASH__') return;
-    const note = selectedNoteRef.current;
-    if (note && !note.isFolder) void handleDeleteNote(note).then(() => {
-      requestAnimationFrame(() => document.querySelector<HTMLElement>('.note-list-row[aria-current="true"]')?.focus());
-    });
-  }), [handleDeleteNote, selectedFolder, isQuickSwitcherOpen, isAppearanceOpen, documentMode]);
+  useEffect(() => {
+    const trash = () => {
+      if (documentMode || isQuickSwitcherOpen || isAppearanceOpen || document.querySelector('[aria-modal="true"]') || selectedFolder === '__TRASH__') return;
+      const note = selectedNoteRef.current;
+      if (note && !note.isFolder) void handleDeleteNote(note).then(() => {
+        requestAnimationFrame(() => document.querySelector<HTMLElement>('.note-list-row[aria-current="true"]')?.focus());
+      });
+    };
+    const unsubscribe = window.scribeAPI.onMenuEvent('menu:trashNote', trash);
+    window.addEventListener('scribe:trashNote', trash);
+    return () => { unsubscribe(); window.removeEventListener('scribe:trashNote', trash); };
+  }, [handleDeleteNote, selectedFolder, isQuickSwitcherOpen, isAppearanceOpen, documentMode]);
 
   // Restore note from trash
   const handleRestoreNote = useCallback(async (note: NoteMeta, e: React.MouseEvent) => {

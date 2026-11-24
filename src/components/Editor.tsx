@@ -9,7 +9,6 @@ import TaskList from '@tiptap/extension-task-list';
 import taskListPlugin from 'markdown-it-task-lists';
 import markPlugin from 'markdown-it-mark';
 import { CustomTaskItem } from '../extensions/CustomTaskItem';
-import Link from '@tiptap/extension-link';
 import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
@@ -18,10 +17,13 @@ import Highlight from '@tiptap/extension-highlight';
 import Underline from '@tiptap/extension-underline';
 import { ResizableImage } from '../extensions/ResizableImage';
 import { Attachment } from '../extensions/Attachment';
-import Typography from '@tiptap/extension-typography';
 import { DirectionMarkdown } from '../extensions/DirectionMarkdown';
 import { BiDiExtension } from '../extensions/BiDiExtension';
 import { CleanBackspaceExtension } from '../extensions/CleanBackspaceExtension';
+import { WordDeleteExtension } from '../extensions/WordDeleteExtension';
+import { EditingKeys } from '../extensions/EditingKeys';
+import { InlineCode, NoteLink, SmartTypography } from '../extensions/InlineMarks';
+import { MarkdownFidelity, RawHtmlBlock, RawHtmlInline } from '../extensions/MarkdownFidelity';
 import { ListKeyboard } from '../extensions/ListKeyboard';
 import { SearchReplaceExtension } from '../extensions/SearchReplaceExtension';
 import { CalloutExtension } from '../extensions/CalloutExtension';
@@ -32,6 +34,7 @@ import { FormattingBar } from './FormattingBar';
 import { LinkEditor, LinkAnchor } from './LinkEditor';
 import { FLUSH_NOTE_EVENT, FlushNoteRequest } from '../utils/flushNote';
 import { keepCaretComfortable } from '../utils/caretVisibility';
+import { keepOrderedTaskText, restoreEmptyTaskItems } from '../utils/markdownTasks';
 import { readPosition, savePosition } from '../utils/session';
 import { NoteInfo } from './NoteInfo';
 import { TableControls } from './TableControls';
@@ -342,10 +345,12 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
     content: initialMarkdown,
     extensions: [
       StarterKit.configure({
+        code: false,
         codeBlock: false,
         blockquote: false,
+        // Only levels 1-3 are offered in the editor, but notes from other apps keep 4-6.
         heading: {
-          levels: [1, 2, 3]
+          levels: [1, 2, 3, 4, 5, 6]
         },
         bulletList: {
           keepMarks: true,
@@ -388,6 +393,8 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
                   markdownit.use(taskListPlugin);
                 },
                 updateDOM(element: HTMLElement) {
+                  keepOrderedTaskText(element);
+                  restoreEmptyTaskItems(element);
                   element.querySelectorAll('.contains-task-list').forEach((list: any) => {
                     list.setAttribute('data-type', 'taskList');
                     list.setAttribute('data-tight', 'true');
@@ -409,7 +416,8 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
           class: 'task-item'
         }
       }),
-      Link.configure({
+      InlineCode,
+      NoteLink.configure({
         openOnClick: false,
         HTMLAttributes: {
           class: 'text-[var(--accent-color)] underline cursor-pointer hover:opacity-80'
@@ -476,7 +484,7 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
           };
         }
       }),
-      ...(smartTypography ? [Typography] : []),
+      ...(smartTypography ? [SmartTypography] : []),
       MathExtension,
       Attachment,
       ResizableImage.configure({
@@ -491,8 +499,13 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
         tightLists: true,
         bulletListMarker: '-'
       }),
+      MarkdownFidelity,
+      RawHtmlBlock,
+      RawHtmlInline,
       BiDiExtension,
       CleanBackspaceExtension,
+      WordDeleteExtension,
+      EditingKeys,
       ListKeyboard,
       SearchReplaceExtension
     ],
@@ -568,7 +581,18 @@ const TipTapNoteEditor: React.FC<TipTapNoteEditorProps> = ({
     const subscriptions = Object.entries(actions).map(([name, run]) => window.scribeAPI.onMenuEvent(name, () => {
       if (!document.querySelector('[aria-modal="true"]') && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') run();
     }));
-    return () => subscriptions.forEach(unsubscribe => unsubscribe());
+    // Edit ▸ Undo / Redo (see runEditCommand in the main process) use the editor's history.
+    const editCommand = (command: 'undo' | 'redo') => {
+      if (editor.isDestroyed || !editor.view.hasFocus()) return false;
+      if (command === 'undo') editor.commands.undo();
+      else editor.commands.redo();
+      return true;
+    };
+    (window as any).__scribeEditCommand = editCommand;
+    return () => {
+      subscriptions.forEach(unsubscribe => unsubscribe());
+      if ((window as any).__scribeEditCommand === editCommand) delete (window as any).__scribeEditCommand;
+    };
   }, [editor]);
 
   useEffect(() => {

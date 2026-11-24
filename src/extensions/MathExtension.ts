@@ -91,10 +91,14 @@ function buildMathDecorations(state: any): DecorationSet {
   const selFrom = selection.from;
   const selTo = selection.to;
 
-  // Find all matches in text nodes
-  doc.descendants((node: any, pos: number) => {
-    if (node.isText && node.text) {
-      const text = node.text;
+  // Search each textblock as a whole: a formula can span marks and line breaks
+  // ($$ on its own line), and offsets in this text equal document offsets.
+  doc.descendants((block: any, blockPos: number) => {
+    if (!block.isTextblock) return true;
+    if (block.type.spec.code) return false;
+    const pos = blockPos + 1;
+    const text: string = block.textBetween(0, block.content.size, undefined, (leaf: any) => leaf.type.name === 'hardBreak' ? '\n' : '\ufffc');
+    if (text.includes('$')) {
 
       // Ranges already claimed by block math, so the inline pass below doesn't also
       // match a `$...$` pair *inside* a `$$...$$` formula and render it twice.
@@ -177,6 +181,7 @@ function buildMathDecorations(state: any): DecorationSet {
         }
       }
     }
+    return false;
   });
 
   return DecorationSet.create(doc, decorations);

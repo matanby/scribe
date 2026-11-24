@@ -1,5 +1,6 @@
 import { DOMSerializer, Fragment } from '@tiptap/pm/model';
 import { Markdown } from 'tiptap-markdown';
+import { patchMarkSerializer, patchNodeSerializer } from './MarkdownFidelity';
 
 /** Keep regular Markdown, using standard HTML only where direction needs saving. */
 export const DirectionMarkdown = Markdown.extend({
@@ -7,8 +8,10 @@ export const DirectionMarkdown = Markdown.extend({
     this.parent?.();
     const serializer = this.editor.storage.markdown.serializer;
     const original = serializer.serializeNode.bind(serializer);
+    const originalMark = serializer.serializeMark.bind(serializer);
+    serializer.serializeMark = (extension: any) => patchMarkSerializer(extension.name, originalMark(extension));
     serializer.serializeNode = (extension: any) => {
-      const serialize = original(extension);
+      const serialize = patchNodeSerializer(extension.name, original(extension));
       if (!serialize) return serialize;
       return (state: any, node: any, parent: any, index: number) => {
         let manual = !!node.attrs.directionOverride;

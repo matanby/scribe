@@ -39,6 +39,12 @@ export const CalloutExtension = Blockquote.extend({
             class: `callout callout-${type}`
           };
         }
+      },
+      // `> [!warning] Title` keeps its title; it is shown above the body and saved back.
+      calloutTitle: {
+        default: null,
+        parseHTML: element => element.getAttribute('data-callout-title') || null,
+        renderHTML: attributes => attributes.calloutTitle ? { 'data-callout-title': attributes.calloutTitle } : {}
       }
     };
   },
@@ -54,9 +60,16 @@ export const CalloutExtension = Blockquote.extend({
       markdown: {
         serialize(state: any, node: any) {
           const type = node.attrs.calloutType || 'quote';
+          const marker = `[!${type}]${node.attrs.calloutTitle ? ` ${node.attrs.calloutTitle}` : ''}`;
+          // A titled callout with no body is just its marker line.
+          if (type !== 'quote' && node.attrs.calloutTitle && node.childCount === 1 && !node.firstChild.content.size) {
+            state.write(`> ${marker}`);
+            state.closeBlock(node);
+            return;
+          }
           // `firstDelim` lets the marker occupy the first line while the rest of the
-          // block is quoted normally, producing:  > [!warning]\n> body
-          const firstDelim = type === 'quote' ? null : `> [!${type}]\n> `;
+          // block is quoted normally, producing:  > [!warning] Title\n> body
+          const firstDelim = type === 'quote' ? null : `> ${marker}\n> `;
           state.wrapBlock('> ', firstDelim, node, () => state.renderContent(node));
         },
         parse: {
@@ -69,11 +82,23 @@ export const CalloutExtension = Blockquote.extend({
               if (!firstText) return;
 
               const value = firstText.nodeValue || '';
-              const match = value.match(/^[ \t]*\[!([a-zA-Z]+)\][ \t]*\r?\n?/);
+              const match = value.match(/^[ \t]*\[!([a-zA-Z]+)\][ \t]*/);
               if (!match) return;
 
               quote.setAttribute('data-callout', match[1].toLowerCase());
-              firstText.nodeValue = value.slice(match[0].length);
+              const rest = value.slice(match[0].length);
+              // The marker line ends at a line break (see MarkdownFidelity's softbreak);
+              // anything after the marker on that line is the title.
+              let next = firstText.nextSibling;
+              const lineBreak = next?.nodeName === 'BR' ? next : null;
+              const wholeLine = lineBreak || !next;
+              if (rest.trim() && wholeLine) {
+                quote.setAttribute('data-callout-title', rest.trim());
+                firstText.nodeValue = '';
+              } else {
+                firstText.nodeValue = rest.replace(/^\r?\n/, '');
+              }
+              if (lineBreak && !firstText.nodeValue) lineBreak.remove();
             });
           }
         }

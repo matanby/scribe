@@ -416,6 +416,21 @@ function attachWatcher(win: BrowserWindow, webContentsId: number, rootPath: stri
   }, documentFiles.get(webContentsId) || rootPath);
 }
 
+/**
+ * Undo and Redo go to the note editor's own history when it has focus. The browser's
+ * native undo stack doesn't know about most editor changes, so the Edit menu's built-in
+ * roles could miss them (Redo did nothing at all). Text fields keep the native behaviour.
+ */
+async function runEditCommand(command: 'undo' | 'redo', focusedWin?: BrowserWindow) {
+  const win = focusedWin || BrowserWindow.getFocusedWindow();
+  if (!win || win.isDestroyed()) return;
+  let handled = false;
+  try {
+    handled = await win.webContents.executeJavaScript(`typeof window.__scribeEditCommand === 'function' && window.__scribeEditCommand(${JSON.stringify(command)})`);
+  } catch {}
+  if (!handled) command === 'undo' ? win.webContents.undo() : win.webContents.redo();
+}
+
 function sendToFocusedWindow(channel: string, focusedWin?: BrowserWindow) {
   const win = focusedWin || BrowserWindow.getFocusedWindow() || Array.from(allWindows)[0];
   if (win && !win.isDestroyed()) {
@@ -527,7 +542,9 @@ function setupMenu() {
         },
         {
           id: 'trash-note', label: 'Move Note to Trash',
-          accelerator: 'CmdOrCtrl+Backspace',
+          // Shown, but not captured: while typing, Cmd+Backspace deletes to the start of
+          // the line. The renderer trashes the note when the shortcut comes from outside text.
+          accelerator: 'CmdOrCtrl+Backspace', registerAccelerator: false,
           click: (_item, focusedWin) => {
             if (focusedWin && allWindows.has(focusedWin as BrowserWindow)) sendToFocusedWindow('menu:trashNote', focusedWin as BrowserWindow);
           }
@@ -569,8 +586,8 @@ function setupMenu() {
     {
       label: 'Edit',
       submenu: [
-        { role: 'undo' as const },
-        { role: 'redo' as const },
+        { id: 'undo', label: 'Undo', accelerator: 'CmdOrCtrl+Z', click: (_item, focusedWin) => runEditCommand('undo', focusedWin as BrowserWindow) },
+        { id: 'redo', label: 'Redo', accelerator: 'Shift+CmdOrCtrl+Z', click: (_item, focusedWin) => runEditCommand('redo', focusedWin as BrowserWindow) },
         { type: 'separator' as const },
         { role: 'cut' as const },
         { role: 'copy' as const },

@@ -8,6 +8,7 @@ import Highlight from '@tiptap/extension-highlight';
 import Link from '@tiptap/extension-link';
 import { CustomTaskItem } from '../src/extensions/CustomTaskItem';
 import { ListKeyboard } from '../src/extensions/ListKeyboard';
+import { WordDeleteExtension } from '../src/extensions/WordDeleteExtension';
 import { BiDiExtension } from '../src/extensions/BiDiExtension';
 import { DirectionMarkdown } from '../src/extensions/DirectionMarkdown';
 import { checklistViewKey } from '../src/extensions/checklist';
@@ -25,7 +26,7 @@ export async function runWritingTests() {
     scroller.style.cssText = 'height:240px;width:650px;overflow:auto;position:relative;padding:0 40px;';
     const element = document.createElement('div'); scroller.append(element); document.body.append(scroller);
     const editor = new Editor({ element, content, extensions: [StarterKit, TaskList,
-      CustomTaskItem.configure({ nested: true, autoSort }), BiDiExtension, ListKeyboard, Underline, Highlight, Link.configure({ openOnClick: false }), DirectionMarkdown.configure({ html: true })],
+      CustomTaskItem.configure({ nested: true, autoSort }), BiDiExtension, WordDeleteExtension, ListKeyboard, Underline, Highlight, Link.configure({ openOnClick: false }), DirectionMarkdown.configure({ html: true })],
       editorProps: { attributes: { class: 'tiptap note-content' }, handleScrollToSelection: keepCaretComfortable } });
     instances.push(editor); return editor;
   };
@@ -196,6 +197,16 @@ export async function runWritingTests() {
   const backspace = create(list(taskHTML('')));
   backspace.commands.setTextSelection(3); keyboard(backspace, 'Backspace');
   check('Backspace on an empty task returns to body text', !backspace.isActive('taskItem') && !blocks(backspace).length);
+  const wordDelete = create(list(taskHTML('first task'), taskHTML('sdfl'), taskHTML('שלום, עולם')));
+  wordDelete.commands.setTextSelection(blocks(wordDelete)[1].pos + 2 + 'sdfl'.length);
+  check('Option+Backspace deletes a task\'s only word without starting a new line', keyboard(wordDelete, 'Backspace', { altKey: true }) && taskTexts(wordDelete) === 'first task||שלום, עולם' && wordDelete.state.selection.$from.parent.content.size === 0);
+  wordDelete.commands.setTextSelection(blocks(wordDelete)[2].pos + blocks(wordDelete)[2].node.nodeSize - 2);
+  keyboard(wordDelete, 'Backspace', { altKey: true });
+  check('Option+Backspace deletes the Hebrew word before the caret', taskTexts(wordDelete) === 'first task||שלום, ');
+  keyboard(wordDelete, 'Backspace', { altKey: true });
+  check('Option+Backspace deletes trailing space and punctuation as one word', taskTexts(wordDelete) === 'first task||שלום');
+  wordDelete.commands.setTextSelection(blocks(wordDelete)[0].pos + 2);
+  check('Option+Delete deletes the next word', keyboard(wordDelete, 'Delete', { altKey: true }) && taskTexts(wordDelete) === ' task||שלום');
   for (const tag of ['ul', 'ol']) {
     const regular = create(`<${tag}><li><p>ראשון</p></li><li><p>Second</p></li></${tag}>`);
     regular.commands.setTextSelection(blocks(regular, 'listItem')[1].pos + 3);

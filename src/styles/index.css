@@ -566,6 +566,32 @@ li[data-type="taskItem"][data-checked="true"] > div > p,
 }
 
 /* Note Variant (Accent / Amber) */
+.tiptap .callout[data-callout-title]::before {
+  content: attr(data-callout-title);
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.2em;
+}
+
+/* HTML a note keeps verbatim (comments, <details>, <kbd>, …) but cannot edit. */
+.tiptap .raw-html-block,
+.tiptap .raw-html-inline {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82em;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  unicode-bidi: isolate;
+}
+.tiptap .raw-html-block {
+  margin: 0.4em 0;
+  padding: 0.3em 0.6em;
+  border-inline-start: 2px solid var(--border-color);
+  opacity: 0.8;
+}
+.tiptap .raw-html-inline { padding: 0 0.15em; opacity: 0.75; }
+.tiptap .raw-html-block.ProseMirror-selectednode,
+.tiptap .raw-html-inline.ProseMirror-selectednode { outline: 2px solid var(--accent-color, #3b82f6); border-radius: 3px; }
+
 .tiptap .callout-note {
   border-inline-start-color: var(--accent-color);
   background-color: var(--accent-light);
@@ -1030,7 +1056,10 @@ u,
 .tiptap [data-direction-override] p,
 .tiptap [data-direction-override] h1,
 .tiptap [data-direction-override] h2,
-.tiptap [data-direction-override] h3 {
+.tiptap [data-direction-override] h3,
+.tiptap [data-direction-override] h4,
+.tiptap [data-direction-override] h5,
+.tiptap [data-direction-override] h6 {
   unicode-bidi: isolate;
 }
 
@@ -1103,6 +1132,9 @@ u,
 .scribe-app .tiptap h1 { font-size: 1.7em; margin-top: 1.2em; }
 .scribe-app .tiptap h2 { font-size: 1.35em; }
 .scribe-app .tiptap h3 { font-size: 1.12em; }
+/* Levels 4-6 come from notes written elsewhere; keep them quieter than h3. */
+.scribe-app .tiptap h4, .scribe-app .tiptap h5, .scribe-app .tiptap h6 { font-size: 1em; font-weight: 600; line-height: 1.4; margin-top: 0.9em; margin-bottom: 0.3em; color: var(--text-primary); unicode-bidi: plaintext; text-align: start; }
+.scribe-app .tiptap h5, .scribe-app .tiptap h6 { color: var(--text-secondary); }
 .scribe-app .tiptap table { margin-block: 1.4em; }
 .scribe-app .tiptap td, .scribe-app .tiptap th { font-size: inherit; }
 .scribe-app .tiptap td p, .scribe-app .tiptap th p { font-size: .92em; }

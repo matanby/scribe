@@ -60,7 +60,15 @@ export const ResizableImage = Image.extend({
   addStorage() {
     return { markdown: {
       serialize(state: any, node: any) {
-        state.write(`<img src="${escapeHTML(node.attrs.src)}" alt="${escapeHTML(node.attrs.alt || '')}"${node.attrs.title ? ` title="${escapeHTML(node.attrs.title)}"` : ''}${node.attrs.width ? ` width="${node.attrs.width}"` : ''}>`);
+        const { src, alt, title, width } = node.attrs;
+        // Markdown can't hold a width, so only resized images need HTML.
+        if (width) {
+          state.write(`<img src="${escapeHTML(src)}" alt="${escapeHTML(alt || '')}"${title ? ` title="${escapeHTML(title)}"` : ''} width="${width}">`);
+          return;
+        }
+        const destination = /[\s()<>]/.test(src || '') ? `<${String(src).replace(/[<>]/g, character => encodeURIComponent(character))}>` : src;
+        const label = String(alt || '').replace(/[\\[\]]/g, '\\$&');
+        state.write(`![${label}](${destination}${title ? ` "${String(title).replace(/"/g, '\\"')}"` : ''})`);
       }, parse: {}
     } };
   }
