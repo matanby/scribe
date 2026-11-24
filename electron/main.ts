@@ -273,6 +273,40 @@ function stepAppZoom(direction: 1 | -1): number {
   return setAppZoomFactor(stepZoomFactor(getCurrentZoomFactor(), direction));
 }
 
+// Right-click menu for text: spelling suggestions for a misspelled word, then the usual edit actions.
+// Renderer menus that call preventDefault (note and folder lists) never reach this event.
+function bindTextContextMenu(win: BrowserWindow) {
+  win.webContents.on('context-menu', (_event, params) => {
+    const contents = win.webContents;
+    const template: MenuItemConstructorOptions[] = [];
+    if (params.isEditable && params.misspelledWord) {
+      const suggestions = params.dictionarySuggestions.slice(0, 5);
+      if (suggestions.length) {
+        for (const suggestion of suggestions) template.push({ label: suggestion, click: () => contents.replaceMisspelling(suggestion) });
+      } else {
+        template.push({ label: 'No Guesses Found', enabled: false });
+      }
+      template.push(
+        { type: 'separator' },
+        { label: 'Learn Spelling', click: () => contents.session.addWordToSpellCheckerDictionary(params.misspelledWord) },
+        { type: 'separator' }
+      );
+    }
+    if (params.isEditable) {
+      template.push(
+        { role: 'cut', enabled: params.editFlags.canCut },
+        { role: 'copy', enabled: params.editFlags.canCopy },
+        { role: 'paste', enabled: params.editFlags.canPaste },
+        { type: 'separator' },
+        { role: 'selectAll' }
+      );
+    } else if (params.selectionText.trim()) {
+      template.push({ role: 'copy' });
+    }
+    if (template.length) Menu.buildFromTemplate(template).popup({ window: win });
+  });
+}
+
 function bindZoomShortcuts(win: BrowserWindow, adjustTrafficLights = true) {
   win.webContents.on('did-finish-load', () => {
     applyZoomToWindow(win, getCurrentZoomFactor(), adjustTrafficLights);
@@ -323,6 +357,7 @@ export function createWindow(targetFolderPath?: string, openSettings = false, op
     }
   });
   bindZoomShortcuts(win, true);
+  bindTextContextMenu(win);
 
   win.on('page-title-updated', event => {
     const file = documentFiles.get(win.webContents.id);
@@ -1318,6 +1353,7 @@ function openCapture() {
     title: 'Quick Capture', titleBarStyle: 'hiddenInset', backgroundColor: '#fafafa',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, zoomFactor: getCurrentZoomFactor() } });
   bindZoomShortcuts(win, false);
+  bindTextContextMenu(win);
   captureWindow = win;
   setWindowRoot(win.webContents.id, captureRoot);
   const captureId = win.webContents.id;
